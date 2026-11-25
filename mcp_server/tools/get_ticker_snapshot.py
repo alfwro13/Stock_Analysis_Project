@@ -17,7 +17,7 @@ from price_history_helpers import last_session_change
 from utils import cached_fundamentals_extra, is_excluded_from_yahoo_fetch, is_iso_date, is_missing_sector, upcoming_iso_date
 from yahoo_engine import yahoo_engine
 
-from ..envelope import NIGHTLY_STALE_AFTER_SECONDS, date_epoch, dated_part, envelope, iso_utc
+from ..envelope import ML_CONFIDENCE_UNITS, NIGHTLY_STALE_AFTER_SECONDS, date_epoch, dated_part, envelope, iso_utc
 from ..scope import valid_ticker
 from ..server import READ_ONLY, server
 
@@ -36,7 +36,10 @@ _UNITS = {
     "fundamentals": "roe, profit_margin and revenue_growth are fractions (0.15 = 15%); debt_to_equity is on Yahoo's own scale where 30 means 30% (not 0.30); current_ratio is a ratio; free_cash_flow and operating_cash_flow are amounts in the company's financial currency (extra.financial_currency)",
     "fundamentals.extra": "from the cached Yahoo company dump: market_cap in the major unit of the quote currency (GBP for a GBp quote); eps, free_cash_flow, total_debt, total_cash and net_cash in financial_currency; roa, earnings_growth, insider_ownership and payout_ratio are fractions; quick_ratio a ratio; average_volume in shares; null when the dump is not cached",
     "forensic_scores": "piotroski_f_score 0-9 (higher is stronger); altman_z_score is the non-manufacturer Z' (above 2.6 safe, 1.1 to 2.6 grey, below 1.1 distress); beneish_m_score above -1.78 signals possible manipulation; each is null when too few inputs could be computed; as_of is the time of the last forensic run",
-    "ml": f"confidence is 0-100: the latest model probability for the ticker; price_q10/price_q90 are the ML Quantile Price Band in price.currency; each is null once it was scored more than {ML_FEATURE_MAX_AGE_TRADING_DAYS} trading days ago, and none has a timestamp of its own",
+    "ml": (
+        f"confidence is {ML_CONFIDENCE_UNITS}; as_of is the UTC time it was scored. price_q10/price_q90 are the ML Quantile "
+        f"Price Band in price.currency, each null once it was scored more than {ML_FEATURE_MAX_AGE_TRADING_DAYS} trading days ago"
+    ),
     "position": "held: in any Trading or Ghostfolio account; total_shares across them",
     "position_targets": "one row per Trading account holding the ticker, plus the Watchlist when it is watched; low_limit (buy) and high_limit (sell) are prices in price.currency, null when unset; shares is null for the Watchlist",
     "next_earnings": "date is YYYY-MM-DD from the nightly Quant Scan / weekly Universe Fundamentals sync; null when unknown or when Yahoo has not published a date after the last report (a past date is never returned)",
@@ -223,11 +226,11 @@ def get_ticker_snapshot(ticker: TickerArg) -> dict[str, Any]:
         technical_epoch = _oldest(signals_epoch if covered else None, quant_epoch)
         trend = dated_part(technical_epoch, _trend(row))
         technicals = dated_part(technical_epoch, _technicals(row, covered))
-        ml = {
-            "as_of": None, "stale": False, "confidence": row["ml_confidence_score"],
-            "price_q10": row["price_q10"], "price_q90": row["price_q90"],
-        }
-        epochs.append(technical_epoch)
+        ml_epoch = parse_utc_epoch(row["ml_scored_at"]) or None
+        ml = dated_part(ml_epoch, {
+            "confidence": row["ml_confidence_score"], "price_q10": row["price_q10"], "price_q90": row["price_q90"],
+        })
+        epochs.extend((technical_epoch, ml_epoch))
         if quant_epoch is None:
             missing.append("No quant_signals row: technicals and ML values are null")
     else:

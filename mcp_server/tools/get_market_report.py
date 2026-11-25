@@ -23,7 +23,7 @@ from sector_relative_momentum_engine import (
 from utils import clean_display_text
 
 from ..discovery import LimitArg, ScopeArg, identity, page, scoped_rows
-from ..envelope import NIGHTLY_STALE_AFTER_SECONDS, date_epoch, dated_part, envelope
+from ..envelope import ML_CONFIDENCE_UNITS, NIGHTLY_STALE_AFTER_SECONDS, date_epoch, dated_part, envelope
 from ..server import READ_ONLY, server
 
 ReportArg = Literal[
@@ -67,7 +67,7 @@ _UNITS = {
     "pct_above_52w_low, distance_from_200d_pct": "percent above the 52-week low or the 200-day average",
     "dividend_yield": "fraction (0.03 = 3%)",
     "composite_score": "-100 to +100 composite score of the nightly Quant Scan (negative is bearish)",
-    "ml_confidence_score": "0-100 model probability; null once older than the ML freshness window",
+    "ml_confidence_score": ML_CONFIDENCE_UNITS,
     "market_cap": "major unit of the quote currency",
     "rsi_14": "0-100",
     "volume_surge": "1 when the latest volume exceeds 1.5 times its 20-day average, else 0",

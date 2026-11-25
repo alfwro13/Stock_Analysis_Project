@@ -6,7 +6,8 @@ quant_signals.ml_scored_at, and:
   - ml_fresh_cutoff_date()/ml_fresh_since() count ML_FEATURE_MAX_AGE_TRADING_DAYS trading days, not calendar days
   - inference_cross_section() keeps feature rows inside that limit and on dates that meet the coverage threshold
   - the readers that carry the latest non-NULL score forward (Portfolio/Watchlist rows, Stock Detail) hide a
-    score once it is older than the cutoff, and still show one when a newer row has no score yet
+    score once it is older than the cutoff, and still show one when a newer row has no score yet; Stock Detail
+    also returns that score's own ml_scored_at, and its universe-scan-only row applies the same cutoff
   - the readers of the latest row's own score (Dividend Harvest and GARP reports, AI prompt, alert metadata,
     Screener) hide a score once it is older than the cutoff
   - the ML Quantile Price Band readers do the same with quant_signals.quantile_scored_at, on the latest row
@@ -147,6 +148,29 @@ class TestReadersBoundMlScoreAge:
 
         assert fresh["ml_confidence_score"] == pytest.approx(61.0)
         assert old["ml_confidence_score"] is None
+
+    def test_stock_detail_returns_the_scored_at_of_the_score_it_shows(self):
+        conn = _conn()
+        older = _utc(1)
+        _seed(conn, "MLFRESH_1", older_scored_at=older, latest_score=None)
+        _seed(conn, "MLFRESH_2", older_scored_at=_utc(30))
+        conn.close()
+
+        fresh, _ = page_data_stock.load_stock_row("MLFRESH_1")
+        old, _ = page_data_stock.load_stock_row("MLFRESH_2")
+
+        assert (fresh["ml_confidence_score"], fresh["ml_scored_at"]) == (pytest.approx(61.0), older)
+        assert (old["ml_confidence_score"], old["ml_scored_at"]) == (None, None)
+
+    def test_universe_scan_only_row_shows_a_recent_score_and_band_and_hides_old_ones(self):
+        recent = _utc(1)
+        row = {"date": "2026-10-09", "ml_confidence_score": 61.0, "ml_scored_at": recent,
+               "price_q10": 90.0, "price_q90": 130.0, "quantile_scored_at": recent}
+        fresh = page_data_stock._quant_only_stock("X", row)
+        old = page_data_stock._quant_only_stock("X", {**row, "ml_scored_at": _utc(30), "quantile_scored_at": None})
+
+        assert (fresh["ml_confidence_score"], fresh["ml_scored_at"], fresh["price_q10"], fresh["price_q90"]) == (61.0, recent, 90.0, 130.0)
+        assert (old["ml_confidence_score"], old["ml_scored_at"], old["price_q10"], old["price_q90"]) == (None, None, None, None)
 
 
 def _seed_latest_row(ticker, scored_at, quantile_scored_at=None):

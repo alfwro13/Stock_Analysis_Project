@@ -20,6 +20,9 @@ def _quant_only_stock(ticker, q_data):
 
     c_price = q_data.get("close_price")
     c_price = float(c_price) if c_price is not None else 0.0
+    fresh_since = ml_fresh_since()
+    ml_fresh = (q_data.get("ml_scored_at") or "") >= fresh_since
+    quantile_fresh = (q_data.get("quantile_scored_at") or "") >= fresh_since
 
     return {
         "ticker": ticker,
@@ -45,7 +48,8 @@ def _quant_only_stock(ticker, q_data):
         "fifty_two_week_high": None,
         "ma_50_day": q_data.get("sma_50"),
         "ma_200_day": q_data.get("sma_200"),
-        "ml_confidence_score": q_data.get("ml_confidence_score"),
+        "ml_confidence_score": q_data.get("ml_confidence_score") if ml_fresh else None,
+        "ml_scored_at": q_data.get("ml_scored_at") if ml_fresh else None,
         "var_95": q_data.get("var_95"),
         "cvar_95": q_data.get("cvar_95"),
         "sentiment_score": q_data.get("sentiment_score"),
@@ -98,8 +102,8 @@ def _quant_only_stock(ticker, q_data):
         "kc_z_score": q_data.get("kc_z_score"),
         "kc_entry_signal": q_data.get("kc_entry_signal"),
         "kc_exit_signal": q_data.get("kc_exit_signal"),
-        "price_q10": q_data.get("price_q10"),
-        "price_q90": q_data.get("price_q90"),
+        "price_q10": q_data.get("price_q10") if quantile_fresh else None,
+        "price_q90": q_data.get("price_q90") if quantile_fresh else None,
         "quant_date": q_data.get("date"),
     }
 
@@ -125,6 +129,7 @@ def _unknown_stock(ticker):
         "atr_stop_loss": None,
         "last_updated": None,
         "ml_confidence_score": None,
+        "ml_scored_at": None,
         "var_95": None,
         "cvar_95": None,
         "sentiment_score": None,
@@ -176,6 +181,9 @@ def load_stock_row(ticker):
                    (SELECT ml_confidence_score FROM quant_signals
                     WHERE ticker = s.ticker AND ml_confidence_score IS NOT NULL AND ml_scored_at >= ?
                     ORDER BY date DESC LIMIT 1) AS ml_confidence_score,
+                   (SELECT ml_scored_at FROM quant_signals
+                    WHERE ticker = s.ticker AND ml_confidence_score IS NOT NULL AND ml_scored_at >= ?
+                    ORDER BY date DESC LIMIT 1) AS ml_scored_at,
                    (SELECT var_95 FROM quant_signals
                     WHERE ticker = s.ticker AND var_95 IS NOT NULL
                     ORDER BY date DESC LIMIT 1) AS var_95,
@@ -217,7 +225,7 @@ def load_stock_row(ticker):
             LEFT JOIN ticker_metadata tmeta ON s.ticker = tmeta.ticker
             LEFT JOIN trap_monitor_results trap ON s.ticker = trap.ticker
             WHERE s.ticker = ?
-        ''', (fresh_since, sentiment_fresh_since(), fresh_since, fresh_since, ticker))
+        ''', (fresh_since, fresh_since, sentiment_fresh_since(), fresh_since, fresh_since, ticker))
         stock_data = cursor.fetchone()
 
         if stock_data:
