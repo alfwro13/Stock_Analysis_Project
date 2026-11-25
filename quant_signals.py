@@ -933,7 +933,8 @@ class QuantEngine:
         nightly = DataEngine().get_all_tickers()
         return universe | protected_tickers() | set(nightly) | set(DataEngine.in_scope_fx_pairs(nightly)) | set(QUANT_SCAN_ALWAYS_TICKERS)
 
-    def run_all(self) -> None:
+    def run_all(self, only: Optional[set] = None, exclude: frozenset = frozenset()) -> None:
+        """`only`/`exclude` let the Update Pipeline scan the universe-history pool after its download, from that night's bar."""
         logger.info("Starting Institutional Quantamental Engine...")
         skipped = {"orphan": [], "not_bars": [], "empty": []}
         scope = self._scan_scope()
@@ -943,7 +944,10 @@ class QuantEngine:
             ticker = filename.replace(".parquet", "")
             if is_synthetic_ticker(ticker):
                 continue
-            if scope is not None and normalize_ticker(ticker) not in scope:
+            normalized = normalize_ticker(ticker)
+            if (only is not None and normalized not in only) or normalized in exclude:
+                continue
+            if scope is not None and normalized not in scope:
                 skipped["orphan"].append(ticker)
                 continue
             kind = self._history_kind(ticker)

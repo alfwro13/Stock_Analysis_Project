@@ -349,3 +349,101 @@ class TestUpsertFundamentalsDoesNotWipeOtherEnginesColumns:
         row = conn.execute("SELECT company_name FROM stock_signals WHERE ticker=?", (self.TICKER,)).fetchone()
         conn.close()
         assert row["company_name"] == "Test Co"
+
+
+class TestFetchInfoRefreshesAnAgedDump:
+    """The Universe Deep Sync read data/fundamentals/{ticker}.json whatever its age, so universe-only
+    tickers carried a six-month-old `.info` quote (CCEP.L at 6925 GBp against an 8875 close) and
+    fundamentals into stock_signals every week."""
+
+    TICKER = "ZZINFOAGE.L"
+
+    def _write_dump(self, directory, payload, days_old):
+        import os
+
+        path = directory / f"{self.TICKER}.json"
+        path.write_text(json.dumps(payload))
+        written = (datetime.now(timezone.utc) - timedelta(days=days_old)).timestamp()
+        os.utime(path, (written, written))
+        return path
+
+    def test_a_young_dump_is_used_without_a_lookup(self, tmp_path):
+        import universe_fundamentals_engine as engine
+
+        self._write_dump(tmp_path, {"quoteType": "EQUITY", "regularMarketPrice": 8890.0}, days_old=1)
+        with patch.object(engine, "FUNDAMENTALS_DIR", tmp_path), \
+             patch.object(engine.yahoo_engine, "get_ticker_info") as lookup:
+            assert engine._fetch_info(self.TICKER)["regularMarketPrice"] == 8890.0
+        lookup.assert_not_called()
+
+    def test_an_aged_dump_is_fetched_again_and_replaced(self, tmp_path):
+        import universe_fundamentals_engine as engine
+
+        path = self._write_dump(tmp_path, {"quoteType": "EQUITY", "regularMarketPrice": 6925.0}, days_old=engine._INFO_REFRESH_DAYS + 1)
+        fresh = {"quoteType": "EQUITY", "regularMarketPrice": 8890.0}
+        with patch.object(engine, "FUNDAMENTALS_DIR", tmp_path), \
+             patch.object(engine.yahoo_engine, "get_ticker_info", return_value=fresh):
+            assert engine._fetch_info(self.TICKER) == fresh
+        assert json.loads(path.read_text()) == fresh
+
+    def test_a_failed_fetch_keeps_the_aged_dump(self, tmp_path):
+        import universe_fundamentals_engine as engine
+
+        old = {"quoteType": "EQUITY", "regularMarketPrice": 6925.0}
+        path = self._write_dump(tmp_path, old, days_old=engine._INFO_REFRESH_DAYS + 1)
+        with patch.object(engine, "FUNDAMENTALS_DIR", tmp_path), \
+             patch.object(engine.yahoo_engine, "get_ticker_info", return_value=None):
+            assert engine._fetch_info(self.TICKER) == old
+        assert json.loads(path.read_text()) == old
+
+
+class TestUpsertFundamentalsLeavesTheBarPrice:
+    """stock_signals.current_price is the Quant Scan's last daily close; the weekly `.info` quote only fills a row that has none."""
+
+    TICKER = "ZZUPSERTPRICE.L"
+
+    def teardown_method(self):
+        conn = _db.get_connection()
+        try:
+            conn.execute("DELETE FROM stock_signals WHERE ticker=?", (self.TICKER,))
+            conn.commit()
+        finally:
+            conn.close()
+
+    def _price(self):
+        conn = _db.get_connection()
+        try:
+            return conn.execute("SELECT current_price, company_name FROM stock_signals WHERE ticker=?", (self.TICKER,)).fetchone()
+        finally:
+            conn.close()
+
+    def test_an_existing_price_is_kept(self):
+        conn = _db.get_connection()
+        try:
+            conn.execute("INSERT INTO stock_signals (ticker, current_price) VALUES (?, ?)", (self.TICKER, 8890.0))
+            conn.commit()
+        finally:
+            conn.close()
+
+        _upsert_fundamentals(self.TICKER, {"shortName": "Test Co", "regularMarketPrice": 6925.0})
+
+        row = self._price()
+        assert row["company_name"] == "Test Co"
+        assert row["current_price"] == 8890.0
+
+    def test_a_missing_price_is_filled(self):
+        conn = _db.get_connection()
+        try:
+            conn.execute("INSERT INTO stock_signals (ticker, piotroski_f_score) VALUES (?, ?)", (self.TICKER, 6.0))
+            conn.commit()
+        finally:
+            conn.close()
+
+        _upsert_fundamentals(self.TICKER, {"shortName": "Test Co", "regularMarketPrice": 6925.0})
+
+        assert self._price()["current_price"] == 6925.0
+
+    def test_a_new_row_takes_the_quote(self):
+        _upsert_fundamentals(self.TICKER, {"shortName": "Test Co", "regularMarketPrice": 6925.0})
+
+        assert self._price()["current_price"] == 6925.0

@@ -147,7 +147,7 @@ class TestRunEarningsVolRetryJob:
 
 
 class TestRunUpdatePipelineRefreshesUniverseHistoryLast:
-    def test_universe_step_runs_after_every_other_pipeline_step_and_the_run_is_recorded(self):
+    def test_universe_step_runs_after_every_other_pipeline_step_and_its_pool_is_scanned_from_the_new_bars(self):
         order = []
         engine = MagicMock()
         engine.get_all_tickers.return_value = ["AAPL"]
@@ -155,7 +155,7 @@ class TestRunUpdatePipelineRefreshesUniverseHistoryLast:
         engine.update_all_data.side_effect = lambda: order.append("update_all_data")
         engine.bulk_download_historical.side_effect = lambda *a, **k: order.append("universe")
         quant = MagicMock()
-        quant.run_all.side_effect = lambda: order.append("quant")
+        quant.run_all.side_effect = lambda **k: order.append(("quant", k))
         with patch("scheduler_jobs.DataEngine", return_value=engine), \
              patch("scheduler_jobs.QuantEngine", return_value=quant), \
              patch("regime_engine.calculate_systemic_macro_threat"), \
@@ -166,7 +166,10 @@ class TestRunUpdatePipelineRefreshesUniverseHistoryLast:
              patch("scheduler_jobs.log_sched_notification"):
             scheduler_jobs.run_update_pipeline()
 
-        assert order == ["update_all_data", "quant", "etf_holdings", "universe"]
+        pool = {"NVDA", "VOD.L"}
+        assert order == [
+            "update_all_data", ("quant", {"exclude": frozenset(pool)}), "etf_holdings", "universe", ("quant", {"only": pool}),
+        ]
         engine.bulk_download_historical.assert_called_once_with([], universe=["NVDA", "VOD.L"])
         record.assert_called_once_with("quant_analysis_job")
 

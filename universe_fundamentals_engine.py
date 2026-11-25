@@ -1,6 +1,7 @@
 import json
 import logging
 import math
+import os
 import time
 from datetime import datetime, timedelta, timezone
 from typing import List, Optional
@@ -10,7 +11,7 @@ from yahoo_engine import yahoo_engine
 from db.database import get_connection, log_notification
 from fundamentals_helpers import calculate_peter_lynch_peg
 from time_engine import parse_stored_utc
-from utils import epoch_to_iso_date, next_earnings_iso_date, safe_ticker_filename
+from utils import contained_ticker_path, epoch_to_iso_date, next_earnings_iso_date
 
 logger = logging.getLogger(__name__)
 
@@ -18,29 +19,36 @@ logger = logging.getLogger(__name__)
 # avoids re-fetching on every quant_analysis_job run while still catching drift eventually.
 _HOLDINGS_REFRESH_DAYS = 30
 
+# Under the weekly Universe Deep Sync cadence, so every run refetches the dump: the nightly drip-feed refreshes only held, watched and Markets tickers.
+_INFO_REFRESH_DAYS = 6
+
 
 def _fetch_info(ticker: str) -> dict:
-    """Load from local JSON cache first; fall back to live yfinance fetch and cache result."""
-    safe_ticker = safe_ticker_filename(ticker)
-    if not safe_ticker:
+    """The cached `.info` dump while younger than _INFO_REFRESH_DAYS, else a fresh fetch; a failed fetch keeps the old dump."""
+    cache_path = contained_ticker_path(FUNDAMENTALS_DIR, ticker, ".json")
+    if cache_path is None:
         return {}
-    cache_path = FUNDAMENTALS_DIR / f"{safe_ticker}.json"
-    if cache_path.exists():
+    cached: dict = {}
+    if os.path.exists(cache_path):
         try:
             with open(cache_path, 'r') as f:
-                return json.load(f)
+                cached = json.load(f)
         except Exception:
             logger.warning("Corrupted fundamentals cache for %s, re-fetching", ticker, exc_info=True)
+        written_at = datetime.fromtimestamp(os.path.getmtime(cache_path), timezone.utc)
+        if cached and written_at >= datetime.now(timezone.utc) - timedelta(days=_INFO_REFRESH_DAYS):
+            return cached
     try:
         info = yahoo_engine.get_ticker_info(ticker) or {}
-        if info.get('quoteType'):
-            FUNDAMENTALS_DIR.mkdir(parents=True, exist_ok=True)
-            with open(cache_path, 'w') as f:
-                json.dump(info, f)
-        return info
     except Exception as e:
         logger.warning("[%s] yfinance fetch failed: %s", ticker, e)
-        return {}
+        info = {}
+    if info.get('quoteType'):
+        FUNDAMENTALS_DIR.mkdir(parents=True, exist_ok=True)
+        with open(cache_path, 'w') as f:
+            json.dump(info, f)
+        return info
+    return cached or info
 
 
 def _compute_fundamental_score(info: dict) -> tuple:
@@ -251,6 +259,8 @@ def _upsert_fundamentals(ticker: str, info: dict) -> None:
         # this statement to its schema default, silently wiping out top_holdings/sector_weightings/
         # holdings_updated_at and piotroski_f_score/altman_z_score/beneish_m_score/
         # forensic_last_updated, which are owned by other engines' own targeted UPDATEs.
+        # current_price is only filled while NULL: the Quant Scan owns it from the daily bar, and the
+        # `.info` quote is up to _INFO_REFRESH_DAYS old.
         cursor.execute("""
             INSERT INTO stock_signals (
                 ticker, last_updated, company_name, sector, country, currency, quote_type,
@@ -280,7 +290,7 @@ def _upsert_fundamentals(ticker: str, info: dict) -> None:
             ON CONFLICT(ticker) DO UPDATE SET
                 last_updated=excluded.last_updated, company_name=excluded.company_name, sector=excluded.sector,
                 country=excluded.country, currency=excluded.currency, quote_type=excluded.quote_type,
-                current_price=excluded.current_price,
+                current_price=COALESCE(stock_signals.current_price, excluded.current_price),
                 fifty_two_week_low=excluded.fifty_two_week_low, fifty_two_week_high=excluded.fifty_two_week_high,
                 trailing_pe=excluded.trailing_pe, forward_pe=excluded.forward_pe, peg_ratio=excluded.peg_ratio,
                 peter_lynch_peg=excluded.peter_lynch_peg, price_to_book=excluded.price_to_book,
