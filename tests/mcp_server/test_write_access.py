@@ -7,7 +7,7 @@ from unittest.mock import patch
 
 import pytest
 
-from constants import MCP_WRITE_PROPOSAL_SECONDS
+from constants import MCP_WRITE_LIMIT_DEFAULTS
 from db import mcp_keys as db_mcp_keys, mcp_write_log
 from db.account_store import get_holding_price_limits_for_ticker, get_watchlist_account, get_watchlist_tickers, upsert_holding_price_limit
 from db.database import get_connection
@@ -17,6 +17,8 @@ from .helpers import MCP_KEY, call, error_text, table_counts, tool_data
 from .test_oauth_server import remote, sql, tokens  # noqa: F401  remote is a fixture
 
 pytestmark = pytest.mark.restore_tables("watchlist_items", "holding_price_limits", "mcp_api_keys")
+
+PROPOSAL_SECONDS = MCP_WRITE_LIMIT_DEFAULTS["proposal_seconds"]
 
 TICKER = "ZZWRITE"
 OTHER = "ZZWRITEB"
@@ -52,8 +54,15 @@ def fetches(monkeypatch):
 
 
 @pytest.fixture
-def writes_on(monkeypatch, fetches):
-    monkeypatch.setattr("mcp_server.writes.load_config", lambda: {"MCP_WRITES_ENABLED": True})
+def limits(monkeypatch):
+    """The live MCP_WRITE_LIMITS dict the patched config serves; a test edits it between calls like the Settings route edits config.json."""
+    values = dict(MCP_WRITE_LIMIT_DEFAULTS)
+    monkeypatch.setattr("mcp_server.writes.load_config", lambda: {"MCP_WRITES_ENABLED": True, "MCP_WRITE_LIMITS": values})
+    return values
+
+
+@pytest.fixture
+def writes_on(monkeypatch, fetches, limits):
     db_mcp_keys.set_key_write_allowed(keys.match(MCP_KEY), True)
 
 
@@ -97,11 +106,11 @@ class TestGates:
         assert log_rows() == []
 
     def test_the_global_switch_alone_is_not_enough(self, mcp_client, monkeypatch, fetches):
-        monkeypatch.setattr("mcp_server.writes.load_config", lambda: {"MCP_WRITES_ENABLED": True})
+        monkeypatch.setattr("mcp_server.writes.load_config", lambda: {"MCP_WRITES_ENABLED": True, "MCP_WRITE_LIMITS": dict(MCP_WRITE_LIMIT_DEFAULTS)})
         assert refusal(mcp_client, "propose_watchlist_change", {"action": "add", "ticker": TICKER}) == writes.NOT_ENABLED
 
     def test_the_key_flag_alone_is_not_enough(self, mcp_client, monkeypatch, fetches):
-        monkeypatch.setattr("mcp_server.writes.load_config", lambda: {"MCP_WRITES_ENABLED": False})
+        monkeypatch.setattr("mcp_server.writes.load_config", lambda: {"MCP_WRITES_ENABLED": False, "MCP_WRITE_LIMITS": dict(MCP_WRITE_LIMIT_DEFAULTS)})
         db_mcp_keys.set_key_write_allowed(keys.match(MCP_KEY), True)
         assert refusal(mcp_client, "propose_watchlist_change", {"action": "add", "ticker": TICKER}) == writes.NOT_ENABLED
 
@@ -219,13 +228,13 @@ class TestConfirm:
 
     def test_an_expired_proposal_is_refused_and_marked(self, mcp_client, writes_on, clock):
         proposal_id = propose(mcp_client, "add")["proposal_id"]
-        clock.advance(seconds=MCP_WRITE_PROPOSAL_SECONDS + 1)
+        clock.advance(seconds=PROPOSAL_SECONDS + 1)
         assert refusal(mcp_client, "confirm_change", {"proposal_id": proposal_id}) == writes.EXPIRED
         assert TICKER not in get_watchlist_tickers() and log_rows()[0]["status"] == "expired"
 
     def test_the_last_second_is_still_inside_the_life(self, mcp_client, writes_on, clock):
         proposal_id = propose(mcp_client, "add")["proposal_id"]
-        clock.advance(seconds=MCP_WRITE_PROPOSAL_SECONDS - 1)
+        clock.advance(seconds=PROPOSAL_SECONDS - 1)
         assert confirm(mcp_client, proposal_id)["status"] == "executed"
 
     def test_another_credentials_proposal_looks_like_an_unknown_one(self, mcp_client, writes_on):
@@ -343,77 +352,142 @@ class TestRemoveAndUndo:
 
 
 class TestCaps:
-    def test_proposals_per_hour(self, mcp_client, writes_on, monkeypatch, remote_notifications):
-        monkeypatch.setattr(writes, "MCP_WRITE_PROPOSALS_PER_HOUR", 2)
-        monkeypatch.setattr(writes, "MCP_WRITE_PENDING_MAX", 50)
+    def test_proposals_per_hour(self, mcp_client, writes_on, limits, remote_notifications):
+        limits["proposals_per_hour"] = 2
+        limits["pending_max"] = 50
         propose(mcp_client, "add", "ZZCAPA")
         propose(mcp_client, "add", "ZZCAPB")
         assert refusal(mcp_client, "propose_watchlist_change", {"action": "add", "ticker": "ZZCAPC"}) == writes._CAP_TEXT["proposals_per_hour"]
         assert [r["status"] for r in log_rows()].count("refused") == 1
         assert any("Changes from key #" in n["text"] for n in remote_notifications)
 
-    def test_a_refusal_row_is_written_once_per_window_so_a_loop_cannot_flood_the_table(self, mcp_client, writes_on, monkeypatch):
-        monkeypatch.setattr(writes, "MCP_WRITE_PROPOSALS_PER_HOUR", 1)
+    def test_a_refusal_row_is_written_once_per_window_so_a_loop_cannot_flood_the_table(self, mcp_client, writes_on, limits):
+        limits["proposals_per_hour"] = 1
         propose(mcp_client, "add", "ZZCAPA")
         for _ in range(5):
             refusal(mcp_client, "propose_watchlist_change", {"action": "add", "ticker": "ZZCAPB"})
         assert [r["status"] for r in log_rows()].count("refused") == 1
 
-    def test_the_proposals_an_hour_ago_do_not_count(self, mcp_client, writes_on, monkeypatch, clock):
-        monkeypatch.setattr(writes, "MCP_WRITE_PROPOSALS_PER_HOUR", 1)
-        monkeypatch.setattr(writes, "MCP_WRITE_PENDING_MAX", 50)
+    def test_the_proposals_an_hour_ago_do_not_count(self, mcp_client, writes_on, limits, clock):
+        limits["proposals_per_hour"] = 1
+        limits["pending_max"] = 50
         propose(mcp_client, "add", "ZZCAPA")
         clock.advance(hours=1, seconds=1)
         assert propose(mcp_client, "add", "ZZCAPB")["summary"].startswith("Add ZZCAPB")
 
-    def test_pending_proposals(self, mcp_client, writes_on, monkeypatch):
-        monkeypatch.setattr(writes, "MCP_WRITE_PENDING_MAX", 2)
+    def test_pending_proposals(self, mcp_client, writes_on, limits):
+        limits["pending_max"] = 2
         propose(mcp_client, "add", "ZZCAPA")
         propose(mcp_client, "add", "ZZCAPB")
         assert refusal(mcp_client, "propose_watchlist_change", {"action": "add", "ticker": "ZZCAPC"}) == writes._CAP_TEXT["pending_max"]
 
-    def test_an_expired_proposal_no_longer_counts_as_pending(self, mcp_client, writes_on, monkeypatch, clock):
-        monkeypatch.setattr(writes, "MCP_WRITE_PENDING_MAX", 1)
+    def test_an_expired_proposal_no_longer_counts_as_pending(self, mcp_client, writes_on, limits, clock):
+        limits["pending_max"] = 1
         propose(mcp_client, "add", "ZZCAPA")
-        clock.advance(seconds=MCP_WRITE_PROPOSAL_SECONDS + 1)
+        clock.advance(seconds=PROPOSAL_SECONDS + 1)
         assert propose(mcp_client, "add", "ZZCAPB")
 
-    def test_changes_per_day_and_the_next_day_starts_fresh(self, mcp_client, writes_on, monkeypatch, clock):
-        monkeypatch.setattr(writes, "MCP_WRITE_CHANGES_PER_DAY", 1)
-        monkeypatch.setattr(writes, "MCP_WRITE_PENDING_MAX", 50)
+    def test_changes_per_day_and_the_next_day_starts_fresh(self, mcp_client, writes_on, limits, clock):
+        limits["changes_per_day"] = 1
+        limits["pending_max"] = 50
         confirm(mcp_client, propose(mcp_client, "add")["proposal_id"])
         assert refusal(mcp_client, "propose_watchlist_change", {"action": "add", "ticker": OTHER}) == writes._CAP_TEXT["changes_per_day"]
         clock.advance(days=1)
         assert propose(mcp_client, "add", OTHER)
 
-    def test_a_confirm_is_also_held_to_the_daily_cap(self, mcp_client, writes_on, monkeypatch):
-        monkeypatch.setattr(writes, "MCP_WRITE_PENDING_MAX", 50)
+    def test_a_confirm_is_also_held_to_the_daily_cap(self, mcp_client, writes_on, limits):
+        limits["pending_max"] = 50
         first = propose(mcp_client, "add")["proposal_id"]
         second = propose(mcp_client, "add", OTHER)["proposal_id"]
-        monkeypatch.setattr(writes, "MCP_WRITE_CHANGES_PER_DAY", 1)
+        limits["changes_per_day"] = 1
         confirm(mcp_client, first)
         assert refusal(mcp_client, "confirm_change", {"proposal_id": second}) == writes._CAP_TEXT["changes_per_day"]
         assert OTHER not in get_watchlist_tickers()
 
-    def test_adds_per_day_do_not_limit_removes(self, mcp_client, writes_on, monkeypatch):
-        monkeypatch.setattr(writes, "MCP_WRITE_ADDS_PER_DAY", 1)
-        monkeypatch.setattr(writes, "MCP_WRITE_PENDING_MAX", 50)
+    def test_adds_per_day_do_not_limit_removes(self, mcp_client, writes_on, limits):
+        limits["adds_per_day"] = 1
+        limits["pending_max"] = 50
         confirm(mcp_client, propose(mcp_client, "add")["proposal_id"])
         assert refusal(mcp_client, "propose_watchlist_change", {"action": "add", "ticker": OTHER}) == writes._CAP_TEXT["adds_per_day"]
         assert confirm(mcp_client, propose(mcp_client, "remove")["proposal_id"])["status"] == "executed"
 
-    def test_an_undo_that_re_adds_counts_as_an_add(self, mcp_client, writes_on, monkeypatch):
-        monkeypatch.setattr(writes, "MCP_WRITE_PENDING_MAX", 50)
+    def test_an_undo_that_re_adds_counts_as_an_add(self, mcp_client, writes_on, limits):
+        limits["pending_max"] = 50
         added = confirm(mcp_client, propose(mcp_client, "add")["proposal_id"])
         removed = confirm(mcp_client, propose(mcp_client, "remove")["proposal_id"])
-        monkeypatch.setattr(writes, "MCP_WRITE_ADDS_PER_DAY", 1)
+        limits["adds_per_day"] = 1
         assert refusal(mcp_client, "propose_undo", {"change_id": removed["change_id"]}) == writes._CAP_TEXT["adds_per_day"]
         assert added["status"] == "executed"
 
 
+class TestLimitsAreLive:
+    def test_proposals_per_hour_follows_the_config_without_a_restart(self, mcp_client, writes_on, limits):
+        limits["pending_max"] = 50
+        limits["proposals_per_hour"] = 1
+        propose(mcp_client, "add", "ZZCAPA")
+        assert refusal(mcp_client, "propose_watchlist_change", {"action": "add", "ticker": "ZZCAPB"}) == writes._CAP_TEXT["proposals_per_hour"]
+        limits["proposals_per_hour"] = 2
+        assert propose(mcp_client, "add", "ZZCAPB")
+        limits["proposals_per_hour"] = 1
+        assert refusal(mcp_client, "propose_watchlist_change", {"action": "add", "ticker": "ZZCAPC"}) == writes._CAP_TEXT["proposals_per_hour"]
+
+    def test_pending_max_follows_the_config_without_a_restart(self, mcp_client, writes_on, limits):
+        limits["pending_max"] = 1
+        propose(mcp_client, "add", "ZZCAPA")
+        assert refusal(mcp_client, "propose_watchlist_change", {"action": "add", "ticker": "ZZCAPB"}) == writes._CAP_TEXT["pending_max"]
+        limits["pending_max"] = 2
+        assert propose(mcp_client, "add", "ZZCAPB")
+        limits["pending_max"] = 1
+        assert refusal(mcp_client, "propose_watchlist_change", {"action": "add", "ticker": "ZZCAPC"}) == writes._CAP_TEXT["pending_max"]
+
+    def test_changes_per_day_follows_the_config_without_a_restart(self, mcp_client, writes_on, limits):
+        limits["pending_max"] = 50
+        limits["changes_per_day"] = 1
+        confirm(mcp_client, propose(mcp_client, "add")["proposal_id"])
+        assert refusal(mcp_client, "propose_watchlist_change", {"action": "add", "ticker": OTHER}) == writes._CAP_TEXT["changes_per_day"]
+        limits["changes_per_day"] = 2
+        assert propose(mcp_client, "add", OTHER)
+        limits["changes_per_day"] = 1
+        assert refusal(mcp_client, "propose_watchlist_change", {"action": "remove", "ticker": TICKER}) == writes._CAP_TEXT["changes_per_day"]
+
+    def test_adds_per_day_follows_the_config_without_a_restart(self, mcp_client, writes_on, limits):
+        limits["pending_max"] = 50
+        limits["adds_per_day"] = 1
+        confirm(mcp_client, propose(mcp_client, "add")["proposal_id"])
+        assert refusal(mcp_client, "propose_watchlist_change", {"action": "add", "ticker": OTHER}) == writes._CAP_TEXT["adds_per_day"]
+        limits["adds_per_day"] = 2
+        assert propose(mcp_client, "add", OTHER)
+        limits["adds_per_day"] = 1
+        assert refusal(mcp_client, "propose_watchlist_change", {"action": "add", "ticker": "ZZCAPC"}) == writes._CAP_TEXT["adds_per_day"]
+
+    def test_proposal_seconds_sets_the_life_of_each_new_proposal(self, mcp_client, writes_on, limits, clock):
+        limits["pending_max"] = 50
+        limits["proposal_seconds"] = 60
+        short = propose(mcp_client, "add", "ZZCAPA")["proposal_id"]
+        limits["proposal_seconds"] = 3600
+        long = propose(mcp_client, "add", "ZZCAPB")["proposal_id"]
+        clock.advance(seconds=61)
+        assert refusal(mcp_client, "confirm_change", {"proposal_id": short}) == writes.EXPIRED
+        assert confirm(mcp_client, long)["status"] == "executed"
+
+    def test_zero_adds_per_day_refuses_adds_but_allows_removes(self, mcp_client, writes_on, limits):
+        limits["pending_max"] = 50
+        confirm(mcp_client, propose(mcp_client, "add")["proposal_id"])
+        limits["adds_per_day"] = 0
+        assert refusal(mcp_client, "propose_watchlist_change", {"action": "add", "ticker": OTHER}) == writes._CAP_TEXT["adds_per_day"]
+        assert confirm(mcp_client, propose(mcp_client, "remove")["proposal_id"])["status"] == "executed"
+
+    @pytest.mark.parametrize("key,cap", [("proposals_per_hour", "proposals_per_hour"), ("pending_max", "pending_max"), ("changes_per_day", "changes_per_day")])
+    def test_zero_blocks_that_action(self, mcp_client, writes_on, limits, key, cap):
+        limits[key] = 0
+        assert refusal(mcp_client, "propose_watchlist_change", {"action": "add", "ticker": TICKER}) == writes._CAP_TEXT[cap]
+        assert TICKER not in get_watchlist_tickers()
+
+
+
 class TestRemoteGrant:
     def test_a_grant_without_the_flag_is_refused_and_with_it_may_write(self, remote, monkeypatch, fetches):
-        monkeypatch.setattr("mcp_server.writes.load_config", lambda: {"MCP_WRITES_ENABLED": True})
+        monkeypatch.setattr("mcp_server.writes.load_config", lambda: {"MCP_WRITES_ENABLED": True, "MCP_WRITE_LIMITS": dict(MCP_WRITE_LIMIT_DEFAULTS)})
         access = tokens(remote)["access_token"]
         arguments = {"action": "add", "ticker": TICKER}
         assert error_text(call(remote.http, "propose_watchlist_change", arguments, key=access)) == writes.NOT_ENABLED
@@ -431,7 +505,7 @@ class TestRemoteGrant:
         assert TICKER in get_watchlist_tickers()
 
     def test_a_named_key_cannot_confirm_a_grants_proposal(self, remote, mcp_client, monkeypatch, fetches):
-        monkeypatch.setattr("mcp_server.writes.load_config", lambda: {"MCP_WRITES_ENABLED": True})
+        monkeypatch.setattr("mcp_server.writes.load_config", lambda: {"MCP_WRITES_ENABLED": True, "MCP_WRITE_LIMITS": dict(MCP_WRITE_LIMIT_DEFAULTS)})
         db_mcp_keys.set_key_write_allowed(keys.match(MCP_KEY), True)
         access = tokens(remote)["access_token"]
         conn = get_connection()
@@ -446,7 +520,7 @@ class TestRemoteGrant:
 
     def test_a_revoked_grant_can_no_longer_confirm(self, remote, monkeypatch, fetches):
         from mcp_server import oauth
-        monkeypatch.setattr("mcp_server.writes.load_config", lambda: {"MCP_WRITES_ENABLED": True})
+        monkeypatch.setattr("mcp_server.writes.load_config", lambda: {"MCP_WRITES_ENABLED": True, "MCP_WRITE_LIMITS": dict(MCP_WRITE_LIMIT_DEFAULTS)})
         access = tokens(remote)["access_token"]
         grant_id = sql("SELECT id FROM mcp_oauth_grants")[0]["id"]
         conn = get_connection()
@@ -474,6 +548,7 @@ class TestRegistryAndRetention:
         from api.routes_system import SettingsConfig
         assert config.DEFAULT_CONFIG["MCP_WRITES_ENABLED"] is False
         assert "MCP_WRITES_ENABLED" not in SettingsConfig.model_fields
+        assert "MCP_WRITE_LIMITS" not in SettingsConfig.model_fields
 
     def test_old_rows_are_pruned_and_new_ones_kept(self, mcp_client, writes_on):
         propose(mcp_client, "add")

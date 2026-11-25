@@ -1705,6 +1705,16 @@ Turns MCP Write Access on or off by writing `MCP_WRITES_ENABLED` to `config.json
 
 ---
 
+### `POST /api/mcp-writes/limits`
+
+Saves `MCP_WRITE_LIMITS` to `config.json`: the per-key and per-app caps on MCP write proposals. Body: `{ "proposals_per_hour": int, "pending_max": int, "changes_per_day": int, "adds_per_day": int, "proposal_seconds": int }`, all required; a missing or non-integer field is `422`. Bounds: `proposals_per_hour` 0-100, `pending_max` 0-20, `changes_per_day` 0-100, `adds_per_day` 0-50, `proposal_seconds` 60-3600; 0 blocks that action, and `adds_per_day` cannot exceed `changes_per_day`. Values outside the bounds, or an `adds_per_day` above `changes_per_day`, are `400`. **A password step-up is required only when at least one value is raised above the saved one** (`403` with `X-Step-Up-Required: 1` otherwise); lowering needs none. The key is not part of the `POST /api/settings` schema. Takes effect on the next write call, with no restart; a new `proposal_seconds` applies to new proposals only. Writes one `mcp_audit_log` row (`mcp_name` `write-limits changed`). Limited to 10 requests per minute (`assets/mcp_integration.md`, **Write access**).
+
+```json
+{ "status": "success", "limits": { "proposals_per_hour": 20, "pending_max": 5, "changes_per_day": 20, "adds_per_day": 10, "proposal_seconds": 600 } }
+```
+
+---
+
 ### `POST /api/mcp-lan/enabled`
 
 Turns MCP Local/LAN Access on or off by writing `MCP_LAN_ENABLED` to `config.json` (default `false`); the public host has its own switch (`POST /api/mcp-remote/enabled`) and is not affected. Body: `{ "enabled": true|false }`; anything else is `422`. **Enabling requires a password step-up** (`403` with `X-Step-Up-Required: 1` otherwise); disabling does not, because closing the endpoint is the safe direction. The key is not part of the `POST /api/settings` schema. Takes effect on the next `/mcp` request, with no restart. Limited to 10 requests per minute. This route replaced `POST /api/mcp-server/enabled` and `MCP_SERVER_ENABLED`; a stored `MCP_SERVER_ENABLED` is carried over when `config.json` is read (`assets/mcp_integration.md`, **Settings card**).

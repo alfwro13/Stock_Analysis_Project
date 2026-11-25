@@ -9,7 +9,9 @@ import pickle
 from pathlib import Path
 from dotenv import load_dotenv
 
-from constants import MCP_OAUTH_ACCESS_TOKEN_SECONDS, MCP_PUBLIC_HOST_MAX_CHARS, MCP_REMOTE_CIDRS_MAX
+from constants import (
+    MCP_OAUTH_ACCESS_TOKEN_SECONDS, MCP_PUBLIC_HOST_MAX_CHARS, MCP_REMOTE_CIDRS_MAX, MCP_WRITE_LIMIT_BOUNDS, MCP_WRITE_LIMIT_DEFAULTS,
+)
 
 load_dotenv()
 
@@ -91,6 +93,7 @@ DEFAULT_CONFIG = {
     "GHOSTFOLIO_ENABLED": False,
     "MCP_LAN_ENABLED": False,
     "MCP_WRITES_ENABLED": False,
+    "MCP_WRITE_LIMITS": dict(MCP_WRITE_LIMIT_DEFAULTS),
     "MCP_REMOTE_ENABLED": False,
     "MCP_PUBLIC_HOST": "",
     "MCP_ACCESS_TOKEN_SECONDS": MCP_OAUTH_ACCESS_TOKEN_SECONDS,
@@ -733,6 +736,18 @@ def validate_mcp_public_host(value) -> str:
     return host
 
 
+def validate_mcp_write_limits(values) -> dict:
+    if not isinstance(values, dict) or set(values) != set(MCP_WRITE_LIMIT_DEFAULTS):
+        raise ValueError("MCP_WRITE_LIMITS must hold exactly " + ", ".join(MCP_WRITE_LIMIT_DEFAULTS))
+    for key, (low, high) in MCP_WRITE_LIMIT_BOUNDS.items():
+        value = values[key]
+        if isinstance(value, bool) or not isinstance(value, int) or not low <= value <= high:
+            raise ValueError(f"{key} must be a whole number from {low} to {high}")
+    if values["adds_per_day"] > values["changes_per_day"]:
+        raise ValueError("adds_per_day cannot exceed changes_per_day")
+    return dict(values)
+
+
 def mcp_public_host_overlaps_allowed_hosts(public_host, allowed_hosts) -> bool:
     """True when the public MCP host is a name the dashboard is served on; wildcard entries do not count, only a named host is a self-lockout."""
     if not isinstance(public_host, str) or not public_host:
@@ -870,6 +885,11 @@ def _read_config(signature) -> dict:
             if invalid or performance["FX_MAX_USABLE_SECONDS"] < performance["FX_FRESH_SECONDS"]:
                 print(f"[WARNING] Invalid PERFORMANCE settings in config.json ({', '.join(invalid) or 'FX_MAX_USABLE_SECONDS below FX_FRESH_SECONDS'}). Using PERFORMANCE defaults only.")
                 merged_config["PERFORMANCE"] = copy.deepcopy(DEFAULT_CONFIG["PERFORMANCE"])
+            try:
+                merged_config["MCP_WRITE_LIMITS"] = validate_mcp_write_limits(merged_config["MCP_WRITE_LIMITS"])
+            except ValueError as e:
+                print(f"[WARNING] Invalid MCP_WRITE_LIMITS in config.json ({e}). Using the default write limits.")
+                merged_config["MCP_WRITE_LIMITS"] = dict(MCP_WRITE_LIMIT_DEFAULTS)
             if signature is not None:
                 _config_cache = (signature, pickle.dumps(merged_config, pickle.HIGHEST_PROTOCOL))
             return merged_config
