@@ -1,6 +1,5 @@
 import hashlib
 import ipaddress
-import json
 import re
 import time
 import logging
@@ -13,7 +12,7 @@ from config import load_config, INTRADAY_DIR, HISTORICAL_DIR, PORT, SERVER_URL
 from yahoo_engine import yahoo_engine
 import time_engine
 import markets_engine
-from utils import normalize_ticker, is_daily_bar_still_forming, is_synthetic_ticker, ignored_tickers_set, safe_ticker_filename, write_parquet_atomic
+from utils import cached_fundamentals_extra, is_missing_sector, normalize_ticker, is_daily_bar_still_forming, is_synthetic_ticker, ignored_tickers_set, safe_ticker_filename, write_parquet_atomic
 from db.database import get_connection, get_mutual_fund_tickers
 from db.helpers import ml_fresh_since, sentiment_fresh_since
 from accounts import accounts_engine
@@ -120,12 +119,13 @@ class IntradayOrchestrator:
 
             query = f"""
                 SELECT s.ticker, s.company_name, s.currency, s.atr_stop_loss, s.last_updated, s.beta,
-                       s.quote_type, s.top_holdings,
+                       s.quote_type, s.top_holdings, s.sector, ap.industry,
                        CASE WHEN q.ml_scored_at >= ? THEN q.ml_confidence_score END AS ml_confidence_score,
                        q.var_95, q.cvar_95,
                        CASE WHEN q.sentiment_scored_at >= ? THEN q.sentiment_score END AS sentiment_score,
                        q.rsi_14, q.sma_50, q.hist_vol_20
                 FROM stock_signals s
+                LEFT JOIN asset_profiles ap ON ap.ticker = s.ticker
                 LEFT JOIN quant_signals q ON s.ticker = q.ticker
                     AND q.date = (SELECT MAX(date) FROM quant_signals WHERE ticker = s.ticker)
                 WHERE s.ticker IN ({placeholders})
@@ -142,6 +142,8 @@ class IntradayOrchestrator:
                     'beta': row['beta'],
                     'quote_type': row['quote_type'],
                     'top_holdings': row['top_holdings'],
+                    'peer_group': next((g for g in (row['industry'], row['sector']) if not is_missing_sector(g)), None),
+                    'long_name': (cached_fundamentals_extra(row['ticker']) or {}).get('long_name') if row['quote_type'] == 'ETF' else None,
                     'ml_confidence_score': row['ml_confidence_score'],
                     'var_95': row['var_95'],
                     'cvar_95': row['cvar_95'],
@@ -602,16 +604,9 @@ class IntradayOrchestrator:
         # per-alert. Non-ETFs and ETFs with no/unresolvable cached holdings contribute nothing.
         etf_benchmark_tickers: set = set()
         for t in tickers:
-            meta = metadata.get(t, {})
-            if meta.get('quote_type') != 'ETF' or not meta.get('top_holdings'):
-                continue
-            try:
-                holdings = json.loads(meta['top_holdings'])
-                resolved = markets_engine.resolve_benchmark_for_holdings(holdings)
-                if resolved:
-                    etf_benchmark_tickers.add(resolved['ticker'])
-            except (TypeError, ValueError):
-                logger.debug("Could not parse cached top_holdings for %s", t, exc_info=True)
+            resolved = markets_engine.resolve_etf_benchmark(metadata.get(t, {}))
+            if resolved:
+                etf_benchmark_tickers.add(resolved['ticker'])
 
         # SPY fetched here once so crash_engine never needs a per-scan HTTP call
         macro_tickers = ["^TYX", "SPY"]
@@ -700,6 +695,15 @@ class IntradayOrchestrator:
             if pct is not None:
                 benchmark_changes[bench_ticker] = pct
 
+        peer_changes: Dict[str, Dict[str, float]] = {}
+        for t in tickers:
+            group = metadata.get(t, {}).get('peer_group')
+            if not group:
+                continue
+            pct = self._bulk_change_pct(df_bulk, download_list, t)
+            if pct is not None:
+                peer_changes.setdefault(group, {})[t] = pct
+
         try:
             cursor = conn.cursor()
             cursor.execute('''
@@ -724,6 +728,7 @@ class IntradayOrchestrator:
         # makes its own per-crash HTTP call
         self.crash_engine.spy_change_pct = spy_change_pct
         self.crash_engine.benchmark_changes = benchmark_changes
+        self.crash_engine.peer_changes = peer_changes
 
         crash_alerts_to_send = []
         moonshot_alerts_to_send = []
@@ -827,10 +832,15 @@ class IntradayOrchestrator:
                                           "formatted_atr_stop": format_currency(atr_stop, currency)}, currency, asset_meta)
                             )
 
+                session_volume = float(df_intraday['Volume'].sum()) if 'Volume' in df_intraday.columns else None
+                # Project to full-day equivalent so it compares correctly against the 50-day average.
+                projected_volume = session_volume / session_elapsed_frac if session_volume is not None else None
+
                 # evaluate() first so reason string is available for fingerprinting; returns None when no condition met.
                 if crash_enabled:
                     crash_alert = self.crash_engine.evaluate(
-                        ticker, current_price, df_combined, asset_meta, df_hist, session_open
+                        ticker, current_price, df_combined, asset_meta, df_hist, session_open,
+                        session_volume, projected_volume,
                     )
                     if crash_alert and not self._evaluate_alert_gate(
                         "Crash", ticker, current_price, crash_alert.get("reason", ""), conn
@@ -838,11 +848,6 @@ class IntradayOrchestrator:
                         crash_alerts_to_send.append((ticker, crash_alert, currency, asset_meta))
 
                 if moonshot_enabled:
-                    if 'Volume' in df_intraday.columns:
-                        # Project to full-day equivalent so it compares correctly against the 50-day average.
-                        projected_volume = float(df_intraday['Volume'].sum()) / session_elapsed_frac
-                    else:
-                        projected_volume = None
                     moonshot_alert = self.moonshot_engine.evaluate(
                         ticker, current_price, df_combined, asset_meta, df_hist, projected_volume
                     )

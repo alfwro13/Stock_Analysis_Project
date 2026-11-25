@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-import json
+import statistics
 from datetime import datetime, timedelta, timezone
 from typing import Any
 import logging
@@ -16,6 +16,9 @@ import market_session_helpers
 import markets_engine
 
 logger = logging.getLogger(__name__)
+
+_SELLOFF_PCT = -1.5
+
 
 class CrashEngine:
     def __init__(self, config: dict[str, Any]) -> None:
@@ -33,6 +36,8 @@ class CrashEngine:
         # Injected by the orchestrator: {registry_ticker: intraday_change_pct} for any
         # non-US benchmark resolved from an ETF's cached holdings this scan cycle.
         self.benchmark_changes: dict[str, float] = {}
+        # Injected by the orchestrator: {peer_group: {ticker: session_change_pct}} for the tickers scanned this cycle.
+        self.peer_changes: dict[str, dict[str, float]] = {}
         # Ceiling applied AFTER beta scaling so high-beta names can't widen the AI Volatility Defense cap back out.
         self.ai_threshold_cap: float | None = None
 
@@ -54,18 +59,16 @@ class CrashEngine:
     def _fetch_market_context(self) -> float | None:
         return self._fetch_live_change_pct("SPY", "NYSE")
 
-    def _resolve_etf_benchmark(self, asset_meta: dict[str, Any]) -> dict[str, Any] | None:
-        """Cached-holdings-derived registry index for an ETF; None omits the comparison rather than defaulting to S&P 500."""
-        if asset_meta.get('quote_type') != 'ETF':
-            return None
-        raw_holdings = asset_meta.get('top_holdings')
-        if not raw_holdings:
-            return None
-        try:
-            holdings = json.loads(raw_holdings) if isinstance(raw_holdings, str) else raw_holdings
-        except (TypeError, ValueError):
-            return None
-        return markets_engine.resolve_benchmark_for_holdings(holdings)
+    def _peer_context(self, ticker: str, asset_meta: dict[str, Any]) -> tuple[str | None, bool | None]:
+        """(sentence, sector_selloff) from the other scanned holdings of the same industry (sector when the industry is unknown); (None, None) below two peers with a live change."""
+        group = asset_meta.get('peer_group')
+        peers = {t: pct for t, pct in self.peer_changes.get(group, {}).items() if t != ticker} if group else {}
+        if len(peers) < 2:
+            return None, None
+        median = statistics.median(peers.values())
+        down = sum(1 for pct in peers.values() if pct < 0)
+        sentence = f"{down} of {len(peers)} other {group} holdings are also down this session (median {median:+.2f}%)."
+        return sentence, median <= _SELLOFF_PCT
 
     def _resolve_benchmark_change(
         self, benchmark_row: dict[str, Any], live_ticker: str | None = None
@@ -94,24 +97,26 @@ class CrashEngine:
         df_combined: pd.DataFrame,
         asset_meta: dict[str, Any],
         df_hist: pd.DataFrame | None = None,
+        session_volume: float | None = None,
+        projected_volume: float | None = None,
     ) -> str:
         report = []
         company_name = asset_meta.get('company_name', ticker)
 
         is_etf = asset_meta.get('quote_type') == 'ETF'
-        benchmark_row = self._resolve_etf_benchmark(asset_meta)
-        # A non-ETF (or an ETF with no resolvable holdings-derived index — see below) always
-        # compares against the S&P 500 via the registry's own NYSE row (^GSPC), so this is one
-        # code path rather than a separate SPY-specific branch.
+        benchmark_row = markets_engine.resolve_etf_benchmark(asset_meta)
+        # A non-ETF always compares against the S&P 500 via the registry's own NYSE row (^GSPC),
+        # so this is one code path rather than a separate SPY-specific branch.
         live_ticker = None
         if benchmark_row is None and not is_etf:
             benchmark_row = get_ticker_registry_row_by_exchange("NYSE")
             live_ticker = "SPY"  # already bulk-fetched every cycle; ^GSPC is not
 
+        peer_note, sector_selloff = self._peer_context(ticker, asset_meta)
+
         if is_etf and benchmark_row is None:
-            # No relevant single index could be resolved from the ETF's cached holdings
-            # (uncached yet, or too geographically diversified) — omit the sentence entirely
-            # rather than default to a misleading S&P 500 comparison.
+            # No index named in the ETF's full name and none resolvable from its cached holdings:
+            # omit the sentence rather than default to a misleading S&P 500 comparison.
             pass
         elif benchmark_row is not None:
             bench_name = benchmark_row['display_name']
@@ -121,30 +126,31 @@ class CrashEngine:
 
             if bench_drop is None:
                 report.append(f"No recent {bench_name} data is available for benchmark context on this alert.")
-            elif bench_drop <= -1.5:
+            elif bench_drop <= _SELLOFF_PCT:
                 report.append(f"{tracks_phrase.capitalize()} is currently experiencing a heavy sell-off ({label}: {bench_drop:.2f}%). The weakness in {company_name} is likely being amplified by macro-economic panic rather than purely isolated issues.")
             elif bench_drop >= 0:
-                report.append(f"This appears to be an isolated (idiosyncratic) event. While {company_name} is crashing, {tracks_phrase} remains green/flat ({label}: {bench_drop:.2f}%).")
+                flat = f"While {company_name} is crashing, {tracks_phrase} remains green/flat ({label}: {bench_drop:.2f}%)"
+                if sector_selloff:
+                    report.append(f"{flat}, but the weakness is shared across its peers rather than isolated to {company_name}.")
+                elif sector_selloff is None:
+                    report.append(f"{flat}; no peer data is available to tell whether this is isolated to {company_name} or sector-wide.")
+                else:
+                    report.append(f"This appears to be an isolated (idiosyncratic) event. {flat}.")
             else:
                 report.append(f"{tracks_phrase.capitalize()} is slightly weak ({label}: {bench_drop:.2f}%), but {company_name} is significantly underperforming the baseline.")
 
-        # Use df_hist (already loaded by orchestrator) to avoid a per-crash HTTP call.
+        if peer_note:
+            report.append(peer_note)
+
         try:
-            vol_data = df_hist if df_hist is not None and not df_hist.empty else None
-            if vol_data is None:
-                _result = yahoo_engine.get_price_history([ticker], period="1mo", interval="1d")
-                vol_data = _result.get(ticker)
-            if vol_data is not None and not vol_data.empty and 'Volume' in vol_data.columns:
-                current_vol = vol_data['Volume'].iloc[-1]
-                valid_vol = vol_data['Volume'].dropna()
-
-                avg_vol = valid_vol.iloc[:-1].tail(20).mean()
-
+            if projected_volume is not None and session_volume is not None and df_hist is not None and 'Volume' in df_hist.columns:
+                completed_vol = df_hist['Volume'].dropna()
+                avg_vol = completed_vol[completed_vol.index < df_combined.index[-1].normalize()].tail(20).mean()
                 if not pd.isna(avg_vol) and avg_vol > 0:
-                    if current_vol > (avg_vol * 1.5):
-                        report.append(f"Selling pressure is severe. Intraday volume has already surged to {current_vol:,.0f}, which is massively above its recent average. This indicates heavy institutional distribution.")
+                    if projected_volume > (avg_vol * 1.5):
+                        report.append(f"Selling pressure is severe. Volume so far today is {session_volume:,.0f}, on pace for about {projected_volume:,.0f} over the full session against a 20-day average of {avg_vol:,.0f}. This indicates heavy institutional distribution.")
                     else:
-                        report.append("Interestingly, this price drop is occurring on relatively low/average volume, suggesting a lack of liquidity or an absence of buyers rather than aggressive institutional dumping.")
+                        report.append("Interestingly, this price drop is occurring on relatively low/average volume so far today, suggesting a lack of liquidity or an absence of buyers rather than aggressive institutional dumping.")
         except Exception as e:
             logger.warning("Volume anomaly check failed for %s: %s", ticker, e)
 
@@ -197,6 +203,8 @@ class CrashEngine:
         asset_meta: dict[str, Any],
         df_hist: pd.DataFrame | None = None,
         session_open: float | None = None,
+        session_volume: float | None = None,
+        projected_volume: float | None = None,
     ) -> dict[str, Any] | None:
         # df_combined contract: 'Close' column only (df_hist[['Close']] + live tick). Adding OHLCV here requires updating intraday_orchestrator.py too.
         # Exclude the live tick from indicator calculations — partially-formed bar skews trend signals on volatile open days.
@@ -280,7 +288,9 @@ class CrashEngine:
 
             # Not gated on is_session_crash — every trigger type (multi-day bleed, ATR floor
             # break) benefits from the same benchmark/volume/news context, not just a same-day gap.
-            context_report = self._generate_context_report(ticker, intraday_drop_pct, df_combined, asset_meta, df_hist)
+            context_report = self._generate_context_report(
+                ticker, intraday_drop_pct, df_combined, asset_meta, df_hist, session_volume, projected_volume
+            )
 
             if is_dropping_fast and not is_session_crash:
                 reason.append(f"Multi-Day Bleed: Dropped {abs(price_drop_pct):.2f}% in {self.drop_days}d")

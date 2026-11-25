@@ -405,6 +405,7 @@ def cached_fundamentals_extra(ticker: Optional[str]) -> Optional[dict]:
             "full_time_employees": d.get("fullTimeEmployees"),
             "website": d.get("website"),
             "financial_currency": d.get("financialCurrency"),
+            "long_name": d.get("longName"),
         }
     except Exception:
         return None

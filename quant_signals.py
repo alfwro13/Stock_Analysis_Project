@@ -12,7 +12,7 @@ import ta
 
 from config import HISTORICAL_DIR, FUNDAMENTALS_DIR
 from db.database import get_connection, get_universe_tickers, log_score_event
-from fundamentals_helpers import calculate_peter_lynch_peg
+from fundamentals_helpers import calculate_peter_lynch_peg, currency_safe_price_ratios, dividend_yield_fraction
 from patterns.pattern_geometry_helpers import (
     candle_body_wick_metrics, is_bullish_engulfing, is_bearish_engulfing, is_hammer, is_shooting_star,
 )
@@ -566,8 +566,7 @@ class QuantEngine:
             trailing_pe = info.get('trailingPE', None)
             forward_pe = info.get('forwardPE', None)
             peg_ratio = info.get('pegRatio', None)
-            price_to_book = info.get('priceToBook', None)
-            price_to_sales = info.get('priceToSalesTrailing12Months', None)
+            price_to_book, price_to_sales = currency_safe_price_ratios(info, currency)
             free_cash_flow = info.get('freeCashflow', None)
             profit_margin = info.get('profitMargins', None)
             roe = info.get('returnOnEquity', None)
@@ -577,12 +576,7 @@ class QuantEngine:
             current_ratio = info.get('currentRatio', None)
             operating_cash_flow = info.get('operatingCashflow', None)
             
-            dividend_yield = info.get('dividendYield', None)
-            
-            # GBp yields can arrive as 100× the true decimal (pence_dividend/pence_price); >1.0 is impossible for a real yield.
-            if dividend_yield is not None and currency in ['GBp', 'GBP']:
-                if dividend_yield > 1.0:
-                    dividend_yield /= 100.0
+            dividend_yield = dividend_yield_fraction(info)
 
             ex_dividend_date = epoch_to_iso_date(info.get('exDividendDate'))
             target_price = info.get('targetMeanPrice', None)

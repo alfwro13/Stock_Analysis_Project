@@ -484,7 +484,8 @@ Std:              11.62
 
 ### 8.1 Data Source
 All data sourced from Yahoo Finance via `yfinance`. Known limitations:
-- **UK pence misquote:** yfinance occasionally returns dividend yields for GBp-denominated stocks as pence/price rather than percentage. A correction heuristic is applied in `quant_signals.py` for values above 15%.
+- **Dividend yield units:** Yahoo's `dividendYield` is a percent for every listing (2.21 means 2.21%); `fundamentals_helpers.dividend_yield_fraction()` stores it as a fraction in both writers (`quant_signals.py`, `universe_fundamentals_engine.py`).
+- **Mixed-currency valuation ratios:** when `financialCurrency` differs from the quote currency (a US ADR with TWD, EUR or KRW financials), Yahoo's `priceToBook` and `priceToSalesTrailing12Months` mix the two currencies. `fundamentals_helpers.currency_safe_price_ratios()` rebuilds them from the currency-free identities P/B = trailing P/E x ROE and P/S = trailing P/E x profit margin, and stores NULL for a ratio whose inputs are missing or not positive.
 - **Missing fundamentals:** ETFs, futures, and some international stocks have NULL fundamental data. Handled via cross-sectional median imputation.
 - **Earnings dates unreliability:** yfinance earnings dates are unreliable for some tickers. Not currently used in ML features.
 - **Rate limiting:** The backfill implements `time.sleep(0.5)` between tickers to avoid API rate limiting. Approximately 4–6 hours for a full 350-ticker backfill.

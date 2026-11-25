@@ -351,6 +351,50 @@ class TestUpsertFundamentalsDoesNotWipeOtherEnginesColumns:
         assert row["company_name"] == "Test Co"
 
 
+class TestUpsertFundamentalsStoresYahooUnits:
+    """Yahoo sends dividendYield as a percent and, for a listing whose financialCurrency differs from its
+    quote currency, a priceToBook / priceToSalesTrailing12Months that mixes the two currencies."""
+
+    TICKERS = ("TST_UNITS_ADR", "TST_UNITS_LSE")
+
+    def teardown_method(self):
+        conn = _db.get_connection()
+        try:
+            conn.execute("DELETE FROM stock_signals WHERE ticker IN (?, ?)", self.TICKERS)
+            conn.commit()
+        finally:
+            conn.close()
+
+    def _row(self, ticker):
+        conn = _db.get_connection()
+        try:
+            return conn.execute(
+                "SELECT dividend_yield, price_to_book, price_to_sales FROM stock_signals WHERE ticker=?", (ticker,)
+            ).fetchone()
+        finally:
+            conn.close()
+
+    def test_adr_with_foreign_financials_is_rebuilt_and_its_yield_is_a_fraction(self):
+        _upsert_fundamentals("TST_UNITS_ADR", {
+            "shortName": "ADR Co", "currency": "USD", "financialCurrency": "TWD", "dividendYield": 1.04,
+            "priceToBook": 67.07491, "priceToSalesTrailing12Months": 0.36626557,
+            "trailingPE": 22.631239, "returnOnEquity": 0.4186, "profitMargins": 0.51116,
+        })
+        row = self._row("TST_UNITS_ADR")
+        assert row["dividend_yield"] == pytest.approx(0.0104)
+        assert row["price_to_book"] == pytest.approx(9.47, abs=0.01)
+        assert row["price_to_sales"] == pytest.approx(11.57, abs=0.01)
+
+    def test_pence_listing_under_one_percent_is_divided_like_every_other(self):
+        _upsert_fundamentals("TST_UNITS_LSE", {
+            "shortName": "LSE Co", "currency": "GBp", "financialCurrency": "GBP", "dividendYield": 0.8,
+            "priceToBook": 1.4, "priceToSalesTrailing12Months": 0.7,
+        })
+        row = self._row("TST_UNITS_LSE")
+        assert row["dividend_yield"] == pytest.approx(0.008)
+        assert (row["price_to_book"], row["price_to_sales"]) == (pytest.approx(1.4), pytest.approx(0.7))
+
+
 class TestFetchInfoRefreshesAnAgedDump:
     """The Universe Deep Sync read data/fundamentals/{ticker}.json whatever its age, so universe-only
     tickers carried a six-month-old `.info` quote (CCEP.L at 6925 GBp against an 8875 close) and

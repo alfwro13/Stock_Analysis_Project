@@ -211,15 +211,16 @@ class TestHeldTicker:
         ml = _snapshot(mcp_client)["data"]["ml"]
         assert (ml["confidence"], ml["as_of"], ml["stale"]) == (None, None, False)
 
-    def test_cached_company_dump_adds_raw_numbers_without_the_website(self, mcp_client, book, fundamentals_dir):
+    def test_cached_company_dump_adds_raw_numbers_without_the_website_or_full_name(self, mcp_client, book, fundamentals_dir):
         (fundamentals_dir / f"{HELD}.json").write_text(json.dumps({
             "marketCap": 12865473536, "totalCash": 855, "totalDebt": 300, "financialCurrency": "USD", "trailingEps": 0.14,
-            "exDividendDate": 1781740800, "fullTimeEmployees": 1200, "website": "https://example.com", "averageVolume": 6772679,
+            "exDividendDate": 1781740800, "fullTimeEmployees": 1200, "website": "https://example.com", "longName": "Example Corp Ltd", "averageVolume": 6772679,
         }))
         extra = _snapshot(mcp_client)["data"]["fundamentals"]["extra"]
         assert (extra["market_cap"], extra["net_cash"], extra["financial_currency"], extra["trailing_eps"]) == (12865473536, 555, "USD", 0.14)
         assert (extra["ex_dividend_date"], extra["full_time_employees"], extra["average_volume"]) == ("2026-06-18", 1200, 6772679)
         assert "website" not in extra
+        assert "long_name" not in extra
 
     def test_missing_company_dump_is_null(self, mcp_client, book):
         assert _snapshot(mcp_client)["data"]["fundamentals"]["extra"] is None
