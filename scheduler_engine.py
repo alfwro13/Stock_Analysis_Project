@@ -20,7 +20,7 @@ from constants import MEMORY_SAMPLE_INTERVAL_MINUTES, SCHEDULER_RUN_HISTORY_LIMI
 from db.database import get_accounts, get_connection, get_etf_predictor_configs, replaying_deferred_write, write_or_defer
 from db.account_reminders import get_reminders
 from db.helpers import refresh_job_average_duration
-from news_feed_engine import run_news_feed_job
+from news.news_feed_engine import run_news_feed_job
 
 logger = logging.getLogger(__name__)
 

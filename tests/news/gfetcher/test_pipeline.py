@@ -32,11 +32,11 @@ def _clean(monkeypatch):
         conn.close()
     monkeypatch.setattr(pipeline, "get_mutual_fund_tickers", lambda tickers: set())
     monkeypatch.setattr(pipeline, "ignored_tickers_set", lambda: set())
-    monkeypatch.setattr("news_feed_engine._get_company_name", lambda ticker: None)
+    monkeypatch.setattr("news.news_feed_engine._get_company_name", lambda ticker: None)
 
 
 def _lists(monkeypatch, ticker_map, indexes=()):
-    monkeypatch.setattr("news_feed_engine._build_ticker_source_map", lambda: dict(ticker_map))
+    monkeypatch.setattr("news.news_feed_engine._build_ticker_source_map", lambda: dict(ticker_map))
     monkeypatch.setattr("market_pulse.get_index_tickers", lambda: {t: t for t in indexes})
 
 

@@ -4,7 +4,7 @@ from mcp.server.mcpserver.exceptions import ToolError
 from pydantic import Field
 
 from constants import MCP_ARTICLE_TEXT_MAX_CHARS, MCP_NEWS_HEADLINE_MAX_CHARS
-from news_feed_engine import fetch_articles
+from news.news_feed_engine import fetch_articles
 from utils import clean_display_text
 
 from ..envelope import envelope, iso_utc

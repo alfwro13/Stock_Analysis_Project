@@ -272,7 +272,7 @@ def prune_articles(before_epoch: int) -> int:
 
 
 def score_unscored_articles() -> None:
-    from news_feed_engine import _score_unscoredrows
+    from news.news_feed_engine import _score_unscoredrows
     conn = None
     try:
         conn = get_connection()

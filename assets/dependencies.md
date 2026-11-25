@@ -109,7 +109,7 @@ and what should I test?" without grepping the whole codebase first.
 | `lxml` | HTML parsing backend, used directly (`accounts/account_scraper_engine.py`'s and the Google News Fetcher's (`news/gfetcher/parse.py`) `lxml.html`) and as `trafilatura`'s/`BeautifulSoup`'s parser | Parsing edge cases on malformed HTML |
 | `cssselect` | CSS-selector support for `lxml.html` (Account Price Scraper, Google News Fetcher news cards) | Selector syntax edge cases |
 | `html5lib` | Fallback HTML5 parser (used transitively by `trafilatura`/`BeautifulSoup`) | Rarely invoked directly — low risk |
-| `trafilatura` | Full-text article extraction for the News Feed (`news_feed_engine.py`) and the Google News Fetcher (`news/gfetcher/article_text.py`, `bare_extraction()` for the text and the page's own date); it only parses HTML that `outbound_fetch_helpers.fetch_body()` has already downloaded and never fetches a URL itself | Extraction heuristics changing what counts as "article body" |
+| `trafilatura` | Full-text article extraction for the News Feed (`news/news_feed_engine.py`) and the Google News Fetcher (`news/gfetcher/article_text.py`, `bare_extraction()` for the text and the page's own date); it only parses HTML that `outbound_fetch_helpers.fetch_body()` has already downloaded and never fetches a URL itself | Extraction heuristics changing what counts as "article body" |
 
 ## Charts & templating
 
