@@ -82,6 +82,22 @@ async function toggleMcpWrites(box) {
     }
 }
 
+async function saveMcpWriteLimits() {
+    const limits = {};
+    for (const input of document.querySelectorAll('[data-limit-key]')) {
+        limits[input.dataset.limitKey] = input.value === '' ? null : Number(input.value);
+    }
+    setStatus('mcp-write-limits-msg', 'info', 'Saving…');
+    const options = { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(limits) };
+    const res = await stepUpFetch('/api/mcp-writes/limits', options);
+    const data = await res.json().catch(() => ({}));
+    if (res.ok) {
+        setStatus('mcp-write-limits-msg', 'success', 'Limits saved. They apply to the next request.');
+    } else {
+        setStatus('mcp-write-limits-msg', 'error', typeof data.detail === 'string' ? data.detail : 'Failed to save. Check every value is a whole number within its range.');
+    }
+}
+
 async function setMcpKeyWrites(box) {
     const enabled = box.checked;
     setStatus('mcp-key-msg', 'info', 'Saving…');

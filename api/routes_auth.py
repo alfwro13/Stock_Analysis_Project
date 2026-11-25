@@ -4,10 +4,10 @@ from typing import Optional
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, Response
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, StrictInt
 
 from api.deps import FiniteModel, enforce_login_lockout, limiter, record_password_attempt, require_step_up, _error_500
-from config import BASE_DIR, load_config, update_config_atomic
+from config import BASE_DIR, load_config, update_config_atomic, validate_mcp_write_limits
 from constants import INVESTMENT_POLICY_MAX_CHARS, MCP_KEYS_MAX, MCP_KEY_NAME_MAX_CHARS
 from db.database import get_connection
 from mcp_server import audit, keys as mcp_keys
@@ -175,6 +175,29 @@ def set_mcp_writes_enabled(request: Request, body: McpLanToggle):
         require_step_up(request)
     update_config_atomic({"MCP_WRITES_ENABLED": body.enabled})
     return {"status": "success", "enabled": body.enabled}
+
+
+class McpWriteLimits(BaseModel):
+    proposals_per_hour: StrictInt
+    pending_max: StrictInt
+    changes_per_day: StrictInt
+    adds_per_day: StrictInt
+    proposal_seconds: StrictInt
+
+
+@auth_router.post("/mcp-writes/limits")
+@limiter.limit("10/minute")
+def set_mcp_write_limits(request: Request, body: McpWriteLimits):
+    try:
+        limits = validate_mcp_write_limits(body.model_dump())
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    current = load_config()["MCP_WRITE_LIMITS"]
+    if any(limits[key] > current[key] for key in limits):
+        require_step_up(request)
+    update_config_atomic({"MCP_WRITE_LIMITS": limits})
+    audit.record_action("write-limits changed", request.client.host if request.client else None)
+    return {"status": "success", "limits": limits}
 
 
 @auth_router.post("/mcp-keys/{key_id}/writes")

@@ -348,6 +348,23 @@
                     <label for="MCP_WRITES_ENABLED">Enable MCP Write Access</label>
                 </div>
                 <div id="mcp-writes-enabled-msg"></div>
+                {% set write_limit_fields = [
+                    ('proposals_per_hour', 'Proposals per hour', 'Proposals one key or app may create in a rolling hour.'),
+                    ('pending_max', 'Unconfirmed proposals', 'Proposals one key or app may have waiting for your approval at once.'),
+                    ('changes_per_day', 'Changes per day', 'Executed changes per key or app per UTC day; an undo counts.'),
+                    ('adds_per_day', 'Additions per day', 'Watchlist additions among those changes; each one queues Yahoo data fetches. Cannot exceed Changes per day.'),
+                    ('proposal_seconds', 'Proposal life (seconds)', 'How long a proposal can be confirmed before it expires. Applies to new proposals.'),
+                ] %}
+                <h5 class="mt-20">Limits</h5>
+                <p class="settings-desc">Per key or connected app. A limit set to 0 blocks that action. Changes take effect at once; raising any limit needs your password.</p>
+                {% for key, label, tip in write_limit_fields %}
+                <div class="form-group">
+                    <label for="mcp_write_limit_{{ key }}"><abbr title="{{ tip }}">{{ label }}</abbr> ({{ mcp_write_limit_bounds[key][0] }}–{{ mcp_write_limit_bounds[key][1] }})</label>
+                    <input type="number" id="mcp_write_limit_{{ key }}" class="form-control" data-limit-key="{{ key }}" min="{{ mcp_write_limit_bounds[key][0] }}" max="{{ mcp_write_limit_bounds[key][1] }}" step="1" value="{{ config.MCP_WRITE_LIMITS[key] }}">
+                </div>
+                {% endfor %}
+                <button type="button" class="btn btn-primary" onclick="saveMcpWriteLimits()">💾 Save Limits</button>
+                <div id="mcp-write-limits-msg"></div>
             </div>
         </details>
 

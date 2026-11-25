@@ -10,10 +10,7 @@ from accounts.accounts_engine import add_watchlist_ticker, is_unresolved_ticker,
 from accounts.portfolio_metrics_engine import set_holding_price_limit
 from cache_refresh_helpers import request_cache_refresh
 from config import load_config
-from constants import (
-    MCP_WRITE_ADDS_PER_DAY, MCP_WRITE_CHANGES_PER_DAY, MCP_WRITE_ID_LENGTH, MCP_WRITE_PENDING_MAX, MCP_WRITE_PROPOSAL_SECONDS,
-    MCP_WRITE_PROPOSALS_PER_HOUR,
-)
+from constants import MCP_WRITE_ID_LENGTH
 from db import mcp_write_log as log
 from db.account_store import get_holding_price_limits_for_ticker, get_watchlist_account, get_watchlist_tickers, remove_watchlist_ticker
 from utils import INVALID_TICKER_MESSAGE, is_synthetic_ticker
@@ -130,18 +127,23 @@ def _refuse_for_cap(who: caller_context.Caller, kind: str, ticker: str, cap: str
     raise ToolError(_CAP_TEXT[cap])
 
 
+def _limits() -> dict:
+    return load_config()["MCP_WRITE_LIMITS"]
+
+
 def _check_caps(who: caller_context.Caller, kind: str, ticker: str, now: datetime, *, proposing: bool) -> None:
     stamp = _stamp(now)
+    limit = _limits()
     proposals, pending, changes, adds = log.counts(
         who.kind, who.credential_id, _stamp(now - timedelta(hours=1)), _day_start(now), stamp
     )
-    if proposing and proposals >= MCP_WRITE_PROPOSALS_PER_HOUR:
+    if proposing and proposals >= limit["proposals_per_hour"]:
         _refuse_for_cap(who, kind, ticker, "proposals_per_hour", now)
-    if proposing and pending >= MCP_WRITE_PENDING_MAX:
+    if proposing and pending >= limit["pending_max"]:
         _refuse_for_cap(who, kind, ticker, "pending_max", now)
-    if changes >= MCP_WRITE_CHANGES_PER_DAY:
+    if changes >= limit["changes_per_day"]:
         _refuse_for_cap(who, kind, ticker, "changes_per_day", now)
-    if kind in _ADD_KINDS and adds >= MCP_WRITE_ADDS_PER_DAY:
+    if kind in _ADD_KINDS and adds >= limit["adds_per_day"]:
         _refuse_for_cap(who, kind, ticker, "adds_per_day", now)
 
 
@@ -151,7 +153,7 @@ def _new_id() -> str:
 
 def _store(who: caller_context.Caller, kind: str, ticker: str, summary: str, expected: dict, proposed: dict, now: datetime, undo_of: Optional[str] = None) -> dict:
     proposal_id = _new_id()
-    expires = _stamp(now + timedelta(seconds=MCP_WRITE_PROPOSAL_SECONDS))
+    expires = _stamp(now + timedelta(seconds=_limits()["proposal_seconds"]))
     log.insert({
         "id": proposal_id, "kind": kind, "credential_kind": who.kind, "credential_id": who.credential_id, "ticker": ticker,
         "expected": json.dumps(expected), "proposed": json.dumps(proposed), "summary": summary, "status": "pending",

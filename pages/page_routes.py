@@ -29,6 +29,7 @@ from visuals.ai import (
 )
 from fx_drag_engine import portfolio_lifetime_fx_breakdown
 from constants import (
+    MCP_WRITE_LIMIT_BOUNDS,
     PREDICTION_HORIZON_DAYS, PREDICTION_RETURN_THRESHOLD, CSS_VERSION, GFETCHER_MAX_DELAY_SECONDS, GFETCHER_MAX_PER_TICKER,
     GFETCHER_MAX_REQUESTS_PER_DAY, GFETCHER_MAX_TICKERS_PER_RUN, GFETCHER_MIN_DELAY_SECONDS, INVESTMENT_POLICY_MAX_CHARS,
     MCP_ACTIVITY_ROWS, MCP_KEY_NAME_MAX_CHARS, MCP_PUBLIC_HOST_MAX_CHARS,
@@ -91,6 +92,7 @@ def settings_page(request: Request):
             "exchange_list": sorted(time_engine.EXCHANGE_HOURS.keys()),
             "unread_count": get_unread_count(),
             "mcp_key_name_max": MCP_KEY_NAME_MAX_CHARS,
+            "mcp_write_limit_bounds": MCP_WRITE_LIMIT_BOUNDS,
             "mcp_public_host_max": MCP_PUBLIC_HOST_MAX_CHARS,
             "mcp_activity_rows": MCP_ACTIVITY_ROWS,
             "investment_policy_max": INVESTMENT_POLICY_MAX_CHARS,

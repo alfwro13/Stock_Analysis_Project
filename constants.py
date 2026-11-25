@@ -178,12 +178,21 @@ MCP_OAUTH_CACHE_MAX_ENTRIES = 1000             # access-token hashes the in-memo
 MCP_OAUTH_PRUNE_AFTER_DAYS  = 1                # expired tokens and finished requests older than this are deleted when a new one is written
 MCP_OAUTH_REFRESH_RETRY_GRACE_SECONDS = 10    # a rotated refresh token presented again this soon after its rotation is a retry, refused without revoking the grant
 MCP_OAUTH_LAST_USED_WRITE_SECONDS = 60         # a grant's last-used time and address are written at most this often
-MCP_WRITE_PROPOSAL_SECONDS  = 600              # life of a Watchlist or Position Target proposal before confirm_change refuses it
 MCP_WRITE_ID_LENGTH         = 10               # characters of a proposal id (unambiguous 32-character alphabet, 50 bits)
-MCP_WRITE_PROPOSALS_PER_HOUR = 20              # proposals one key or grant may create per rolling hour
-MCP_WRITE_PENDING_MAX       = 5                # unexpired, unconfirmed proposals one key or grant may hold
-MCP_WRITE_CHANGES_PER_DAY   = 20               # executed changes per key or grant per UTC day (undo included)
-MCP_WRITE_ADDS_PER_DAY      = 10               # Watchlist adds among them: each queues Yahoo-backed fetches
+MCP_WRITE_LIMIT_DEFAULTS    = {                # config.json MCP_WRITE_LIMITS: per key or grant, counted from mcp_write_log
+    "proposals_per_hour": 20,                  # proposals created per rolling hour
+    "pending_max": 5,                          # unexpired, unconfirmed proposals held at once
+    "changes_per_day": 20,                     # executed changes per UTC day (undo included)
+    "adds_per_day": 10,                        # Watchlist adds among them: each queues Yahoo-backed fetches
+    "proposal_seconds": 600,                   # life of a proposal before confirm_change refuses it
+}
+MCP_WRITE_LIMIT_BOUNDS      = {                # (min, max) a saved limit may take; 0 blocks that action, proposal_seconds has no 0
+    "proposals_per_hour": (0, 100),
+    "pending_max": (0, 20),
+    "changes_per_day": (0, 100),
+    "adds_per_day": (0, 50),
+    "proposal_seconds": (60, 3600),
+}
 MCP_WRITE_ID_ARG_MAX_CHARS  = 32               # `proposal_id` and `change_id` arguments of the write tools
 MCP_OAUTH_CONNECTED_APPS_MAX = 50              # grants listed in the Settings Connected Apps table
 MCP_ACTIVITY_ROWS           = 50               # audit rows listed in the Settings Remote Access Recent Activity table
@@ -214,7 +223,7 @@ ML_TRAINING_WATCHDOG_POLL_SECONDS = 2          # how often the web process sampl
 ML_TRAINING_CHILD_OOM_SCORE_ADJ = 1000         # the training child asks the kernel to pick it, not the web process, if memory runs out
 
 # ── Static asset versioning ───────────────────────────────────────────────────
-CSS_VERSION = "5.220" # bump this whenever styles.css (or any versioned static/js/*.js file) changes to bust browser caches
+CSS_VERSION = "5.221" # bump this whenever styles.css (or any versioned static/js/*.js file) changes to bust browser caches
 
 # ── FinBERT / NLP sentiment ────────────────────────────────────────────────────
 NLP_FINBERT_MAX_TOKENS     = 512   # HuggingFace token limit for ProsusAI/finbert
