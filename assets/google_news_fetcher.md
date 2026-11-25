@@ -88,4 +88,4 @@ Delete `news/gfetcher/` and `tests/news/gfetcher/`, drop the five `gfetcher_*` t
 
 ## Tests
 
-`tests/news/gfetcher/`: one file per module plus `test_pipeline.py` for whole runs. The package conftest replaces `fetch_body` in both fetching modules with a function that fails the test, so no test can reach Google or a publisher, and stubs the FinBERT scorer. Quote pages are built from the four selectors (`helpers.quote_page()`).
+`tests/news/gfetcher/`: one file per module plus `test_pipeline.py` for whole runs. The package conftest replaces `fetch_body` in both fetching modules with a function that fails the test, so no test can reach Google or a publisher, and stubs the FinBERT scorer. Quote pages are built from the four selectors (`helpers.quote_page()`). `test_imports.py` keeps trafilatura out of every module-level import under `news/`: importing it (its `downloads` module) calls `urllib3.disable_warnings(InsecureRequestWarning)` for the whole process, so `article_text.fetch_article()` imports it when it runs, as the News Feed does.

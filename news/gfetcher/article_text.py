@@ -5,7 +5,6 @@ from datetime import date
 from typing import Optional
 
 import requests
-import trafilatura
 
 from outbound_fetch_helpers import FetchRefused, fetch_body
 
@@ -50,6 +49,8 @@ def fetch_article(url: str) -> ArticleText:
     lang = _LANG_RE.search(html[:5000])
     if lang and lang.group(1).lower() != "en":
         return ArticleText(None, "non_english", 200)
+    # Imported here, not at module level: importing trafilatura silences urllib3's InsecureRequestWarning process-wide.
+    import trafilatura
     try:
         doc = trafilatura.bare_extraction(
             html, url=url, with_metadata=True, include_comments=False, include_tables=False, favor_recall=True,

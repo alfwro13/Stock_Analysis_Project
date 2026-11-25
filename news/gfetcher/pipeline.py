@@ -7,7 +7,7 @@ from datetime import datetime, time as dt_time, timedelta, timezone
 from itertools import combinations
 from typing import Callable, Optional
 
-from db.helpers import get_mutual_fund_tickers
+from db.database import get_mutual_fund_tickers
 from utils import ignored_tickers_set, is_synthetic_ticker, is_valid_ticker
 
 from . import store, symbols
