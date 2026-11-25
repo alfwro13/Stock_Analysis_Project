@@ -155,7 +155,7 @@ def test_scopes_filter_the_lists(monkeypatch):
 
 def test_unfetchable_tickers_are_never_selected(monkeypatch):
     _lists(monkeypatch, {"AAPL": "portfolio", "0P0000X.L": "portfolio", "IGN": "portfolio", "TBILL-1": "portfolio"},
-           indexes=["^IBEX", "UK10YG"])
+           indexes=["^FTAS", "UK10YG"])
     monkeypatch.setattr(pipeline, "get_mutual_fund_tickers", lambda tickers: {"0P0000X.L"})
     monkeypatch.setattr(pipeline, "ignored_tickers_set", lambda: {"IGN"})
     monkeypatch.setattr(pipeline, "is_synthetic_ticker", lambda t: t.startswith("TBILL-"))
