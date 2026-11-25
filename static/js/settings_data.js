@@ -357,9 +357,161 @@ async function triggerGfetcherRun() {
     }
 }
 
+const GFETCHER_POLICIES = [['allow', 'Allow'], ['block_paywall', 'Paywall (drop)'], ['block_bots', 'Bot block (headline only)']];
+
+function _gfetcherTable(headers, rows) {
+    const table = document.createElement('table');
+    table.className = 'diag-table';
+    const head = table.createTHead().insertRow();
+    headers.forEach(h => {
+        const th = document.createElement('th');
+        th.textContent = h;
+        head.appendChild(th);
+    });
+    const body = table.createTBody();
+    rows.forEach(cells => {
+        const tr = body.insertRow();
+        cells.forEach(cell => {
+            const td = tr.insertCell();
+            if (cell instanceof Node) td.appendChild(cell); else td.textContent = cell == null ? '—' : String(cell);
+        });
+    });
+    return table;
+}
+
+async function loadGfetcherSymbols() {
+    const box = document.getElementById('gfetcher-symbols');
+    if (!box) return;
+    try {
+        const response = await fetch('/api/gfetcher/symbols');
+        const data = await response.json();
+        if (!response.ok || data.status !== 'success') {
+            setStatus('gfetcher-probe-msg', 'error', 'Failed to load the symbol mappings.');
+            return;
+        }
+        if (!data.symbols.length) {
+            box.textContent = 'No ticker has been looked up yet.';
+            return;
+        }
+        box.replaceChildren(_gfetcherTable(['Ticker', 'Google', 'Status', 'Page title', 'Checked'], data.symbols.map(s => [
+            s.ticker,
+            s.google_symbol ? `${s.google_symbol}:${s.google_exchange}` : null,
+            s.last_probe_status === 'found' ? 'found' : 'no Google page',
+            s.verified_title,
+            _gfetcherTime(s.verified_at, true),
+        ])));
+    } catch (error) {
+        setStatus('gfetcher-probe-msg', 'error', 'Network error while loading the symbol mappings.');
+    }
+}
+
+async function triggerGfetcherProbe() {
+    const btn = document.getElementById('gfetcher-probe-btn');
+    btn.disabled = true;
+    setStatus('gfetcher-probe-msg', 'info', 'Queuing...');
+    try {
+        const { ok, message } = await postJobTrigger('/api/gfetcher/probe');
+        setStatus('gfetcher-probe-msg', ok ? 'success' : 'warning', message || (ok ? 'Queued.' : 'Not started.'));
+    } catch (error) {
+        setStatus('gfetcher-probe-msg', 'error', 'Network error — check server logs.');
+    } finally {
+        setTimeout(() => { btn.disabled = false; loadGfetcherSymbols(); }, 4000);
+    }
+}
+
+function _gfetcherPolicySelect(row) {
+    const select = document.createElement('select');
+    select.className = 'form-select form-select-sm';
+    GFETCHER_POLICIES.forEach(([value, label]) => select.add(new Option(label, value, false, value === row.policy)));
+    select.addEventListener('change', () => saveGfetcherPublisherRule(row.domain, select.value));
+    return select;
+}
+
+function _gfetcherLearnedButton(row) {
+    if (row.source !== 'manual') return 'learned';
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'btn btn-secondary btn-sm mt-0';
+    btn.textContent = 'Use learned';
+    btn.addEventListener('click', () => clearGfetcherPublisherRule(row.domain));
+    return btn;
+}
+
+async function loadGfetcherPublishers() {
+    const box = document.getElementById('gfetcher-publishers');
+    if (!box) return;
+    try {
+        const response = await fetch('/api/gfetcher/publishers');
+        const data = await response.json();
+        if (!response.ok || data.status !== 'success') {
+            setStatus('gfetcher-rule-msg', 'error', 'Failed to load the publisher rules.');
+            return;
+        }
+        box.replaceChildren(_gfetcherTable(['Domain', 'Rule', 'Set by', 'Text / short', 'Blocked / paywall / unreachable', 'Updated'], data.publishers.map(r => [
+            r.domain,
+            _gfetcherPolicySelect(r),
+            _gfetcherLearnedButton(r),
+            `${r.full_count} / ${r.short_count}`,
+            `${r.blocked_count} / ${r.paywall_count} / ${r.unreachable_count}`,
+            _gfetcherTime(r.updated_at, true),
+        ])));
+    } catch (error) {
+        setStatus('gfetcher-rule-msg', 'error', 'Network error while loading the publisher rules.');
+    }
+}
+
+async function saveGfetcherPublisherRule(domain, policy) {
+    try {
+        const response = await fetch('/api/gfetcher/publishers', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ domain, policy }),
+        });
+        const data = await response.json().catch(() => ({}));
+        setStatus('gfetcher-rule-msg', response.ok ? 'success' : 'error', data.message || 'Could not save the rule.');
+        if (response.ok) loadGfetcherPublishers();
+        return response.ok;
+    } catch (error) {
+        setStatus('gfetcher-rule-msg', 'error', 'Network error while saving the rule.');
+        return false;
+    }
+}
+
+async function addGfetcherPublisherRule() {
+    const input = document.getElementById('gfetcher-rule-domain');
+    const domain = input.value.trim();
+    if (!domain) {
+        setStatus('gfetcher-rule-msg', 'warning', 'Enter a domain such as example.com.');
+        return;
+    }
+    if (await saveGfetcherPublisherRule(domain, document.getElementById('gfetcher-rule-policy').value)) input.value = '';
+}
+
+async function clearGfetcherPublisherRule(domain) {
+    try {
+        const response = await fetch('/api/gfetcher/publishers/' + encodeURIComponent(domain), { method: 'DELETE' });
+        const data = await response.json().catch(() => ({}));
+        setStatus('gfetcher-rule-msg', response.ok ? 'success' : 'error', data.message || 'Could not reset the rule.');
+        if (response.ok) loadGfetcherPublishers();
+    } catch (error) {
+        setStatus('gfetcher-rule-msg', 'error', 'Network error while resetting the rule.');
+    }
+}
+
 document.addEventListener('DOMContentLoaded', () => {
     loadBlacklist();
     loadGfetcherStatus();
+    const symbolsBox = document.getElementById('gfetcher-symbols-box');
+    if (symbolsBox) symbolsBox.addEventListener('toggle', () => { if (symbolsBox.open) loadGfetcherSymbols(); });
+    const publishersBox = document.getElementById('gfetcher-publishers-box');
+    if (publishersBox) publishersBox.addEventListener('toggle', () => { if (publishersBox.open) loadGfetcherPublishers(); });
+    const ruleDomain = document.getElementById('gfetcher-rule-domain');
+    if (ruleDomain) ruleDomain.addEventListener('keydown', event => {
+        if (event.key === 'Enter') {
+            event.preventDefault();
+            addGfetcherPublisherRule();
+        }
+    });
     fetchProfilerQueueStatus();
     setInterval(fetchProfilerQueueStatus, 30000);
 });

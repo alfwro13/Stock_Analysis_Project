@@ -113,11 +113,13 @@ MCP_WEEK_CHANGE_SESSIONS     = 5                # trading sessions behind get_ho
 MCP_NEWS_MAX_ROWS           = 50               # `limit` of get_news
 MCP_NEWS_HEADLINE_MAX_CHARS = 200              # headline returned by get_news (external content)
 MCP_NEWS_SUMMARY_MAX_CHARS  = 400              # summary returned by get_news (external content)
+MCP_ARTICLE_TEXT_MAX_CHARS  = 8000             # article text returned by get_article (external content), about 1,300 words: enough for the lead and main argument
 GFETCHER_MIN_DELAY_SECONDS  = 3.0              # Google News Fetcher: shortest gap between Google requests; the gap is drawn from [delay, 2 x delay]
 GFETCHER_MAX_DELAY_SECONDS  = 60.0             # largest delay Settings accepts for the Google News Fetcher
 GFETCHER_MAX_TICKERS_PER_RUN = 50              # tickers one Google News Fetcher run may fetch
 GFETCHER_MAX_REQUESTS_PER_DAY = 1000           # rolling 24-hour Google request budget Settings accepts
 GFETCHER_MAX_PER_TICKER     = 30               # articles kept per ticker and run (Google lists 10-22)
+GFETCHER_DOMAIN_MAX_CHARS   = 253              # publisher domain of a Google News Fetcher rule (the DNS limit)
 MCP_PRETRADE_AMOUNT_MAX     = 1_000_000_000_000  # `amount` of pretrade_check, in BASE_CURRENCY; a bound so a typo cannot reach the simulation
 MCP_CALENDAR_MAX_DAYS       = 30               # `days` of get_calendar: earnings and ex-dividend dates a month ahead; the macro feed itself only lists the current week
 MCP_CALENDAR_MAX_ROWS       = 50               # rows returned per list by get_calendar
@@ -212,7 +214,7 @@ ML_TRAINING_WATCHDOG_POLL_SECONDS = 2          # how often the web process sampl
 ML_TRAINING_CHILD_OOM_SCORE_ADJ = 1000         # the training child asks the kernel to pick it, not the web process, if memory runs out
 
 # ── Static asset versioning ───────────────────────────────────────────────────
-CSS_VERSION = "5.217" # bump this whenever styles.css (or any versioned static/js/*.js file) changes to bust browser caches
+CSS_VERSION = "5.219" # bump this whenever styles.css (or any versioned static/js/*.js file) changes to bust browser caches
 
 # ── FinBERT / NLP sentiment ────────────────────────────────────────────────────
 NLP_FINBERT_MAX_TOKENS     = 512   # HuggingFace token limit for ProsusAI/finbert

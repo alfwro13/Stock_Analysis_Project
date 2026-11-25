@@ -18,14 +18,15 @@ _ARTICLE_MAX_REDIRECTS = 2
 
 _FEED_COLUMNS = (
     "id", "article_id", "ticker", "company_name", "source_list", "headline", "summary", "full_text", "body_fetched",
-    "url", "publisher", "published_at", "fetched_at", "sentiment_score", "sentiment_label",
+    "url", "publisher", "published_at", "fetched_at", "sentiment_score", "sentiment_label", "feed_source", "published_precision",
 )
 
 
 def fetch_articles(
     source: str = "all", ticker: Optional[str] = None, limit: int = 50, offset: int = 0, include_full_text: bool = True,
+    feed: str = "all", row_id: Optional[int] = None,
 ) -> tuple[list, int]:
-    """Newest-first `news_articles` rows and the total matching count, for the News Feed page/API (`GET /api/news-feed`) and the MCP Server's `get_news`; `include_full_text=False` never selects the trafilatura body."""
+    """Newest-first `news_articles` rows and the total matching count, for the News page/API (`GET /api/news-feed`) and the MCP Server's `get_news` and `get_article`; `include_full_text=False` never selects the article body, `feed` is `yahoo`, `google` or `all`, `row_id` picks one row by its `id`."""
     columns = [c for c in _FEED_COLUMNS if include_full_text or c != "full_text"]
     clauses = []
     params: list = []
@@ -35,6 +36,12 @@ def fetch_articles(
     if ticker:
         clauses.append("ticker = ?")
         params.append(ticker)
+    if feed != "all":
+        clauses.append("feed_source = ?")
+        params.append(feed)
+    if row_id is not None:
+        clauses.append("id = ?")
+        params.append(row_id)
     where = f" WHERE {' AND '.join(clauses)}" if clauses else ""
     conn = None
     try:

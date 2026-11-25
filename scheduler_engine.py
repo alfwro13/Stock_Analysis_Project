@@ -1355,7 +1355,7 @@ from scheduler_jobs import (
     run_ai_contagion_job, run_trap_monitor_job, run_trap_accuracy_fill_job, run_alert_referee_training_job,
     run_confluence_referee_training_job,
     run_bubble_radar_job, run_pairs_spread_monitor_job, run_pairs_spread_universe_scan,
-    run_sector_relative_momentum_job, run_stable_shortlist_job, run_gfetcher_job,
+    run_sector_relative_momentum_job, run_stable_shortlist_job, run_gfetcher_job, run_gfetcher_probe,
     run_pattern_detection_job, run_pattern_detection_accuracy_fill_job, run_pattern_detection_backfill_job,
     run_market_regime_hmm_job, run_universe_csv_import_scan, run_etf_predictor_job, run_etf_predictor_fill_actuals_job,
     register_etf_predictor_jobs, unregister_etf_predictor_jobs,

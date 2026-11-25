@@ -5,17 +5,23 @@ let selectedId = null;
 const FS_MIN = 1, FS_MAX = 7, FS_DEFAULT = 3;
 const FS_SIZES = ['', '0.76em', '0.84em', '0.92em', '1.02em', '1.12em', '1.24em', '1.38em'];
 
-function relTime(ts) {
+function relTime(ts, precision) {
     const diff = Math.floor(Date.now() / 1000) - ts;
-    if (diff < 60)    return `${diff}s ago`;
-    if (diff < 3600)  return `${Math.floor(diff / 60)}m ago`;
-    if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
-    return `${Math.floor(diff / 86400)}d ago`;
+    const approx = precision ? '~' : '';
+    if (diff < 60)    return `${approx}${diff}s ago`;
+    if (diff < 3600)  return `${approx}${Math.floor(diff / 60)}m ago`;
+    if (diff < 86400) return `${approx}${Math.floor(diff / 3600)}h ago`;
+    return `${approx}${Math.floor(diff / 86400)}d ago`;
 }
 
 function sourceBadge(src) {
-    const label = {portfolio: 'Portfolio', watchlist: 'Watchlist', both: 'Both'};
+    const label = {portfolio: 'Portfolio', watchlist: 'Watchlist', both: 'Both', index: 'Index', market: 'Market'};
     return `<span class="art-source-badge art-source-${escapeHtml(src)}">${escapeHtml(label[src] || src)}</span>`;
+}
+
+function feedBadge(feed) {
+    const label = {google: 'Google', yahoo: 'Yahoo'};
+    return `<span class="art-feed-badge art-feed-${escapeHtml(feed || '')}" title="Fetched by the ${feed === 'google' ? 'Google News Fetcher' : 'News Feed'}">${escapeHtml(label[feed] || feed || '')}</span>`;
 }
 
 function sentimentBadge(label, score) {
@@ -86,9 +92,10 @@ function renderList(articles) {
             <div class="art-meta">
                 <span class="art-ticker-badge">${escapeHtml(a.ticker)}</span>
                 ${sourceBadge(a.source_list)}
+                ${feedBadge(a.feed_source)}
                 ${sentimentBadge(a.sentiment_label, a.sentiment_score)}
                 <span>${escapeHtml(a.publisher || '')}</span>
-                <span>${relTime(a.published_at)}</span>
+                <span>${relTime(a.published_at, a.published_precision)}</span>
             </div>
         </div>
     `).join('');
@@ -97,7 +104,8 @@ function renderList(articles) {
 function filterArticles() {
     const q = document.getElementById('newsSearchInput').value.toLowerCase();
     const filtered = allArticles.filter(a => {
-        const matchSrc = currentSource === 'all' || a.source_list === currentSource || a.source_list === 'both';
+        const matchSrc = currentSource === 'all' || a.source_list === currentSource
+            || (a.source_list === 'both' && (currentSource === 'portfolio' || currentSource === 'watchlist'));
         const matchQ = !q
             || a.headline.toLowerCase().includes(q)
             || (a.ticker || '').toLowerCase().includes(q)
@@ -143,10 +151,14 @@ function selectArticle(id) {
 
     document.getElementById('articleReader').scrollTop = 0;
 
-    const pubDate = new Date(a.published_at * 1000).toLocaleString();
+    const pubDate = new Date(a.published_at * 1000).toLocaleString()
+        + (a.published_precision ? ` (approx., to the ${a.published_precision})` : '');
+    const missingNote = a.feed_source === 'google'
+        ? '(Article text not downloaded: the site is paywalled or blocks automated downloads — open the original)'
+        : '(Full text unavailable — open original for the complete article)';
     const bodyHtml = a.body_fetched && a.full_text
         ? `<div class="reader-body">${formatArticleBody(a.full_text, a.ticker)}</div>`
-        : `<div class="reader-body summary-fallback">${formatArticleBody(a.summary || 'No summary available.', a.ticker)}<p class="reader-p"><em style="font-size:0.85em;color:#666;">(Full text unavailable — open original for the complete article)</em></p></div>`;
+        : `<div class="reader-body summary-fallback">${formatArticleBody(a.summary || 'No summary available.', a.ticker)}<p class="reader-p"><em class="reader-fulltext-note">${escapeHtml(missingNote)}</em></p></div>`;
 
     const articleUrl = safeHttpUrl(a.url);
     const headlineHtml = articleUrl
@@ -157,9 +169,10 @@ function selectArticle(id) {
         <div class="reader-meta">
             <span class="art-ticker-badge">${escapeHtml(a.ticker)}${a.company_name ? ' · ' + escapeHtml(a.company_name) : ''}</span>
             ${sourceBadge(a.source_list)}
+            ${feedBadge(a.feed_source)}
             ${sentimentBadge(a.sentiment_label, a.sentiment_score)}
             <span>${escapeHtml(a.publisher || '')}</span>
-            <span>${pubDate}</span>
+            <span>${escapeHtml(pubDate)}</span>
         </div>
         ${bodyHtml}
     `;
@@ -167,7 +180,7 @@ function selectArticle(id) {
 
 async function loadArticles() {
     try {
-        const resp = await fetch('/api/news-feed?source=all&limit=200');
+        const resp = await fetch('/api/news-feed?source=all&limit=500');
         const data = await resp.json();
         allArticles = data.articles || [];
         document.getElementById('lastUpdated').textContent =

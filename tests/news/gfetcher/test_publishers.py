@@ -4,7 +4,7 @@ from datetime import timedelta
 import pytest
 
 from db.database import get_connection
-from news.gfetcher import client
+from news.gfetcher import client, publishers
 from news.gfetcher.publishers import DROP, FETCH, HEADLINE_ONLY, PublisherPolicy
 
 from .helpers import TABLES
@@ -74,3 +74,42 @@ def test_statuses_that_say_nothing_about_the_publisher_are_not_counted():
     policy = PublisherPolicy(NOW)
     policy.record("https://new.example/a", "non_english")
     assert "new.example" not in policy.rows
+
+
+def test_an_operator_rule_is_manual_keeps_its_counts_and_is_never_relearned():
+    policy = PublisherPolicy(NOW)
+    for _ in range(3):
+        policy.record("https://new.example/a", "blocked")
+    policy.save()
+    row = publishers.set_rule("new.example", "allow", NOW)
+    assert (row["policy"], row["source"], row["blocked_count"]) == ("allow", "manual", 3)
+    again = PublisherPolicy(NOW)
+    again.record("https://new.example/b", "blocked")
+    assert again.decide("https://new.example/c") == FETCH
+
+
+def test_clearing_a_rule_goes_back_to_what_the_counts_teach():
+    policy = PublisherPolicy(NOW)
+    for _ in range(2):
+        policy.record("https://new.example/a", "paywall")
+    policy.save()
+    publishers.set_rule("new.example", "allow", NOW)
+    row = publishers.clear_rule("new.example", NOW)
+    assert (row["policy"], row["source"]) == ("block_paywall", "auto")
+    assert publishers.clear_rule("never-seen.example", NOW) is None
+
+
+def test_a_rule_for_a_new_domain_is_created():
+    row = publishers.set_rule("fresh.example", "block_bots", NOW)
+    assert (row["policy"], row["source"], row["full_count"]) == ("block_bots", "manual", 0)
+    assert PublisherPolicy(NOW).decide("https://fresh.example/x") == HEADLINE_ONLY
+
+
+def test_the_list_includes_the_seed_without_writing_it():
+    domains = [r["domain"] for r in publishers.list_rules(NOW)]
+    assert "barrons.com" in domains and domains == sorted(domains)
+    conn = get_connection()
+    try:
+        assert conn.execute("SELECT COUNT(*) FROM gfetcher_publishers").fetchone()[0] == 0
+    finally:
+        conn.close()

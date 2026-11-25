@@ -96,6 +96,7 @@ Request models in `api/routes_accounts.py`, `api/routes_pension.py`, `api/routes
 | MCP public host | 253 characters (`MCP_PUBLIC_HOST_MAX_CHARS`); allowed networks 16 (`MCP_REMOTE_CIDRS_MAX`) (`422`) | `POST /api/settings` |
 | Column lists | 200 keys per list (the registry holds about 100 per page), key 64 characters | `POST /api/ui-preferences/columns`, a View's `columns`/`column_order` |
 | Google News Fetcher settings (`SCHEDULING.GFETCHER`) | interval 15/20/30/60 min; scopes `portfolio`/`watchlist`/`indexes`; tickers per run 1-50 (`GFETCHER_MAX_TICKERS_PER_RUN`); daily request budget 1-1,000 (`GFETCHER_MAX_REQUESTS_PER_DAY`); minimum gap 3-60 s (`GFETCHER_MIN_DELAY_SECONDS`, `GFETCHER_MAX_DELAY_SECONDS`); articles per ticker 1-30 (`GFETCHER_MAX_PER_TICKER`); retention 1-30 days (`422`) | `POST /api/settings` |
+| Google News Fetcher publisher domain | 253 characters (`GFETCHER_DOMAIN_MAX_CHARS`), a host name; `policy` one of three values (`422`) | `POST /api/gfetcher/publishers`, `DELETE /api/gfetcher/publishers/{domain}` |
 
 ### Ticker format
 
@@ -2658,6 +2659,11 @@ Sends a test insider trading alert via Nextcloud Talk.
 | `POST` | `/api/news-feed/run-now` | Trigger immediate news feed refresh |
 | `GET` | `/api/gfetcher/status` | Google News Fetcher health: routes and their cooldowns, last 24 h of requests, stored articles, publisher rules |
 | `POST` | `/api/gfetcher/run-now` | Run the Google News Fetcher now (409 while it runs or while it is disabled) |
+| `GET` | `/api/gfetcher/symbols` | Google News Fetcher symbol mappings (app ticker → Google symbol:exchange, status, page title) |
+| `POST` | `/api/gfetcher/probe` | Re-check the Google symbols (409 while the fetcher or a probe runs, or while it is disabled) |
+| `GET` | `/api/gfetcher/publishers` | Google News Fetcher publisher rules |
+| `POST` | `/api/gfetcher/publishers` | Set the operator's rule for a publisher domain |
+| `DELETE` | `/api/gfetcher/publishers/{domain}` | Turn a domain's rule back into a learned one |
 | `GET` | `/api/logs/tail` | Last N lines of the active log file as JSON |
 | `GET` | `/api/logs/stream` | Server-Sent Events live tail of the active log file |
 
@@ -3116,24 +3122,22 @@ Stores and retrieves news articles for portfolio and watchlist tickers. Articles
 
 ### `GET /api/news-feed`
 
-Returns paginated news articles from the local `news_articles` table.
+Returns news articles from the local `news_articles` table, newest first, from both the News Feed (`feed_source: "yahoo"`) and the Google News Fetcher (`"google"`). `published_precision` is `null` for an exact time and otherwise the unit a Google estimate is good to (see `assets/google_news_fetcher.md`). An invalid `source` or `feed` is `422`.
 
 **Query parameters**
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `source` | string | `"all"` | Filter by source list: `"portfolio"`, `"watchlist"`, or `"all"` |
-| `page` | int | `1` | Page number (1-based) |
-| `per_page` | int | `20` | Items per page |
+| `source` | string | `"all"` | Filter by list: `"portfolio"`, `"watchlist"` (both also match `"both"` rows), `"both"`, `"index"` (Markets indexes, Google News Fetcher), `"market"` (Google's market-wide list, ticker `MARKET`) or `"all"` |
+| `feed` | string | `"all"` | `"yahoo"` (News Feed), `"google"` (Google News Fetcher) or `"all"` |
+| `limit` | int | `50` | Rows to return, 1-500 |
+| `offset` | int | `0` | Rows to skip |
 
 **Response**
 
 ```json
 {
-  "status": "success",
   "total": 87,
-  "page": 1,
-  "per_page": 20,
   "articles": [
     {
       "id": 1,
@@ -3148,7 +3152,11 @@ Returns paginated news articles from the local `news_articles` table.
       "published_at": 1717840000,
       "sentiment_score": 0.72,
       "sentiment_label": "positive",
-      "body_fetched": 1
+      "body_fetched": 1,
+      "full_text": "...",
+      "fetched_at": 1717840300,
+      "feed_source": "yahoo",
+      "published_precision": null
     }
   ]
 }
@@ -3195,6 +3203,26 @@ Queues one Google News Fetcher run (`gfetcher_job`). Session cookie and CSRF tok
 
 **Request body:** none  
 **Response:** `{"status": "success", "message": "Google News Fetcher run queued."}`
+
+### `GET /api/gfetcher/symbols`
+
+`{"status": "success", "symbols": [{"ticker": "^FTSE", "google_symbol": "UKX", "google_exchange": "INDEXFTSE", "kind": "index", "verified_at": "2026-11-26 09:41:10", "verified_title": "FTSE 100 Index Price, Real-time Quote & News - Google Finance", "last_probe_status": "found"}]}`. `last_probe_status` is `found` or `not_found` (both Google fields `null`); `verified_at` is stored UTC. Session cookie required.
+
+### `POST /api/gfetcher/probe`
+
+Queues the symbol probe (`gfetcher_probe_source`): one request per index in scope and per ticker without a found mapping, under the run's pacing, budget and cooldown; stores mappings, no news; the summary arrives as a notification. Session cookie and CSRF token; 3 requests per minute. `409` `busy` while the probe or `gfetcher_job` runs, `409` `disabled` while the fetcher is off.
+
+### `GET /api/gfetcher/publishers`
+
+`{"status": "success", "publishers": [{"domain": "barrons.com", "policy": "block_paywall", "source": "manual", "reason": "HTTP 401 paywall/login", "full_count": 0, "short_count": 0, "blocked_count": 0, "paywall_count": 2, "unreachable_count": 0, "no_text_count": 0, "error_count": 0, "updated_at": "2026-11-26 09:41:10"}]}`, sorted by domain, the seeded rules included. Session cookie required.
+
+### `POST /api/gfetcher/publishers`
+
+Body `{"domain": "example.com", "policy": "allow" | "block_paywall" | "block_bots"}`. Saves it as the operator's (`manual`) rule, which learning never changes; the counts are kept. `domain` is trimmed, lower-cased and stripped of `www.`, at most `GFETCHER_DOMAIN_MAX_CHARS` (253) characters and must be a host name (`422` otherwise, also for another `policy`). Session cookie and CSRF token, **no password step-up** (operator decision: publisher rules are not credentials); 30 requests per minute.
+
+### `DELETE /api/gfetcher/publishers/{domain}`
+
+Turns the domain's rule back into a learned (`auto`) one, with the policy its own download counts give. `404` when the domain has no row, `422` for a malformed domain. Session cookie and CSRF token; 30 requests per minute.
 
 ---
 
@@ -5571,7 +5599,7 @@ Errors are JSON `{"error": "...", "error_description": "..."}` and never echo th
 
 Tools are read-only (`readOnlyHint`). An unexpected tool failure answers `isError: true` with the fixed text `Error executing tool <name>`; the exception text is logged, never returned. An anticipated failure (an unknown `account`, an empty X-ray scope) keeps a curated message after the same prefix.
 
-Current tools: `get_accounts`, `get_holdings`, `get_xray`, `get_heat_index`, `get_market_regime`, `get_ticker_snapshot`, `get_alerts`, `get_news`, `get_calendar`, `get_market_report`, `screen_universe`, `find_candidates`, `get_watchlist`, `pretrade_check` (see `assets/mcp_integration.md`). Every tool result carries the envelope `as_of`, `age_seconds`, `market_state`, `base_currency`, `units`, `stale`, `missing`, `data`. Current prompts (`prompts/list`, `prompts/get`): `review_portfolio`, `pre_trade_review`, `whats_coming_up`, `deploy_cash`, `diversify_account`, `suggest_watchlist_additions` and `lower_heat_index`, which return one text message that names the resource and tools to use, and eight AI-prompt modes (`devils_advocate`, `risk_reward_audit`, `quantamental_deep_dive`, `earnings_strategy`, `regime_plain_english_briefing`, `regime_what_happens_next`, `regime_how_should_i_position`, `regime_red_flags_check`) that return the text of the Stock Detail and Market Regime copy buttons. Prompts use the same credential as the tools (see `assets/mcp_integration.md`).
+Current tools: `get_accounts`, `get_holdings`, `get_xray`, `get_heat_index`, `get_market_regime`, `get_ticker_snapshot`, `get_alerts`, `get_news`, `get_article`, `get_calendar`, `get_market_report`, `screen_universe`, `find_candidates`, `get_watchlist`, `pretrade_check` (see `assets/mcp_integration.md`). Every tool result carries the envelope `as_of`, `age_seconds`, `market_state`, `base_currency`, `units`, `stale`, `missing`, `data`. Current prompts (`prompts/list`, `prompts/get`): `review_portfolio`, `pre_trade_review`, `whats_coming_up`, `deploy_cash`, `diversify_account`, `suggest_watchlist_additions` and `lower_heat_index`, which return one text message that names the resource and tools to use, and eight AI-prompt modes (`devils_advocate`, `risk_reward_audit`, `quantamental_deep_dive`, `earnings_strategy`, `regime_plain_english_briefing`, `regime_what_happens_next`, `regime_how_should_i_position`, `regime_red_flags_check`) that return the text of the Stock Detail and Market Regime copy buttons. Prompts use the same credential as the tools (see `assets/mcp_integration.md`).
 
 ---
 

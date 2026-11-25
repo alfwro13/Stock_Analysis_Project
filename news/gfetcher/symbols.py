@@ -55,10 +55,10 @@ def kind_of(ticker: str) -> str:
     return "index" if ticker in INDEX_SYMBOLS else "listing"
 
 
-def resolve(ticker: str, client: GoogleClient, now: datetime) -> Optional[Resolved]:
-    """The quote page for `ticker`, trying the stored mapping first; None when Google has no page for it."""
+def resolve(ticker: str, client: GoogleClient, now: datetime, force: bool = False) -> Optional[Resolved]:
+    """The quote page for `ticker`, trying the stored mapping first; None when Google has no page for it; `force` (the Settings probe) skips the week a not-found ticker is otherwise left alone."""
     stored = store.get_symbol(ticker)
-    if stored and stored.last_probe_status == "not_found" and stored.verified_at and now - stored.verified_at < NOT_FOUND_RETRY:
+    if not force and stored and stored.last_probe_status == "not_found" and stored.verified_at and now - stored.verified_at < NOT_FOUND_RETRY:
         return None
     tried = []
     if stored and stored.google_symbol and stored.google_exchange:

@@ -321,6 +321,30 @@
                     <button type="button" class="btn btn-primary mt-0" id="gfetcher-run-btn" onclick="triggerGfetcherRun()">▶ Run Now</button>
                     <button type="button" class="btn btn-secondary mt-0" onclick="loadGfetcherStatus()">↻ Refresh Status</button>
                     <span id="gfetcher-status-msg" class="ms-2 text-sm"></span>
+
+                    <details class="gfetcher-subsection mt-10" id="gfetcher-symbols-box">
+                        <summary>Symbol mappings</summary>
+                        <p class="text-muted-desc">How each ticker is found on Google Finance (exchange learned from the first page that answered, index codes checked against the live page). <strong>Probe Symbols</strong> re-checks every index and every ticker without a found page, one request each under the same pacing, budget and pauses as a run; the result arrives as a notification.</p>
+                        <div id="gfetcher-symbols" class="mb-10"></div>
+                        <button type="button" class="btn btn-secondary mt-0" id="gfetcher-probe-btn" onclick="triggerGfetcherProbe()">🔎 Probe Symbols</button>
+                        <span id="gfetcher-probe-msg" class="ms-2 text-sm"></span>
+                    </details>
+
+                    <details class="gfetcher-subsection mt-10" id="gfetcher-publishers-box">
+                        <summary>Publisher rules</summary>
+                        <p class="text-muted-desc"><strong>Allow</strong> downloads the article text, <strong>Paywall</strong> drops the article, <strong>Bot block</strong> keeps the headline only. Rules you set are kept as they are; the others are learned from downloads (two refusals and no success block a site, one success allows it again, a learned block is retried after 14 days). <strong>Use learned</strong> turns your rule back into a learned one.</p>
+                        <div class="flex-gap-15 mb-10">
+                            <input type="text" id="gfetcher-rule-domain" class="form-control flex-1" placeholder="example.com" maxlength="253" autocomplete="off">
+                            <select id="gfetcher-rule-policy" class="form-select flex-1">
+                                <option value="allow">Allow</option>
+                                <option value="block_paywall">Paywall (drop)</option>
+                                <option value="block_bots" selected>Bot block (headline only)</option>
+                            </select>
+                            <button type="button" class="btn btn-primary mt-0 text-nowrap" onclick="addGfetcherPublisherRule()">Add Rule</button>
+                        </div>
+                        <span id="gfetcher-rule-msg" class="text-sm"></span>
+                        <div id="gfetcher-publishers"></div>
+                    </details>
                 </div>
             </details>
 

@@ -1226,6 +1226,27 @@ def run_gfetcher_job():
         record_job_run("gfetcher_job")
 
 
+def run_gfetcher_probe():
+    """On demand only (Settings): checks the Google symbol of every index in scope and of every ticker without a found mapping."""
+    from news.gfetcher import probe_symbols, settings_from_config
+    _mark_job_started(job_label("gfetcher_probe_source"))
+    try:
+        block = load_config().get("SCHEDULING", {}).get("GFETCHER", {})
+        summary = probe_symbols(settings_from_config(block))
+        text = (f"Google News Fetcher (Symbol Probe): {summary['status']}; {summary['checked']} checked, "
+                f"{len(summary['found'])} found, {len(summary['not_found'])} without a Google page")
+        if summary["not_found"]:
+            text += f" ({', '.join(summary['not_found'])})"
+        if summary["reason"]:
+            text += f"; {summary['reason']}"
+        log_sched_notification("Warning" if summary["status"] != "ok" else "Success", text + ".")
+    except Exception as e:
+        logger.error("Google News Fetcher symbol probe failed: %s", e)
+        log_sched_notification("Error", f"Google News Fetcher (Symbol Probe) failed: {e}")
+    finally:
+        _mark_job_done(job_label("gfetcher_probe_source"))
+
+
 def run_pattern_detection_job():
     from patterns.pattern_detection_engine import PatternDetectionEngine, DETECTORS
     config = load_config()

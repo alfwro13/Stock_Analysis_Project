@@ -35,10 +35,10 @@ def news_tables():
         yield
 
 
-def _record_news_run(last_run):
+def _record_news_run(last_run, job_id="news_feed_job"):
     conn = get_connection()
     try:
-        conn.execute("INSERT OR REPLACE INTO scheduler_run_log (job_id, last_run) VALUES ('news_feed_job', ?)", (last_run,))
+        conn.execute("INSERT OR REPLACE INTO scheduler_run_log (job_id, last_run) VALUES (?, ?)", (job_id, last_run))
         conn.commit()
     finally:
         conn.close()
@@ -67,7 +67,7 @@ class TestGetNews:
         response = call(mcp_client, "get_news")
         assert "FULL-ARTICLE-BODY-SENTINEL" not in response.text
         article = tool_data(response)["data"]["articles"][0]
-        assert set(article) == {"ticker", "list", "published_at", "mentions_ticker", "sentiment", "external_content"}
+        assert set(article) == {"article_id", "ticker", "list", "feed", "published_at", "published_precision", "mentions_ticker", "sentiment", "external_content"}
         assert set(article["external_content"]) == {"headline", "summary", "publisher"}
         assert "example.invalid" not in response.text
 
@@ -183,7 +183,7 @@ class TestSharedNewsFeedQuery:
         assert body["total"] == 1
         assert list(body["articles"][0]) == [
             "id", "article_id", "ticker", "company_name", "source_list", "headline", "summary", "full_text", "body_fetched",
-            "url", "publisher", "published_at", "fetched_at", "sentiment_score", "sentiment_label",
+            "url", "publisher", "published_at", "fetched_at", "sentiment_score", "sentiment_label", "feed_source", "published_precision",
         ]
         assert body["articles"][0]["full_text"] == BODY
         assert client.get("/api/news-feed").json()["total"] == 2
@@ -196,3 +196,53 @@ class TestSharedNewsFeedQuery:
         rows, total = fetch_articles(source="portfolio")
         assert total == 1 and rows[0]["full_text"] == BODY
         assert fetch_articles(limit=1, offset=1)[0][0]["ticker"] in {"ZZNW1", "ZZNW2"}
+
+
+def _google_article(ticker="ZZGN1", source="index", precision="hour"):
+    published = int(time.time()) - 3600
+    conn = get_connection()
+    try:
+        conn.execute(
+            """INSERT INTO news_articles (article_id, ticker, source_list, headline, summary, full_text, body_fetched, url, publisher,
+                                          published_at, fetched_at, feed_source, published_precision)
+               VALUES (?, ?, ?, 'Google headline', 'Lead.', ?, 1, 'https://example.invalid/g', 'Zacks', ?, ?, 'google', ?)""",
+            (f"zzgn-{ticker}", ticker, source, BODY, published, published, precision),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+class TestGoogleArticles:
+    def test_a_google_article_carries_its_feed_precision_and_id(self, mcp_client, news_tables):
+        _google_article()
+        article = tool_data(call(mcp_client, "get_news", {}))["data"]["articles"][0]
+        assert (article["feed"], article["list"], article["published_precision"]) == ("google", "index", "hour")
+        assert isinstance(article["article_id"], int)
+
+    def test_market_wide_news_is_asked_for_with_the_market_ticker(self, mcp_client, news_tables):
+        _google_article(ticker="MARKET", source="market", precision="day")
+        _article(1)
+        rows = tool_data(call(mcp_client, "get_news", {"ticker": "MARKET"}))["data"]["articles"]
+        assert [(r["ticker"], r["list"]) for r in rows] == [("MARKET", "market")]
+
+    def test_as_of_is_the_newest_run_of_either_news_job(self, mcp_client, news_tables):
+        _record_news_run("2026-01-01 00:00:00")
+        recent = time.strftime("%Y-%m-%d %H:%M:%S", time.gmtime())
+        _record_news_run(recent, job_id="gfetcher_job")
+        _google_article()
+        data = tool_data(call(mcp_client, "get_news", {}))
+        assert data["as_of"] == recent.replace(" ", "T") + "Z"
+
+    def test_a_google_only_install_is_not_reported_as_never_run(self, mcp_client, news_tables):
+        _record_news_run(time.strftime("%Y-%m-%d %H:%M:%S", time.gmtime()), job_id="gfetcher_job")
+        _google_article()
+        assert tool_data(call(mcp_client, "get_news", {}))["missing"] == []
+
+    def test_the_page_route_filters_by_feed_and_new_lists(self, client, news_tables):
+        _google_article()
+        _article(1)
+        google = client.get("/api/news-feed?feed=google").json()["articles"]
+        assert [a["feed_source"] for a in google] == ["google"]
+        assert [a["ticker"] for a in client.get("/api/news-feed?source=index").json()["articles"]] == ["ZZGN1"]
+        assert client.get("/api/news-feed?feed=bing").status_code == 422

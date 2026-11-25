@@ -1287,6 +1287,13 @@ details[open].xray-rec-group .xray-rec-group-summary::before { transform: rotate
 .art-source-portfolio { background: rgba(78,201,87,0.2);  color: #4ec957; }
 .art-source-watchlist  { background: rgba(255,193,7,0.15); color: #ffc107; }
 .art-source-both       { background: rgba(138,43,226,0.2); color: #bf7fff; }
+.art-source-index      { background: rgba(77,166,255,0.18); color: #4da6ff; }
+.art-source-market     { background: rgba(170,170,170,0.18); color: #c8c8c8; }
+.art-feed-badge { border-radius: 3px; padding: 1px 5px; font-size: 0.72em; border: 1px solid #555; color: #aaa; }
+.art-feed-google { border-color: #4da6ff; color: #4da6ff; }
+.reader-fulltext-note { font-size: 0.85em; color: #666; font-style: italic; }
+.gfetcher-subsection > summary { cursor: pointer; color: #ccc; font-size: var(--font-size-body); font-weight: 600; margin-bottom: 8px; }
+.gfetcher-subsection .diag-table select { min-width: 150px; }
 .sent-positive { background: rgba(78,201,87,0.2);  color: #4ec957; }
 .sent-negative { background: rgba(255,77,77,0.2);  color: #ff6b6b; }
 .reader-meta { font-size: 0.8em; color: #888; margin-bottom: 16px; display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
