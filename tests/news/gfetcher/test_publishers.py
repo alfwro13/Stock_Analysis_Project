@@ -107,7 +107,7 @@ def test_a_rule_for_a_new_domain_is_created():
 
 def test_the_list_includes_the_seed_without_writing_it():
     domains = [r["domain"] for r in publishers.list_rules(NOW)]
-    assert "barrons.com" in domains and domains == sorted(domains)
+    assert {"barrons.com"} <= set(domains) and domains == sorted(domains)
     conn = get_connection()
     try:
         assert conn.execute("SELECT COUNT(*) FROM gfetcher_publishers").fetchone()[0] == 0
