@@ -358,3 +358,112 @@ class TestSpyMarketContext:
             result = eng._fetch_market_context()
         assert result is not None
         assert result < 0
+
+
+# ── Volume and peer context ───────────────────────────────────────────────────
+
+class TestVolumeContext:
+    def _frames(self, last_hist_volume):
+        hist_index = pd.date_range("2026-10-26", periods=25, freq="B")
+        volumes = [100.0] * 24 + [last_hist_volume]
+        df_hist = pd.DataFrame({"Close": [100.0] * 25, "Volume": volumes}, index=hist_index)
+        tick = hist_index[-1] + pd.Timedelta(days=1, hours=15, minutes=10)
+        df_combined = pd.concat([df_hist[["Close"]], pd.DataFrame({"Close": [95.0]}, index=[tick])])
+        return df_hist, df_combined
+
+    def _report(self, df_hist, df_combined, session_volume, projected_volume):
+        eng = _engine()
+        with patch("crash_engine.market_session_helpers.is_exchange_open", return_value=False), \
+             patch("crash_engine.market_pulse.get_cached_change_pct", return_value=0.0), \
+             patch("crash_engine.yahoo_engine.get_news", return_value=[]):
+            return eng._generate_context_report(
+                "TEST", -5.0, df_combined, {"company_name": "Test"}, df_hist, session_volume, projected_volume,
+            )
+
+    def test_report_quotes_todays_session_volume_not_the_last_stored_bar(self):
+        df_hist, df_combined = self._frames(last_hist_volume=776.0)
+        report = self._report(df_hist, df_combined, session_volume=150.0, projected_volume=300.0)
+        assert "Volume so far today is 150" in report
+        assert "776" not in report
+
+    def test_last_stored_bar_of_a_prior_session_counts_in_the_average(self):
+        df_hist, df_combined = self._frames(last_hist_volume=1300.0)
+        report = self._report(df_hist, df_combined, session_volume=150.0, projected_volume=300.0)
+        assert "20-day average of 160" in report
+
+    def test_todays_own_forming_bar_is_left_out_of_the_average(self):
+        df_hist, df_combined = self._frames(last_hist_volume=1300.0)
+        df_combined = df_combined.iloc[:-1].copy()
+        report = self._report(df_hist, df_combined, session_volume=100.0, projected_volume=250.0)
+        assert "20-day average of 100" in report
+
+    def test_projected_volume_at_or_below_1_5x_average_reads_as_average(self):
+        df_hist, df_combined = self._frames(last_hist_volume=100.0)
+        report = self._report(df_hist, df_combined, session_volume=60.0, projected_volume=120.0)
+        assert "low/average volume so far today" in report
+        assert "Selling pressure is severe" not in report
+
+    def test_no_session_volume_leaves_out_the_volume_sentence(self):
+        df_hist, df_combined = self._frames(last_hist_volume=776.0)
+        report = self._report(df_hist, df_combined, session_volume=None, projected_volume=None)
+        assert "volume" not in report.lower()
+
+    def test_evaluate_passes_the_session_volume_into_the_report(self):
+        eng = _engine()
+        df_hist, df_combined = self._frames(last_hist_volume=100.0)
+        with patch.object(eng, "_generate_context_report", return_value="ctx") as mock_report:
+            eng.evaluate("TEST", 90.0, df_combined, {"beta": 1.0, "company_name": "Test"}, df_hist, None, 150.0, 300.0)
+        assert mock_report.call_args.args[-2:] == (150.0, 300.0)
+
+
+class TestPeerContext:
+    DF = pd.DataFrame({"Close": [100.0] * 56})
+
+    def _report(self, peer_changes, spy_change=0.5, group="Semiconductors"):
+        eng = _engine()
+        eng.peer_changes = peer_changes
+        meta = {"company_name": "Test", "peer_group": group}
+        with patch("crash_engine.market_session_helpers.is_exchange_open", return_value=True), \
+             patch.object(eng, "_fetch_live_change_pct", return_value=spy_change), \
+             patch("crash_engine.yahoo_engine.get_news", return_value=[]):
+            return eng._generate_context_report("TEST", -5.0, self.DF, meta)
+
+    def test_flat_index_with_peers_also_down_is_not_called_isolated(self):
+        report = self._report({"Semiconductors": {"TEST": -6.0, "MU": -7.0, "INTC": -5.0}})
+        assert "idiosyncratic" not in report
+        assert "shared across its peers" in report
+        assert "2 of 2 other Semiconductors holdings are also down this session (median -6.00%)." in report
+
+    def test_flat_index_with_flat_peers_is_called_isolated(self):
+        report = self._report({"Semiconductors": {"TEST": -6.0, "MU": 0.4, "INTC": 0.2}})
+        assert "isolated (idiosyncratic)" in report
+        assert "0 of 2 other Semiconductors holdings" in report
+
+    def test_fewer_than_two_peers_says_the_context_is_unavailable(self):
+        report = self._report({"Semiconductors": {"TEST": -6.0, "MU": -7.0}})
+        assert "idiosyncratic" not in report
+        assert "no peer data is available" in report
+
+    def test_ticker_without_a_peer_group_says_the_context_is_unavailable(self):
+        report = self._report({}, group=None)
+        assert "no peer data is available" in report
+
+    def test_heavy_index_sell_off_keeps_its_own_sentence(self):
+        report = self._report({"Semiconductors": {"TEST": -6.0, "MU": -7.0, "INTC": -5.0}}, spy_change=-2.0)
+        assert "heavy sell-off" in report
+        assert "2 of 2 other Semiconductors holdings" in report
+
+
+class TestEtfBenchmarkByName:
+    def test_nasdaq_100_fund_is_compared_with_the_nasdaq_index_not_the_sp500(self):
+        eng = _engine()
+        eng.benchmark_changes = {"^NDX": -3.2}
+        meta = {
+            "company_name": "INVESCO MARKETS III PLC INVESCO", "quote_type": "ETF",
+            "long_name": "Invesco EQQQ NASDAQ-100 UCITS ETF (GBP Hdg)",
+            "top_holdings": json.dumps([{"symbol": "AAPL", "name": "Apple", "weight": 0.08}]),
+        }
+        report = eng._generate_context_report("EQGB.L", -4.0, pd.DataFrame({"Close": [100.0] * 56}), meta)
+        assert "US Nasdaq 100" in report
+        assert "S&P 500" not in report
+        assert "-3.20%" in report

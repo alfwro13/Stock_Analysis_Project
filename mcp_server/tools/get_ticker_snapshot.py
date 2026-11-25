@@ -194,6 +194,7 @@ def _fundamentals(row: dict) -> dict:
     extra = cached_fundamentals_extra(row["ticker"])
     if extra is not None:
         extra.pop("website")
+        extra.pop("long_name")
     return {
         "roe": row["roe"], "debt_to_equity": row["debt_to_equity"], "profit_margin": row["profit_margin"],
         "revenue_growth": row["revenue_growth"], "current_ratio": row["current_ratio"],

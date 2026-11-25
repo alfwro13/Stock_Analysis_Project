@@ -18,6 +18,8 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from fundamentals_helpers import (
     calculate_peter_lynch_peg,
+    currency_safe_price_ratios,
+    dividend_yield_fraction,
     calculate_piotroski_f_score,
     calculate_altman_z_score,
     calculate_beneish_m_score,
@@ -553,3 +555,54 @@ class TestIsDividendHarvestCandidate:
     def test_custom_thresholds(self):
         row = {'dividend_yield': 0.025, 'composite_score': 55, 'ex_dividend_date': '2026-08-01'}
         assert is_dividend_harvest_candidate(row, min_yield=0.02, min_score=55) is True
+
+
+class TestDividendYieldFraction:
+    def test_yahoo_percent_becomes_fraction(self):
+        assert dividend_yield_fraction({"dividendYield": 2.21}) == pytest.approx(0.0221)
+
+    def test_a_sub_one_percent_yield_is_still_divided(self):
+        assert dividend_yield_fraction({"dividendYield": 0.08}) == pytest.approx(0.0008)
+
+    def test_missing_yield_stays_none(self):
+        assert dividend_yield_fraction({}) is None
+        assert dividend_yield_fraction({"dividendYield": None}) is None
+
+
+class TestCurrencySafePriceRatios:
+    TSM = {
+        "priceToBook": 67.07491, "priceToSalesTrailing12Months": 0.36626557,
+        "trailingPE": 22.631239, "returnOnEquity": 0.4186, "profitMargins": 0.51116,
+        "financialCurrency": "TWD",
+    }
+
+    def test_same_currency_keeps_yahoo_values(self):
+        info = {**self.TSM, "financialCurrency": "USD"}
+        assert currency_safe_price_ratios(info, "USD") == (67.07491, 0.36626557)
+
+    def test_pence_quote_with_pound_financials_counts_as_same_currency(self):
+        info = {**self.TSM, "financialCurrency": "GBP"}
+        assert currency_safe_price_ratios(info, "GBp") == (67.07491, 0.36626557)
+
+    def test_missing_financial_currency_keeps_yahoo_values(self):
+        info = {k: v for k, v in self.TSM.items() if k != "financialCurrency"}
+        assert currency_safe_price_ratios(info, "USD") == (67.07491, 0.36626557)
+
+    def test_mixed_currency_is_rebuilt_from_pe_roe_and_margin(self):
+        price_to_book, price_to_sales = currency_safe_price_ratios(self.TSM, "USD")
+        assert price_to_book == pytest.approx(22.631239 * 0.4186)
+        assert price_to_sales == pytest.approx(22.631239 * 0.51116)
+
+    def test_mixed_currency_without_a_positive_pe_gives_none(self):
+        assert currency_safe_price_ratios({**self.TSM, "trailingPE": None}, "USD") == (None, None)
+        assert currency_safe_price_ratios({**self.TSM, "trailingPE": -4.0}, "USD") == (None, None)
+
+    def test_mixed_currency_loss_maker_gives_none_for_the_missing_input_only(self):
+        info = {**self.TSM, "profitMargins": -0.1}
+        price_to_book, price_to_sales = currency_safe_price_ratios(info, "USD")
+        assert price_to_book == pytest.approx(22.631239 * 0.4186)
+        assert price_to_sales is None
+
+    def test_non_finite_input_gives_none(self):
+        info = {**self.TSM, "returnOnEquity": float("nan")}
+        assert currency_safe_price_ratios(info, "USD")[0] is None

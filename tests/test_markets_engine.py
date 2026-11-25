@@ -389,6 +389,43 @@ class TestResolveBenchmarkForHoldings:
         assert row["ticker"] == "^GSPC"
 
 
+class TestResolveBenchmarkForName:
+    def test_nasdaq_100_fund_resolves_to_the_nasdaq_index(self):
+        row = markets_engine.resolve_benchmark_for_name("Invesco EQQQ NASDAQ-100 UCITS ETF (GBP Hdg)")
+        assert row is not None
+        assert row["ticker"] == "^NDX"
+
+    def test_sp500_fund_resolves_to_the_sp500(self):
+        row = markets_engine.resolve_benchmark_for_name("iShares Core S&P 500 UCITS ETF")
+        assert row["ticker"] == "^GSPC"
+
+    def test_ftse_100_fund_does_not_resolve_to_the_ftse_250(self):
+        row = markets_engine.resolve_benchmark_for_name("Vanguard FTSE 100 UCITS ETF")
+        assert row["ticker"] == "^FTSE"
+
+    def test_a_name_without_an_index_gives_none(self):
+        assert markets_engine.resolve_benchmark_for_name("VanEck Semiconductor UCITS ETF") is None
+        assert markets_engine.resolve_benchmark_for_name(None) is None
+
+
+class TestResolveEtfBenchmark:
+    SP500 = {"symbol": "AAPL", "name": "Apple", "weight": 0.3}
+
+    def test_index_named_in_the_fund_name_wins_over_the_holdings_exchange(self):
+        meta = {"quote_type": "ETF", "long_name": "Invesco EQQQ NASDAQ-100 UCITS ETF", "top_holdings": [self.SP500]}
+        assert markets_engine.resolve_etf_benchmark(meta)["ticker"] == "^NDX"
+
+    def test_falls_back_to_the_holdings_exchange_when_the_name_names_no_index(self):
+        meta = {"quote_type": "ETF", "long_name": "VanEck Semiconductor UCITS ETF", "top_holdings": '[{"symbol": "NVDA", "weight": 0.2}]'}
+        assert markets_engine.resolve_etf_benchmark(meta)["ticker"] == "^GSPC"
+
+    def test_non_etf_gets_no_benchmark(self):
+        assert markets_engine.resolve_etf_benchmark({"quote_type": "EQUITY", "long_name": "S&P 500 Corp"}) is None
+
+    def test_unparseable_holdings_and_no_name_give_none(self):
+        assert markets_engine.resolve_etf_benchmark({"quote_type": "ETF", "top_holdings": "not json"}) is None
+
+
 # ── registry_lookup_tickers ───────────────────────────────────────────────────────
 
 class TestRegistryLookupTickers:

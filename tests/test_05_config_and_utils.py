@@ -1446,11 +1446,12 @@ class TestCachedFundamentalsExtra:
         from utils import cached_fundamentals_extra
         self._dump(tmp_path, monkeypatch, "ZZFX", {
             "marketCap": 2.5e9, "totalCash": 900, "totalDebt": 400, "financialCurrency": "USD", "exDividendDate": 1781740800,
-            "fullTimeEmployees": 1200, "website": "https://example.com", "payoutRatio": 0.37,
+            "fullTimeEmployees": 1200, "website": "https://example.com", "payoutRatio": 0.37, "longName": "Invesco EQQQ NASDAQ-100 UCITS ETF",
         })
         extra = cached_fundamentals_extra("ZZFX")
         assert (extra["market_cap"], extra["net_cash"], extra["financial_currency"], extra["payout_ratio"]) == (2.5e9, 500, "USD", 0.37)
         assert (extra["ex_dividend_date"], extra["full_time_employees"], extra["website"]) == ("2026-06-18", 1200, "https://example.com")
+        assert extra["long_name"] == "Invesco EQQQ NASDAQ-100 UCITS ETF"
         assert extra["free_cash_flow"] is None and extra["roa"] is None
 
     def test_net_cash_is_null_when_either_side_is_missing(self, tmp_path, monkeypatch):

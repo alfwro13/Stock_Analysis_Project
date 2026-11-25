@@ -1,4 +1,6 @@
+import json
 import logging
+import re
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -37,6 +39,41 @@ def resolve_benchmark_for_holdings(top_holdings: List[Dict[str, Any]]) -> Option
         if row:
             return row
     return None
+
+
+def _name_words(text: Optional[str]) -> str:
+    return " ".join(re.sub(r"[^a-z0-9]+", " ", (text or "").lower()).split())
+
+
+def resolve_benchmark_for_name(fund_name: Optional[str]) -> Optional[Dict[str, Any]]:
+    """Registry index whose name (without its US/UK prefix) appears as whole words in a fund's name, longest match first; None when no index is named."""
+    haystack = f" {_name_words(fund_name)} "
+    best: Optional[Dict[str, Any]] = None
+    best_len = 0
+    for row in get_ticker_registry(enabled_only=True):
+        if row.get("asset_type") != "Index":
+            continue
+        index_words = _name_words(re.sub(r"^(US|UK)\s+", "", row.get("display_name") or ""))
+        if index_words and f" {index_words} " in haystack and len(index_words) > best_len:
+            best, best_len = row, len(index_words)
+    return best
+
+
+def resolve_etf_benchmark(asset_meta: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """Registry index an ETF tracks: the index named in its full name first, else the exchange of its top holdings; None for a non-ETF or when neither resolves."""
+    if asset_meta.get("quote_type") != "ETF":
+        return None
+    by_name = resolve_benchmark_for_name(asset_meta.get("long_name"))
+    if by_name:
+        return by_name
+    raw_holdings = asset_meta.get("top_holdings")
+    if not raw_holdings:
+        return None
+    try:
+        holdings = json.loads(raw_holdings) if isinstance(raw_holdings, str) else raw_holdings
+    except (TypeError, ValueError):
+        return None
+    return resolve_benchmark_for_holdings(holdings)
 
 
 def get_exchange_state(exchange: str) -> str:

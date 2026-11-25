@@ -9,7 +9,7 @@ from typing import List, Optional
 from config import FUNDAMENTALS_DIR
 from yahoo_engine import yahoo_engine
 from db.database import get_connection, log_notification
-from fundamentals_helpers import calculate_peter_lynch_peg
+from fundamentals_helpers import calculate_peter_lynch_peg, currency_safe_price_ratios, dividend_yield_fraction
 from time_engine import parse_stored_utc
 from utils import contained_ticker_path, epoch_to_iso_date, next_earnings_iso_date
 
@@ -212,8 +212,7 @@ def _upsert_fundamentals(ticker: str, info: dict) -> None:
     trailing_pe    = info.get('trailingPE')
     forward_pe     = info.get('forwardPE')
     peg_ratio      = info.get('pegRatio')
-    price_to_book  = info.get('priceToBook')
-    price_to_sales = info.get('priceToSalesTrailing12Months')
+    price_to_book, price_to_sales = currency_safe_price_ratios(info, currency)
     free_cash_flow = info.get('freeCashflow')
     profit_margin  = info.get('profitMargins')
     roe            = info.get('returnOnEquity')
@@ -222,11 +221,7 @@ def _upsert_fundamentals(ticker: str, info: dict) -> None:
     debt_to_equity = info.get('debtToEquity')
     current_ratio  = info.get('currentRatio')
     operating_cash_flow = info.get('operatingCashflow')
-    dividend_yield = info.get('dividendYield')
-
-    # Pence misquote correction (same guard used in quant_signals.py)
-    if dividend_yield is not None and currency in ('GBp', 'GBP') and dividend_yield > 0.15:
-        dividend_yield /= 100.0
+    dividend_yield = dividend_yield_fraction(info)
 
     ex_dividend_date = epoch_to_iso_date(info.get('exDividendDate'))
 
@@ -240,7 +235,6 @@ def _upsert_fundamentals(ticker: str, info: dict) -> None:
 
     next_earnings_date = next_earnings_iso_date(info) or 'Unknown'
 
-    # Compute PEG after pence misquote correction so dividend_yield is already in decimal form.
     peter_lynch_peg = calculate_peter_lynch_peg(
         forward_pe=forward_pe,
         trailing_pe=trailing_pe,

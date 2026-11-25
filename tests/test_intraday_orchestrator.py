@@ -21,7 +21,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from db.database import create_account, get_connection, get_performance_cache
 from intraday_orchestrator import IntradayOrchestrator, format_currency, build_stock_url
 
-pytestmark = [pytest.mark.restore_tables("account_benchmark_tickers", "account_performance_cache", "alert_state", "stock_signals", "system_notifications", "yahoo_api_call_log", "yahoo_api_stats"), pytest.mark.usefixtures("offline_yahoo")]
+pytestmark = [pytest.mark.restore_tables("account_benchmark_tickers", "account_performance_cache", "alert_state", "asset_profiles", "stock_signals", "system_notifications", "yahoo_api_call_log", "yahoo_api_stats"), pytest.mark.usefixtures("offline_yahoo")]
 
 
 # ── format_currency ───────────────────────────────────────────────────────────
@@ -287,3 +287,48 @@ class TestQuoteSettlementGating:
     def test_nyse_ticker_checked_with_premarket_true(self, tmp_path):
         mock_settled, _ = self._run_with_ticker(tmp_path, ticker="AAPL", currency="USD", is_settled=True)
         mock_settled.assert_called_with("NYSE", include_premarket=True)
+
+
+    @pytest.mark.db
+    def test_crash_evaluate_receives_todays_session_volume_and_its_projection(self, tmp_path):
+        with patch("crash_engine.CrashEngine.evaluate", return_value=None) as mock_evaluate:
+            self._run_with_ticker(tmp_path, ticker="AAPL", currency="USD", is_settled=True)
+        session_volume, projected_volume = mock_evaluate.call_args.args[-2:]
+        assert session_volume == 5000.0
+        assert projected_volume >= session_volume
+
+
+class TestAssetMetadataPeerGroupAndEtfName:
+    def _seed(self, ticker, sector, industry, quote_type="EQUITY"):
+        from db.database import get_connection
+        conn = get_connection()
+        try:
+            conn.execute(
+                "INSERT OR REPLACE INTO stock_signals (ticker, sector, quote_type, currency) VALUES (?, ?, ?, 'USD')",
+                (ticker, sector, quote_type),
+            )
+            conn.execute(
+                "INSERT OR REPLACE INTO asset_profiles (ticker, sector, industry, quote_type) VALUES (?, ?, ?, ?)",
+                (ticker, sector, industry, quote_type),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+    def test_peer_group_is_the_industry_when_known_else_the_sector_else_none(self):
+        self._seed("PEERG_1", "Technology", "Semiconductors")
+        self._seed("PEERG_2", "Technology", "Unclassified")
+        self._seed("PEERG_3", "Unclassified", "Unclassified")
+        meta = IntradayOrchestrator().get_asset_metadata(["PEERG_1", "PEERG_2", "PEERG_3"])
+        assert meta["PEERG_1"]["peer_group"] == "Semiconductors"
+        assert meta["PEERG_2"]["peer_group"] == "Technology"
+        assert meta["PEERG_3"]["peer_group"] is None
+
+    def test_only_an_etf_carries_the_full_name_from_the_cached_dump(self):
+        self._seed("PEERG_ETF", "Fund", "Unclassified", quote_type="ETF")
+        self._seed("PEERG_EQ", "Technology", "Semiconductors")
+        with patch("intraday_orchestrator.cached_fundamentals_extra", return_value={"long_name": "Invesco EQQQ NASDAQ-100 UCITS ETF"}) as dump:
+            meta = IntradayOrchestrator().get_asset_metadata(["PEERG_ETF", "PEERG_EQ"])
+        assert meta["PEERG_ETF"]["long_name"] == "Invesco EQQQ NASDAQ-100 UCITS ETF"
+        assert meta["PEERG_EQ"]["long_name"] is None
+        dump.assert_called_once_with("PEERG_ETF")

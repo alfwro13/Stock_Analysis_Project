@@ -13,6 +13,35 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 
+def dividend_yield_fraction(info: dict) -> Optional[float]:
+    """Yahoo's `dividendYield` is a percent (2.21 = 2.21%) for every listing; stored as a fraction."""
+    raw = info.get('dividendYield')
+    return raw / 100.0 if raw is not None else None
+
+
+def currency_safe_price_ratios(info: dict, quote_currency: Optional[str]) -> tuple:
+    """(price_to_book, price_to_sales); when financialCurrency differs from the quote currency Yahoo mixes the two, so both are rebuilt from the currency-free identities P/B = P/E x ROE and P/S = P/E x profit margin (None when an input is missing or not positive)."""
+    from utils import normalize_currency_bucket
+
+    price_to_book = info.get('priceToBook')
+    price_to_sales = info.get('priceToSalesTrailing12Months')
+    financial_currency = info.get('financialCurrency')
+    if not financial_currency or not quote_currency:
+        return price_to_book, price_to_sales
+    if normalize_currency_bucket(financial_currency) == normalize_currency_bucket(quote_currency):
+        return price_to_book, price_to_sales
+
+    def _positive(value) -> bool:
+        return isinstance(value, (int, float)) and math.isfinite(value) and value > 0
+
+    trailing_pe = info.get('trailingPE')
+    roe = info.get('returnOnEquity')
+    margin = info.get('profitMargins')
+    price_to_book = trailing_pe * roe if _positive(trailing_pe) and _positive(roe) else None
+    price_to_sales = trailing_pe * margin if _positive(trailing_pe) and _positive(margin) else None
+    return price_to_book, price_to_sales
+
+
 def calculate_peter_lynch_peg(
     forward_pe: Optional[float],
     trailing_pe: Optional[float],
