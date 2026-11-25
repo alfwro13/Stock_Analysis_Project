@@ -13,6 +13,7 @@ from typing import Optional
 from urllib.parse import quote
 
 import yfinance as yf
+from yfinance import cache as yf_cache
 from curl_cffi import requests as cffi_requests
 import pandas as pd
 
@@ -24,6 +25,30 @@ from notification_engine import notify
 from utils import measure_request_stage, publisher_from_url, repair_feed_summary
 
 logger = logging.getLogger(__name__)
+
+
+class _InMemoryTzCache:
+    """Replaces yfinance's peewee tz cache, which keeps 2 fds per thread that ever touched it and exhausts the process fd limit."""
+
+    def __init__(self) -> None:
+        self._data: dict[str, str] = {}
+
+    def lookup(self, tkr):
+        return self._data.get(tkr)
+
+    def store(self, tkr, tz):
+        if tz is None:
+            self._data.pop(tkr, None)
+        else:
+            self._data[tkr] = tz
+
+    @property
+    def tz_db(self):
+        return None
+
+
+yf_cache._TzCacheManager._tz_cache = _InMemoryTzCache()
+
 
 class _RateLimitAwareLock:
     # Waits on the global 429 circuit-breaker event *before* acquiring the real lock.
