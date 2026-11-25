@@ -12,7 +12,8 @@ SUFFIX_TO_EXCHANGE = {
 }
 US_EXCHANGES = ("NASDAQ", "NYSE", "NYSEARCA", "NYSEAMERICAN", "BATS")
 
-# Registry ticker -> Google index code. Each was checked against the live page; ^KS200 and ^IBEX have no known code yet.
+# Registry ticker -> Google index code. Each was checked against the live page. Google has no KOSPI 200 page, so ^KS200
+# reads the KOSPI composite, whose news is the same Korean-market news.
 INDEX_SYMBOLS = {
     "^FTSE": ("UKX", "INDEXFTSE"),
     "^FTMC": ("MCX", "INDEXFTSE"),
@@ -28,6 +29,8 @@ INDEX_SYMBOLS = {
     "^STOXX50E": ("SX5E", "INDEXSTOXX"),
     "^GDAXI": ("DAX", "INDEXDB"),
     "^FCHI": ("PX1", "INDEXEURO"),
+    "^IBEX": ("I", "INDEXBME"),
+    "^KS200": ("KOSPI", "KRX"),
 }
 NOT_FOUND_RETRY = timedelta(days=7)
 

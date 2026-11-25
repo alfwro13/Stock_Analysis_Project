@@ -31,7 +31,9 @@ def _client():
     ("^FTSE", [("UKX", "INDEXFTSE")]),
     ("000001.SS", [("000001", "SHA")]),
     ("AAPL", [("AAPL", ex) for ex in symbols.US_EXCHANGES]),
-    ("^IBEX", []),
+    ("^IBEX", [("I", "INDEXBME")]),
+    ("^KS200", [("KOSPI", "KRX")]),
+    ("^FTAS", []),
     ("GBPUSD=X", []),
     ("ABC.XX", []),
 ])
