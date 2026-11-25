@@ -195,7 +195,7 @@ class TestMacroEvents:
         assert any(f"week ending Saturday {covered_to}" in m for m in data["missing"]) and data["incomplete"] is True
 
     def test_a_feed_week_that_has_ended_says_the_new_week_is_stored_on_the_next_run(self, mcp_client, calendar):
-        for event_id in ("zz-cpi", "zz-boe", "zz-mpc", "zz-late"):
+        for event_id in ("zz-cpi", "zz-boe", "zz-mpc", "zz-late", "zz-past"):
             _delete_event(event_id)
         conn = get_connection()
         try:
