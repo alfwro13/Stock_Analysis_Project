@@ -142,9 +142,10 @@ def test_public_host_is_pinned_to_the_vetted_address_with_host_header():
             patch.object(fetch_helpers, "_get_pinned", return_value=AVIVA_HTML) as pinned:
         result = scraper.fetch_and_extract("https://Scrape.Example.test/a/b.html?q=1#frag", "#gf-price")
     assert result["status"] == "success"
-    hostname, port, address, target, headers, _max_bytes = pinned.call_args.args
+    hostname, port, address, target, headers, _max_bytes, source_address = pinned.call_args.args
     assert (hostname, port, address, target) == ("scrape.example.test", 443, PUBLIC_IP, "/a/b.html?q=1")
     assert headers["Host"] == "scrape.example.test"
+    assert source_address is None
 
 
 def test_non_default_port_is_kept_in_host_header():
@@ -181,7 +182,7 @@ def test_next_address_is_tried_when_a_connection_fails():
     import requests
     calls = []
 
-    def fake(hostname, port, address, target, headers, max_bytes):
+    def fake(hostname, port, address, target, headers, max_bytes, source_address=None):
         calls.append(address)
         if address == "2606:2800::1":
             raise requests.ConnectionError("unreachable")
@@ -352,6 +353,27 @@ def test_redirect_loop_stops_after_the_limit(trust_test_cert):
         with pytest.raises(fetch_helpers.FetchRefused, match="Too many redirects"):
             _fetch_local(server, "/loop", max_redirects=2)
     assert len(seen) == 3
+
+
+def test_the_address_family_reaches_the_resolver():
+    with patch.object(fetch_helpers.socket, "getaddrinfo", return_value=[]) as lookup:
+        fetch_helpers._resolve("example.test", 443, fetch_helpers.socket.AF_INET6)
+    assert lookup.call_args.kwargs["family"] == fetch_helpers.socket.AF_INET6
+
+
+def test_family_and_source_address_pick_the_stack_and_local_address(trust_test_cert):
+    seen = []
+    routes = {"/x": (200, None, b"<p>ok</p>")}
+    with _TlsServer(*trust_test_cert, _redirecting_handler(routes, seen)) as server:
+        with patch.object(fetch_helpers, "_resolve", return_value=["127.0.0.1"]) as resolve, \
+             patch.object(fetch_helpers, "_PinnedAdapter", wraps=fetch_helpers._PinnedAdapter) as adapter:
+            body = fetch_helpers.fetch_body(
+                f"https://scraper.test:{server.port}/x", {}, allowed_hosts=["scraper.test"],
+                family=fetch_helpers.socket.AF_INET, source_address="127.0.0.1",
+            )
+    assert body == "<p>ok</p>"
+    assert resolve.call_args.args[2] == fetch_helpers.socket.AF_INET
+    assert adapter.call_args.args == ("scraper.test", "127.0.0.1")
 
 
 def test_an_unfollowed_redirect_names_its_absolute_target(trust_test_cert):

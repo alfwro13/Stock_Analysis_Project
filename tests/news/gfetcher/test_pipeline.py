@@ -3,12 +3,14 @@
 Covers ticker selection (scopes, fair rotation, refetch floor, unfetchable tickers), the cooldown gate,
 stopping at the first refusal, merging, market-wide articles, the publisher policy, stored rows and pruning.
 """
+import socket
 from datetime import datetime, timedelta, timezone
 
 import pytest
 
 from db.database import get_connection
 from news.gfetcher import article_text, client, pipeline, store
+from news.gfetcher.client import IPV4, IPV6, Route
 from news.gfetcher.pipeline import FetchSettings, run_fetch
 
 from .helpers import TABLES, FakeGoogle, article_html, card, http_error, quote_page
@@ -85,7 +87,7 @@ def test_a_run_stores_one_row_per_ticker_and_article(monkeypatch):
     first = rows[0]
     assert first["body_fetched"] == 1 and first["summary"] == first["full_text"][:pipeline.SUMMARY_CHARS]
     assert (first["publisher"], first["published_precision"]) == ("Zacks", "hour")
-    assert store.get_state().last_success_at is not None
+    assert store.get_state("ipv4").last_success_at is not None
 
 
 def test_a_second_run_downloads_nothing_already_stored(monkeypatch):
@@ -129,17 +131,17 @@ def test_the_run_stops_at_the_first_refusal_and_keeps_what_it_got(monkeypatch):
     monkeypatch.setattr(client, "fetch_body", fake)
     _publishers(monkeypatch)
     result = _run()
-    assert result.status == "refused" and result.refused_reason == "HTTP 429"
+    assert result.status == "refused" and result.refused_reason == "ipv4: HTTP 429"
     assert not any("MSFT" in u for u in fake.urls)
     assert [r["ticker"] for r in _rows()] == ["AAPL"]
-    assert store.get_state().last_success_at is None
+    assert result.refused_routes == ["ipv4"]
 
 
 def test_a_run_during_a_cooldown_sends_nothing(monkeypatch):
     _lists(monkeypatch, {"AAPL": "portfolio"})
-    store.set_cooldown(datetime.now(timezone.utc) + timedelta(hours=1), "HTTP 429", 1)
+    store.set_cooldown("ipv4", datetime.now(timezone.utc) + timedelta(hours=1), "HTTP 429", 1)
     result = _run()
-    assert result.status == "cooling_down" and result.refused_reason == "HTTP 429"
+    assert result.status == "cooling_down" and result.refused_reason == "ipv4: HTTP 429"
 
 
 def test_scopes_filter_the_lists(monkeypatch):
@@ -221,3 +223,18 @@ def test_scoring_runs_only_when_articles_were_added(monkeypatch):
     _run()
     _run(min_refetch_minutes=0)
     assert scored == [1]
+
+
+def test_a_dual_stack_run_carries_on_over_ipv6_after_ipv4_is_refused(monkeypatch):
+    monkeypatch.setattr(client, "configured_routes", lambda: [Route(IPV4, socket.AF_INET), Route(IPV6, socket.AF_INET6, "2001:db8::10")])
+    _lists(monkeypatch, {"AAPL": "portfolio", "KO": "portfolio", "MSFT": "portfolio"})
+    page = quote_page(cards=[card("https://zacks.com/x", "X")])
+    fake = FakeGoogle({"": {socket.AF_INET: http_error(429), socket.AF_INET6: page}})
+    monkeypatch.setattr(client, "fetch_body", fake)
+    _publishers(monkeypatch)
+    result = _run()
+    assert result.status == "ok" and result.refused_routes == ["ipv4"]
+    assert [k["family"] for k in fake.calls] == [socket.AF_INET, socket.AF_INET6, socket.AF_INET6]
+    assert result.tickers_fetched == 2
+    assert store.get_state(IPV4).cooldown_until is not None
+    assert store.get_state(IPV6).last_success_at is not None

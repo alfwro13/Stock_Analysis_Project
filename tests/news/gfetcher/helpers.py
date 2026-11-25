@@ -40,15 +40,19 @@ def article_html(words=120, lang="en", date=None):
 
 
 class FakeGoogle:
-    """Answers quote-page URLs from a dict; a value may be HTML or an exception to raise."""
+    """Answers quote-page URLs from a dict; a value may be HTML, an exception to raise, or a dict keyed by socket family for an answer per IP stack."""
 
     def __init__(self, answers):
         self.answers = answers
         self.urls = []
+        self.calls = []
 
     def __call__(self, url, headers, **kwargs):
         self.urls.append(url)
+        self.calls.append(kwargs)
         for key, answer in self.answers.items():
+            if isinstance(answer, dict):
+                answer = answer.get(kwargs.get("family"), answer.get(None))
             if key in url:
                 if isinstance(answer, BaseException):
                     raise answer

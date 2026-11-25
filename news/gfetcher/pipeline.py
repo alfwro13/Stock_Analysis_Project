@@ -12,7 +12,7 @@ from utils import ignored_tickers_set, is_synthetic_ticker, is_valid_ticker
 
 from . import store, symbols
 from .article_text import fetch_article
-from .client import BudgetSpent, GoogleClient, GoogleRefused
+from .client import BudgetSpent, GoogleClient, GoogleRefused, NoRoute
 from .parse import Card, looks_english_title
 from .publishers import DROP, FETCH, PublisherPolicy
 
@@ -60,6 +60,9 @@ class RunResult:
     refused_reason: Optional[str] = None
     cooldown_until: Optional[datetime] = None
     layout_suspects: list = field(default_factory=list)
+    routes: list = field(default_factory=list)
+    refused_routes: list = field(default_factory=list)
+    unreachable_routes: list = field(default_factory=list)
     text_statuses: dict = field(default_factory=dict)
 
 
@@ -142,16 +145,15 @@ def run_fetch(settings: FetchSettings, *, sleep: Callable[[float], None] = time.
 
     now = _now()
     store.prune_request_log(now - REQUEST_LOG_RETENTION)
-    state = store.get_state()
-    if state.cooldown_until and state.cooldown_until > now:
-        return RunResult("cooling_down", refused_reason=state.cooldown_reason, cooldown_until=state.cooldown_until)
-    store.mark_run_started(now)
+    client = GoogleClient(settings.google_delay_seconds, settings.max_requests_per_day, sleep=sleep)
+    if not client.active:
+        refused = client.refusal()
+        return RunResult("cooling_down", refused_reason=refused.reason, cooldown_until=refused.until)
     due = select_tickers(settings, now)
     if not due:
         return RunResult("no_tickers")
 
-    client = GoogleClient(settings.google_delay_seconds, settings.max_requests_per_day, sleep=sleep)
-    result = RunResult("ok")
+    result = RunResult("ok", routes=[r.name for r in client.active])
     source_lists = dict(due)
     cards_by_ticker: dict = {}
     cutoff = now - timedelta(days=settings.max_age_days)
@@ -164,6 +166,9 @@ def run_fetch(settings: FetchSettings, *, sleep: Callable[[float], None] = time.
         except BudgetSpent:
             result.status = "budget_spent"
             break
+        except NoRoute:
+            result.status = "unreachable"
+            break
         if resolved is None:
             continue
         cards = [c for c in resolved.page.cards
@@ -173,6 +178,9 @@ def run_fetch(settings: FetchSettings, *, sleep: Callable[[float], None] = time.
             result.layout_suspects.append(ticker)
         cards_by_ticker[ticker] = cards
     result.google_requests = client.requests_made
+    result.refused_routes = sorted(client.cooling)
+    result.unreachable_routes = sorted(client.dropped)
+    client.finish()
 
     found = merge(cards_by_ticker)
     stored = store.existing_article_ids(article_id(t, f.card.url) for f in found for t in f.tickers)
@@ -219,13 +227,12 @@ def run_fetch(settings: FetchSettings, *, sleep: Callable[[float], None] = time.
             })
     policy.save()
     result.articles_new = store.insert_articles(rows)
-    if result.status == "ok" and result.tickers_fetched:
-        store.mark_success(now)
     result.articles_pruned = store.prune_articles(int(cutoff.timestamp()))
     if result.articles_new:
         store.score_unscored_articles()
     logger.info(
-        "Google News Fetcher: %s; %d tickers, %d Google requests, %d new articles, %d pruned.",
-        result.status, result.tickers_fetched, result.google_requests, result.articles_new, result.articles_pruned,
+        "Google News Fetcher: %s; %d tickers, %d Google requests over %s, %d new articles, %d pruned.",
+        result.status, result.tickers_fetched, result.google_requests, "/".join(result.routes), result.articles_new,
+        result.articles_pruned,
     )
     return result

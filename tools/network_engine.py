@@ -6,7 +6,9 @@ import traceback
 import threading
 import queue as _queue_module
 from contextlib import contextmanager
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
+from typing import Optional
 from curl_cffi import requests as cffi_requests
 
 from config import load_config, DATA_DIR
@@ -132,6 +134,32 @@ def _is_transient_error(e: Exception, extra_terms: tuple = ()) -> bool:
 
 def transient_backoff_seconds(attempt: int) -> float:
     return (TRANSIENT_BASE_DELAY ** attempt) + random.uniform(0.5, 1.5)
+
+
+@dataclass(frozen=True)
+class NetworkRouting:
+    use_ipv4: bool
+    use_ipv6: bool
+    ipv6_address: str
+
+    @property
+    def dual(self) -> bool:
+        return self.use_ipv4 and self.use_ipv6
+
+
+def network_routing(config: Optional[dict] = None, apply_fault_latch: bool = True) -> NetworkRouting:
+    """The Settings Advanced Network routing (IPv4, IPv6 or both round-robin); with apply_fault_latch an IPv6 hard fault this session turns IPv6 off, and IPv4 on when IPv6 was the only route."""
+    if config is None:
+        config = load_config()
+    ipv6_addr = config.get("YAHOO_IPV6_ADDRESS", "").strip()
+    use_ipv4 = bool(config.get("YAHOO_USE_IPV4", True))
+    # A config written before YAHOO_USE_IPV6 existed means IPv6 is on when an address is set.
+    use_ipv6 = bool(config.get("YAHOO_USE_IPV6", bool(ipv6_addr))) and bool(ipv6_addr)
+    if apply_fault_latch:
+        _maybe_restore_latch()
+        if GLOBAL_IPV6_STATUS["is_failing"]:
+            use_ipv4, use_ipv6 = True, False
+    return NetworkRouting(use_ipv4, use_ipv6, ipv6_addr)
 
 
 def _select_interface(use_ipv4: bool, use_ipv6: bool) -> str:
@@ -517,16 +545,8 @@ def yahoo_connection_boundary(action_context: str, raise_on_transient: bool = Fa
     _maybe_restore_latch()
     _ensure_yf_error_filter()
     config = load_config()
-    ipv6_addr = config.get("YAHOO_IPV6_ADDRESS", "").strip()
-    use_ipv4 = config.get("YAHOO_USE_IPV4", True)
-    # Backward compat: if YAHOO_USE_IPV6 absent, infer from whether IPv6 addr is set
-    use_ipv6 = config.get("YAHOO_USE_IPV6", bool(ipv6_addr)) and bool(ipv6_addr)
-
-    # IPv6 permanent latch: if IPv6 hard-failed this session, disable it
-    if GLOBAL_IPV6_STATUS["is_failing"]:
-        use_ipv6 = False
-        if not use_ipv4:
-            use_ipv4 = True  # safety: IPv6-only mode but IPv6 is dead
+    routing = network_routing(config)
+    ipv6_addr, use_ipv4, use_ipv6 = routing.ipv6_address, routing.use_ipv4, routing.use_ipv6
 
     interface = _select_interface(use_ipv4, use_ipv6)
 

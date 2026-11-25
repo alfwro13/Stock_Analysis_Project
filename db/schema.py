@@ -953,6 +953,7 @@ def init_db() -> None:
                 id            INTEGER PRIMARY KEY AUTOINCREMENT,
                 requested_at  TEXT    NOT NULL,
                 ticker        TEXT,
+                interface     TEXT    NOT NULL,
                 kind          TEXT    NOT NULL,
                 http_status   INTEGER,
                 outcome       TEXT    NOT NULL,
@@ -963,12 +964,11 @@ def init_db() -> None:
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_gfetcher_request_log_at ON gfetcher_request_log(requested_at)")
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS gfetcher_state (
-                id                   INTEGER PRIMARY KEY CHECK (id = 1),
+                interface            TEXT PRIMARY KEY,
                 cooldown_until       TEXT,
                 cooldown_reason      TEXT,
                 consecutive_refusals INTEGER NOT NULL DEFAULT 0,
-                last_success_at      TEXT,
-                last_run_started_at  TEXT
+                last_success_at      TEXT
             )
         ''')
         cursor.execute('''

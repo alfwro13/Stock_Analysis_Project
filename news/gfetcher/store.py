@@ -34,23 +34,29 @@ class SymbolRow:
     last_probe_status: str
 
 
-def get_state() -> FetcherState:
+def get_states() -> dict:
+    """Cooldown state per interface (`ipv4`, `ipv6`); an interface with no row has never been refused."""
     conn = None
     try:
         conn = get_connection()
-        row = conn.execute("SELECT * FROM gfetcher_state WHERE id = 1").fetchone()
+        rows = conn.execute("SELECT * FROM gfetcher_state").fetchall()
     finally:
         if conn:
             conn.close()
-    if row is None:
-        return FetcherState(None, None, 0, None)
-    return FetcherState(
-        parse_stored_utc(row["cooldown_until"]), row["cooldown_reason"], row["consecutive_refusals"],
-        parse_stored_utc(row["last_success_at"]),
-    )
+    return {
+        r["interface"]: FetcherState(
+            parse_stored_utc(r["cooldown_until"]), r["cooldown_reason"], r["consecutive_refusals"],
+            parse_stored_utc(r["last_success_at"]),
+        )
+        for r in rows
+    }
 
 
-def _upsert_state(**fields) -> None:
+def get_state(interface: str) -> FetcherState:
+    return get_states().get(interface) or FetcherState(None, None, 0, None)
+
+
+def _upsert_state(interface: str, **fields) -> None:
     columns = ", ".join(fields)
     placeholders = ", ".join("?" for _ in fields)
     updates = ", ".join(f"{c} = excluded.{c}" for c in fields)
@@ -58,8 +64,9 @@ def _upsert_state(**fields) -> None:
     try:
         conn = get_connection()
         conn.execute(
-            f"INSERT INTO gfetcher_state (id, {columns}) VALUES (1, {placeholders}) ON CONFLICT(id) DO UPDATE SET {updates}",
-            tuple(fields.values()),
+            f"INSERT INTO gfetcher_state (interface, {columns}) VALUES (?, {placeholders}) "
+            f"ON CONFLICT(interface) DO UPDATE SET {updates}",
+            (interface, *fields.values()),
         )
         conn.commit()
     finally:
@@ -67,27 +74,23 @@ def _upsert_state(**fields) -> None:
             conn.close()
 
 
-def mark_run_started(now: datetime) -> None:
-    _upsert_state(last_run_started_at=stamp(now))
+def set_cooldown(interface: str, until: datetime, reason: str, consecutive_refusals: int) -> None:
+    _upsert_state(interface, cooldown_until=stamp(until), cooldown_reason=reason, consecutive_refusals=consecutive_refusals)
 
 
-def set_cooldown(until: datetime, reason: str, consecutive_refusals: int) -> None:
-    _upsert_state(cooldown_until=stamp(until), cooldown_reason=reason, consecutive_refusals=consecutive_refusals)
+def mark_success(interface: str, now: datetime) -> None:
+    _upsert_state(interface, consecutive_refusals=0, cooldown_until=None, cooldown_reason=None, last_success_at=stamp(now))
 
 
-def mark_success(now: datetime) -> None:
-    _upsert_state(consecutive_refusals=0, cooldown_until=None, cooldown_reason=None, last_success_at=stamp(now))
-
-
-def record_request(now: datetime, ticker: Optional[str], kind: str, http_status: Optional[int], outcome: str,
+def record_request(now: datetime, ticker: Optional[str], interface: str, kind: str, http_status: Optional[int], outcome: str,
                    duration_ms: int, retry_after_s: Optional[int] = None) -> None:
     conn = None
     try:
         conn = get_connection()
         conn.execute(
-            "INSERT INTO gfetcher_request_log (requested_at, ticker, kind, http_status, outcome, duration_ms, retry_after_s) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?)",
-            (stamp(now), ticker, kind, http_status, outcome, duration_ms, retry_after_s),
+            "INSERT INTO gfetcher_request_log (requested_at, ticker, interface, kind, http_status, outcome, duration_ms, retry_after_s) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (stamp(now), ticker, interface, kind, http_status, outcome, duration_ms, retry_after_s),
         )
         conn.commit()
     finally:

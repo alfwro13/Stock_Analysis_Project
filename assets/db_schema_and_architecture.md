@@ -301,11 +301,11 @@ Tables added after initial schema creation. All managed via `db/schema.py:init_d
 
 #### `gfetcher_request_log`
 * **Purpose:** One row per request the Google News Fetcher sends to google.com — the input of its rate-limit monitoring and daily budget. Pruned to 30 days at the start of each run.
-* **Key Columns:** `id` (PK autoincrement), `requested_at` (UTC), `ticker`, `kind` (`quote_page`), `http_status` (`NULL` when no answer arrived), `outcome` (`ok`, `rate_limited`, `captcha`, `error`), `duration_ms`, `retry_after_s` (Google's `Retry-After`, `NULL` when not sent).
+* **Key Columns:** `id` (PK autoincrement), `requested_at` (UTC), `ticker`, `interface` (`ipv4`, `ipv6`: the route it went over), `kind` (`quote_page`), `http_status` (`NULL` when no answer arrived), `outcome` (`ok`, `rate_limited`, `captcha`, `error`), `duration_ms`, `retry_after_s` (Google's `Retry-After`, `NULL` when not sent).
 
 #### `gfetcher_state`
-* **Purpose:** Single row (`id = 1`): the fetcher's circuit breaker. A run inside `cooldown_until` sends nothing.
-* **Key Columns:** `cooldown_until` (UTC, `NULL` when not cooling down), `cooldown_reason` (`HTTP 429`, `HTTP 503`, `CAPTCHA page`), `consecutive_refusals` (picks the 1 h / 6 h / 24 h step; reset by a successful run), `last_success_at`, `last_run_started_at`.
+* **Purpose:** The fetcher's circuit breaker, one row per route (Settings → Advanced Network). A route inside `cooldown_until` gets no request; a run with every route cooling sends nothing.
+* **Key Columns:** `interface` (PK: `ipv4`, `ipv6`; a route with no row has never been refused), `cooldown_until` (UTC, `NULL` when not cooling down), `cooldown_reason` (`HTTP 429`, `HTTP 503`, `CAPTCHA page`), `consecutive_refusals` (picks the 1 h / 6 h / 24 h step; reset when the route answers in a later run without being refused), `last_success_at`.
 
 #### `gfetcher_symbol_map`
 * **Purpose:** App ticker → Google Finance `symbol:exchange`, learned from the first request that found a page, so later runs need one request per ticker.

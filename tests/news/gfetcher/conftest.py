@@ -1,3 +1,5 @@
+import socket
+
 import pytest
 
 
@@ -7,6 +9,8 @@ def _no_network(*args, **kwargs):
 
 @pytest.fixture(autouse=True)
 def _offline(monkeypatch):
+    from news.gfetcher.client import IPV4, Route
     monkeypatch.setattr("news.gfetcher.client.fetch_body", _no_network)
     monkeypatch.setattr("news.gfetcher.article_text.fetch_body", _no_network)
     monkeypatch.setattr("news.gfetcher.store.score_unscored_articles", lambda: None)
+    monkeypatch.setattr("news.gfetcher.client.configured_routes", lambda: [Route(IPV4, socket.AF_INET)])
