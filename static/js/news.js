@@ -15,7 +15,7 @@ function relTime(ts, precision) {
 }
 
 function sourceBadge(src) {
-    const label = {portfolio: 'Portfolio', watchlist: 'Watchlist', both: 'Both', index: 'Index', market: 'Market'};
+    const label = {portfolio: 'Portfolio', watchlist: 'Watchlist', both: 'Both', index: 'Index', market: 'General'};
     return `<span class="art-source-badge art-source-${escapeHtml(src)}">${escapeHtml(label[src] || src)}</span>`;
 }
 
