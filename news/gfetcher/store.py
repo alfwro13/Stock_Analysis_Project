@@ -322,3 +322,17 @@ def publisher_policy_counts() -> dict:
         if conn:
             conn.close()
     return {f"{r['policy']}:{r['source']}": r["n"] for r in rows}
+
+
+def list_symbols() -> list[dict]:
+    conn = None
+    try:
+        conn = get_connection()
+        rows = conn.execute(
+            "SELECT ticker, google_symbol, google_exchange, kind, verified_at, verified_title, last_probe_status "
+            "FROM gfetcher_symbol_map ORDER BY kind, ticker"
+        ).fetchall()
+    finally:
+        if conn:
+            conn.close()
+    return [dict(r) for r in rows]

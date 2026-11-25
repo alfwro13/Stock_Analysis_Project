@@ -13,7 +13,7 @@ from news.gfetcher import article_text, client, pipeline, store
 from news.gfetcher.client import IPV4, IPV6, Route
 from news.gfetcher.pipeline import FetchSettings, run_fetch
 
-from .helpers import TABLES, FakeGoogle, article_html, card, http_error, quote_page
+from .helpers import NOT_FOUND_PAGE, TABLES, FakeGoogle, article_html, card, http_error, quote_page
 
 pytestmark = pytest.mark.restore_tables(*TABLES)
 
@@ -238,3 +238,24 @@ def test_a_dual_stack_run_carries_on_over_ipv6_after_ipv4_is_refused(monkeypatch
     assert result.tickers_fetched == 2
     assert store.get_state(IPV4).cooldown_until is not None
     assert store.get_state(IPV6).last_success_at is not None
+
+
+def test_the_probe_checks_indexes_and_unmapped_tickers_and_ignores_the_not_found_week(monkeypatch):
+    _lists(monkeypatch, {"AAPL": "portfolio", "KO": "portfolio", "ZZZZ": "watchlist"}, indexes=["^FTSE"])
+    now = datetime.now(timezone.utc)
+    store.save_symbol("KO", "KO", "NYSE", "listing", now, "Coca-Cola", "found")
+    store.save_symbol("ZZZZ", None, None, "listing", now, None, "not_found")
+    fake = FakeGoogle({"AAPL:NASDAQ": quote_page(), "UKX:INDEXFTSE": quote_page(title="FTSE 100 - Google Finance"), "ZZZZ:": NOT_FOUND_PAGE})
+    monkeypatch.setattr(client, "fetch_body", fake)
+    summary = pipeline.probe_symbols(FetchSettings(), sleep=lambda s: None)
+    assert summary["status"] == "ok" and summary["checked"] == 3
+    assert summary["found"] == ["AAPL -> AAPL:NASDAQ", "^FTSE -> UKX:INDEXFTSE"] and summary["not_found"] == ["ZZZZ"]
+    assert not any("KO:" in u for u in fake.urls)
+    assert _rows() == []
+
+
+def test_the_probe_stops_at_a_refusal(monkeypatch):
+    _lists(monkeypatch, {"AAPL": "portfolio", "MSFT": "portfolio"})
+    monkeypatch.setattr(client, "fetch_body", FakeGoogle({"": http_error(429)}))
+    summary = pipeline.probe_symbols(FetchSettings(), sleep=lambda s: None)
+    assert summary["status"] == "refused" and summary["reason"] == "ipv4: HTTP 429" and summary["checked"] == 0

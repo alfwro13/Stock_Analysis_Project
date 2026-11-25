@@ -117,5 +117,8 @@ class TestReadOnlyGuarantee:
                 arguments["goal"] = "lower_heat"
             if "report" in tool["inputSchema"].get("properties", {}):
                 arguments["report"] = "mean_reversion"
+            if "article_id" in tool["inputSchema"].get("properties", {}):
+                call(mcp_client, tool["name"], {"article_id": 999_999_999})
+                continue
             tool_data(call(mcp_client, tool["name"], arguments))
         assert table_counts() == before

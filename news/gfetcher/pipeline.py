@@ -92,8 +92,8 @@ def _now() -> datetime:
     return datetime.now(timezone.utc)
 
 
-def select_tickers(settings: FetchSettings, now: datetime) -> list[tuple[str, str]]:
-    """(ticker, source_list) pairs due for a fetch: never-fetched first in scope order, then the oldest fetch."""
+def scope_tickers(settings: FetchSettings) -> dict:
+    """{ticker: source_list} of every ticker in the selected scopes that Google can have a page for."""
     from market_pulse import get_index_tickers
     from news_feed_engine import _build_ticker_source_map
 
@@ -109,8 +109,13 @@ def select_tickers(settings: FetchSettings, now: datetime) -> list[tuple[str, st
                 wanted.setdefault(ticker, INDEX_SOURCE_LIST)
     ignored = ignored_tickers_set()
     funds = get_mutual_fund_tickers(list(wanted))
-    usable = {t: s for t, s in wanted.items()
-              if is_valid_ticker(t) and not is_synthetic_ticker(t) and t not in funds and t.upper() not in ignored}
+    return {t: s for t, s in wanted.items()
+            if is_valid_ticker(t) and not is_synthetic_ticker(t) and t not in funds and t.upper() not in ignored}
+
+
+def select_tickers(settings: FetchSettings, now: datetime) -> list[tuple[str, str]]:
+    """(ticker, source_list) pairs due for a fetch: never-fetched first in scope order, then the oldest fetch."""
+    usable = scope_tickers(settings)
     last = store.ticker_last_fetched(usable)
     floor = now - timedelta(minutes=settings.min_refetch_minutes)
     due = [(t, s) for t, s in usable.items() if last.get(t) is None or last[t] <= floor]
@@ -252,3 +257,35 @@ def run_fetch(settings: FetchSettings, *, sleep: Callable[[float], None] = time.
         result.articles_pruned,
     )
     return result
+
+
+def probe_symbols(settings: FetchSettings, *, sleep: Callable[[float], None] = time.sleep) -> dict:
+    """Check the Google symbol of every index in scope and of every ticker without a found mapping, one request each, under the same pacing, budget and cooldown as a run; stores the result and no news."""
+    now = _now()
+    client = GoogleClient(settings.google_delay_seconds, settings.max_requests_per_day, sleep=sleep)
+    if not client.active:
+        refused = client.refusal()
+        return {"status": "cooling_down", "reason": refused.reason, "checked": 0, "found": [], "not_found": []}
+    targets = []
+    for ticker in sorted(scope_tickers(settings)):
+        stored = store.get_symbol(ticker)
+        if ticker in symbols.INDEX_SYMBOLS or stored is None or stored.last_probe_status != "found":
+            targets.append(ticker)
+    summary = {"status": "ok", "reason": None, "checked": 0, "found": [], "not_found": []}
+    for ticker in targets:
+        try:
+            resolved = symbols.resolve(ticker, client, now, force=True)
+        except GoogleRefused as e:
+            summary.update(status="refused", reason=e.reason)
+            break
+        except (BudgetSpent, NoRoute) as e:
+            summary.update(status="budget_spent" if isinstance(e, BudgetSpent) else "unreachable")
+            break
+        summary["checked"] += 1
+        row = store.get_symbol(ticker)
+        if resolved is not None:
+            summary["found"].append(f"{ticker} -> {resolved.symbol}:{resolved.exchange}")
+        elif row is not None and row.last_probe_status == "not_found":
+            summary["not_found"].append(ticker)
+    client.finish()
+    return summary

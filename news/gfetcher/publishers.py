@@ -55,6 +55,15 @@ def _blank(domain: str, policy: str, source: str, reason: Optional[str], now: da
     return row
 
 
+def _learned_policy(row: dict) -> tuple[str, Optional[str]]:
+    successes = sum(row[f"{c}_count"] for c in SUCCESS)
+    blocks = sum(row[f"{c}_count"] for c in BLOCK_LIKE)
+    if successes or blocks < AUTO_BLOCK_MIN:
+        return ALLOW, None
+    paywall = row["paywall_count"] >= row["blocked_count"] + row["unreachable_count"]
+    return (BLOCK_PAYWALL if paywall else BLOCK_BOTS), f"learned: {blocks} refused fetches and no success"
+
+
 class PublisherPolicy:
     """What to do with an article from each domain; loaded once per run and written back with save()."""
 
@@ -93,17 +102,44 @@ class PublisherPolicy:
         self.rows[row["domain"]] = row
         row[f"{status}_count"] += 1
         if row["source"] == AUTO:
-            successes = sum(row[f"{c}_count"] for c in SUCCESS)
-            blocks = sum(row[f"{c}_count"] for c in BLOCK_LIKE)
-            if successes:
-                row["policy"], row["reason"] = ALLOW, None
-            elif blocks >= AUTO_BLOCK_MIN:
-                paywall = row["paywall_count"] >= row["blocked_count"] + row["unreachable_count"]
-                row["policy"] = BLOCK_PAYWALL if paywall else BLOCK_BOTS
-                row["reason"] = f"learned: {blocks} refused fetches and no success"
+            row["policy"], row["reason"] = _learned_policy(row)
         row["updated_at"] = store.stamp(self.now)
         self._dirty.add(row["domain"])
 
     def save(self) -> None:
         store.save_publishers(self.rows[d] for d in self._dirty)
         self._dirty.clear()
+
+
+POLICIES = (ALLOW, BLOCK_PAYWALL, BLOCK_BOTS)
+
+
+def list_rules(now: datetime) -> list[dict]:
+    """Every publisher rule, the seeded ones included, sorted by domain."""
+    policy = PublisherPolicy(now)
+    return [policy.rows[d] for d in sorted(policy.rows)]
+
+
+def set_rule(domain: str, rule: str, now: datetime) -> dict:
+    """Make `rule` the operator's own (manual) rule for `domain`, keeping its counts."""
+    policy = PublisherPolicy(now)
+    row = policy.rows.get(domain) or _blank(domain, rule, MANUAL, None, now)
+    row.update(policy=rule, source=MANUAL, reason="set in Settings", updated_at=store.stamp(now))
+    policy.rows[domain] = row
+    policy._dirty.add(domain)
+    policy.save()
+    return row
+
+
+def clear_rule(domain: str, now: datetime) -> Optional[dict]:
+    """Drop the manual rule for `domain`: it goes back to what its own counts teach (allow until two refusals and no success); None when the domain has no row."""
+    policy = PublisherPolicy(now)
+    row = policy.rows.get(domain)
+    if row is None:
+        return None
+    row["source"] = AUTO
+    row["policy"], row["reason"] = _learned_policy(row)
+    row["updated_at"] = store.stamp(now)
+    policy._dirty.add(domain)
+    policy.save()
+    return row

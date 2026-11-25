@@ -166,7 +166,7 @@ def test_trigger_endpoint_answers_409_busy_while_the_job_is_running(client, endp
     "/api/pattern-detection/backfill", "/api/market-regime/run", "/api/sector-relative-momentum/run",
     "/api/predicted-movers/shortlist/run", "/api/forensic-scores/run-fetch", "/api/forensic-scores/run-score",
     "/api/xray/trigger", "/api/accounts/value-snapshot/trigger",
-    "/api/accounts/treasury-bills/maturity-sweep/trigger", "/api/gfetcher/run-now",
+    "/api/accounts/treasury-bills/maturity-sweep/trigger", "/api/gfetcher/run-now", "/api/gfetcher/probe",
 ])
 def test_other_trigger_endpoints_answer_409_busy_while_the_job_is_running(client, endpoint):
     with patch("scheduler_engine.is_job_running", return_value=True), \

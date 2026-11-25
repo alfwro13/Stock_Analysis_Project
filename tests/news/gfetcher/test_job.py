@@ -110,3 +110,53 @@ def test_settings_save_round_trips_the_block(client, step_up_headers):
 def test_settings_save_refuses_a_bad_value(client, step_up_headers, field, value):
     resp = client.post("/api/settings", json={"SCHEDULING": {"GFETCHER": {**VALID_BLOCK, field: value}}}, headers=step_up_headers)
     assert resp.status_code == 422
+
+
+def test_the_probe_runner_reports_its_summary():
+    summary = {"status": "ok", "reason": None, "checked": 2, "found": ["^FTSE -> UKX:INDEXFTSE"], "not_found": ["^IBEX"]}
+    with patch("scheduler_jobs.load_config", return_value=ENABLED), \
+         patch("news.gfetcher.probe_symbols", return_value=summary), \
+         patch("scheduler_jobs.log_sched_notification") as notify:
+        scheduler_jobs.run_gfetcher_probe()
+    kind, text = notify.call_args.args
+    assert kind == "Success" and "2 checked, 1 found, 1 without a Google page (^IBEX)" in text
+
+
+def test_the_probe_route_queues_refuses_while_disabled_and_while_the_fetcher_runs(client):
+    with patch("api.routes_gfetcher._enabled", return_value=True), patch.object(BackgroundTasks, "add_task") as add_task:
+        assert client.post("/api/gfetcher/probe").status_code == 200
+    assert add_task.call_args.args[1:] == ("gfetcher_probe_source", scheduler_jobs.run_gfetcher_probe)
+    with patch("api.routes_gfetcher._enabled", return_value=False), patch.object(BackgroundTasks, "add_task") as add_task:
+        assert client.post("/api/gfetcher/probe").status_code == 409
+    add_task.assert_not_called()
+    with patch("scheduler_engine.is_job_running", side_effect=lambda job_id: job_id == "gfetcher_job"), \
+         patch.object(BackgroundTasks, "add_task") as add_task:
+        resp = client.post("/api/gfetcher/probe")
+    assert resp.status_code == 409 and resp.json()["status"] == "busy"
+    add_task.assert_not_called()
+
+
+def test_the_symbols_route_lists_the_mappings(client):
+    from datetime import datetime, timezone
+    from news.gfetcher import store
+    store.save_symbol("^FTSE", "UKX", "INDEXFTSE", "index", datetime.now(timezone.utc), "FTSE 100", "found")
+    rows = client.get("/api/gfetcher/symbols").json()["symbols"]
+    assert {"ticker": "^FTSE", "google_symbol": "UKX", "google_exchange": "INDEXFTSE"}.items() <= next(r for r in rows if r["ticker"] == "^FTSE").items()
+
+
+def test_publisher_rules_can_be_set_listed_and_cleared(client):
+    resp = client.post("/api/gfetcher/publishers", json={"domain": " WWW.Example-News.com ", "policy": "block_paywall"})
+    assert resp.status_code == 200 and resp.json()["publisher"]["domain"] == "example-news.com"
+    listed = {r["domain"]: r for r in client.get("/api/gfetcher/publishers").json()["publishers"]}
+    assert (listed["example-news.com"]["policy"], listed["example-news.com"]["source"]) == ("block_paywall", "manual")
+    cleared = client.delete("/api/gfetcher/publishers/example-news.com")
+    assert cleared.status_code == 200 and cleared.json()["publisher"]["source"] == "auto"
+    assert client.delete("/api/gfetcher/publishers/nothing-here.example").status_code == 404
+
+
+@pytest.mark.parametrize("body", [
+    {"domain": "not a domain", "policy": "allow"}, {"domain": "https://x.com/path", "policy": "allow"},
+    {"domain": "example.com", "policy": "maybe"}, {"domain": "a" * 300 + ".com", "policy": "allow"},
+])
+def test_a_bad_publisher_rule_is_refused(client, body):
+    assert client.post("/api/gfetcher/publishers", json=body).status_code == 422

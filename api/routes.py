@@ -712,12 +712,13 @@ def get_fx_drag(
 @api_router.get("/news-feed")
 def get_news_feed(
     request: Request,
-    source: str = Query(default="all", pattern=r"^(all|portfolio|watchlist|both)$"),
+    source: str = Query(default="all", pattern=r"^(all|portfolio|watchlist|both|index|market)$"),
+    feed: str = Query(default="all", pattern=r"^(all|yahoo|google)$"),
     limit: int = Query(default=50, ge=1, le=500),
     offset: int = Query(default=0, ge=0),
 ):
     try:
-        articles, total = fetch_articles(source=source, limit=limit, offset=offset)
+        articles, total = fetch_articles(source=source, limit=limit, offset=offset, feed=feed)
         return JSONResponse(content={"articles": articles, "total": total})
     except Exception as e:
         logger.error("GET /api/news-feed failed: %s", e, exc_info=True)
