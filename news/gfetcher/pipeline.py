@@ -50,6 +50,21 @@ class FetchSettings:
     publisher_delay_seconds: float = 1.0
 
 
+def settings_from_config(block: dict) -> FetchSettings:
+    """FetchSettings from the SCHEDULING.GFETCHER block of config.json; a missing key keeps the default."""
+    defaults = FetchSettings()
+    scopes = tuple(s for s in block.get("SCOPES", defaults.scopes) if s in SCOPES)
+    return FetchSettings(
+        scopes=scopes,
+        max_tickers_per_run=int(block.get("MAX_TICKERS_PER_RUN", defaults.max_tickers_per_run)),
+        max_requests_per_day=int(block.get("MAX_REQUESTS_PER_DAY", defaults.max_requests_per_day)),
+        google_delay_seconds=float(block.get("GOOGLE_DELAY_SECONDS", defaults.google_delay_seconds)),
+        fetch_full_text=bool(block.get("FETCH_FULL_TEXT", defaults.fetch_full_text)),
+        max_per_ticker=int(block.get("MAX_PER_TICKER", defaults.max_per_ticker)),
+        max_age_days=int(block.get("MAX_AGE_DAYS", defaults.max_age_days)),
+    )
+
+
 @dataclass
 class RunResult:
     status: str
@@ -63,6 +78,7 @@ class RunResult:
     routes: list = field(default_factory=list)
     refused_routes: list = field(default_factory=list)
     unreachable_routes: list = field(default_factory=list)
+    recovered_routes: list = field(default_factory=list)
     text_statuses: dict = field(default_factory=dict)
 
 
@@ -174,13 +190,13 @@ def run_fetch(settings: FetchSettings, *, sleep: Callable[[float], None] = time.
         cards = [c for c in resolved.page.cards
                  if looks_english_title(c.title) and (c.published is None or c.published >= cutoff)][: settings.max_per_ticker]
         result.tickers_fetched += 1
-        if store.save_ticker_fetch(ticker, source_list, now, len(resolved.page.cards)) >= EMPTY_STREAK_ALARM:
+        if store.save_ticker_fetch(ticker, source_list, now, len(resolved.page.cards)) == EMPTY_STREAK_ALARM:
             result.layout_suspects.append(ticker)
         cards_by_ticker[ticker] = cards
     result.google_requests = client.requests_made
-    result.refused_routes = sorted(client.cooling)
+    result.refused_routes = client.refused_now
     result.unreachable_routes = sorted(client.dropped)
-    client.finish()
+    result.recovered_routes = client.finish()
 
     found = merge(cards_by_ticker)
     stored = store.existing_article_ids(article_id(t, f.card.url) for f in found for t in f.tickers)

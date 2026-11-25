@@ -95,6 +95,7 @@ Request models in `api/routes_accounts.py`, `api/routes_pension.py`, `api/routes
 | Investment policy text | 50,000 characters (`INVESTMENT_POLICY_MAX_CHARS`, `422`); the MCP Server refuses a longer file on disk too | `PUT /api/investment-policy` |
 | MCP public host | 253 characters (`MCP_PUBLIC_HOST_MAX_CHARS`); allowed networks 16 (`MCP_REMOTE_CIDRS_MAX`) (`422`) | `POST /api/settings` |
 | Column lists | 200 keys per list (the registry holds about 100 per page), key 64 characters | `POST /api/ui-preferences/columns`, a View's `columns`/`column_order` |
+| Google News Fetcher settings (`SCHEDULING.GFETCHER`) | interval 15/20/30/60 min; scopes `portfolio`/`watchlist`/`indexes`; tickers per run 1-50 (`GFETCHER_MAX_TICKERS_PER_RUN`); daily request budget 1-1,000 (`GFETCHER_MAX_REQUESTS_PER_DAY`); minimum gap 3-60 s (`GFETCHER_MIN_DELAY_SECONDS`, `GFETCHER_MAX_DELAY_SECONDS`); articles per ticker 1-30 (`GFETCHER_MAX_PER_TICKER`); retention 1-30 days (`422`) | `POST /api/settings` |
 
 ### Ticker format
 
@@ -2655,6 +2656,8 @@ Sends a test insider trading alert via Nextcloud Talk.
 | `GET` | `/api/fx-drag` | FX-decomposed return breakdown for all USD portfolio positions |
 | `GET` | `/api/news-feed` | Paginated news articles from local store |
 | `POST` | `/api/news-feed/run-now` | Trigger immediate news feed refresh |
+| `GET` | `/api/gfetcher/status` | Google News Fetcher health: routes and their cooldowns, last 24 h of requests, stored articles, publisher rules |
+| `POST` | `/api/gfetcher/run-now` | Run the Google News Fetcher now (409 while it runs or while it is disabled) |
 | `GET` | `/api/logs/tail` | Last N lines of the active log file as JSON |
 | `GET` | `/api/logs/stream` | Server-Sent Events live tail of the active log file |
 
@@ -3159,6 +3162,39 @@ Triggers an immediate news feed refresh in the background. Fetches news for all 
 
 **Request body:** none  
 **Response:** `{"status": "success", "message": "News feed refresh triggered."}`
+
+### `GET /api/gfetcher/status`
+
+Health of the Google News Fetcher for the Settings panel (`news.gfetcher.health_status()`, plus the job's last run from `scheduler_run_log`). Session cookie required.
+
+```json
+{
+  "status": "success",
+  "enabled": true,
+  "last_run": "2026-11-26 09:41:12",
+  "last_status": "success",
+  "routes": [
+    {"route": "ipv4", "cooling": true, "cooldown_until": "2026-11-26T10:41:02+00:00", "cooldown_reason": "HTTP 429",
+     "consecutive_refusals": 1, "last_success_at": "2026-11-26T09:11:40+00:00"},
+    {"route": "ipv6", "cooling": false, "cooldown_until": null, "cooldown_reason": null,
+     "consecutive_refusals": 0, "last_success_at": "2026-11-26T09:41:10+00:00"}
+  ],
+  "requests_24h": 64,
+  "refusals_24h": 1,
+  "requests_by_route_24h": [{"interface": "ipv4", "outcome": "ok", "n": 30}, {"interface": "ipv4", "outcome": "rate_limited", "n": 1}],
+  "articles": {"stored": 412, "added": 57, "with_text": 289},
+  "publishers": {"allow:manual": 8, "block_paywall:manual": 4, "block_bots:manual": 12, "allow:auto": 31}
+}
+```
+
+`routes` follows Settings → Advanced Network (one entry per IPv4/IPv6 route in use). `last_run` is stored UTC; the other times are ISO UTC. An error answers the fixed `500` message.
+
+### `POST /api/gfetcher/run-now`
+
+Queues one Google News Fetcher run (`gfetcher_job`). Session cookie and CSRF token required; limited to 6 requests per minute. Answers `409` `{"status": "busy", ...}` while the job runs and `409` `{"status": "disabled", ...}` while `SCHEDULING.GFETCHER.ENABLED` is off. A run during a cooldown sends nothing to Google (see `assets/google_news_fetcher.md`).
+
+**Request body:** none  
+**Response:** `{"status": "success", "message": "Google News Fetcher run queued."}`
 
 ---
 

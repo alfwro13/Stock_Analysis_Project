@@ -876,6 +876,25 @@ def reload_scheduler():
         except Exception as e:
             logger.error("Failed to schedule News Feed job: %s", e)
 
+    gfetcher_cfg = scheduling.get("GFETCHER", {})
+    if gfetcher_cfg.get("ENABLED", False):
+        try:
+            start_h = int(gfetcher_cfg.get("START_TIME", "07:00").split(":")[0])
+            end_h = int(gfetcher_cfg.get("END_TIME", "22:00").split(":")[0])
+            mins = int(gfetcher_cfg.get("INTERVAL_MINUTES", 30))
+            freq = gfetcher_cfg.get("FREQUENCY", "mon-fri")
+            scheduler.add_job(
+                run_gfetcher_job,
+                # Minute 11 keeps it off the other interval jobs' minutes; jitter keeps Google from seeing a fixed clock.
+                CronTrigger(day_of_week=freq, hour=f"{start_h}-{end_h}", minute=f"11-59/{mins}", timezone=user_tz, jitter=120),
+                id="gfetcher_job",
+                replace_existing=True,
+                misfire_grace_time=300,
+            )
+            logger.info("Google News Fetcher scheduled (%s %02d:00-%02d:59 every %dm).", freq, start_h, end_h, mins)
+        except Exception as e:
+            logger.error("Failed to schedule Google News Fetcher: %s", e)
+
     bubble_cfg = scheduling.get("BUBBLE_RADAR", {})
     if bubble_cfg.get("ENABLED", False):
         try:
@@ -1336,7 +1355,7 @@ from scheduler_jobs import (
     run_ai_contagion_job, run_trap_monitor_job, run_trap_accuracy_fill_job, run_alert_referee_training_job,
     run_confluence_referee_training_job,
     run_bubble_radar_job, run_pairs_spread_monitor_job, run_pairs_spread_universe_scan,
-    run_sector_relative_momentum_job, run_stable_shortlist_job,
+    run_sector_relative_momentum_job, run_stable_shortlist_job, run_gfetcher_job,
     run_pattern_detection_job, run_pattern_detection_accuracy_fill_job, run_pattern_detection_backfill_job,
     run_market_regime_hmm_job, run_universe_csv_import_scan, run_etf_predictor_job, run_etf_predictor_fill_actuals_job,
     register_etf_predictor_jobs, unregister_etf_predictor_jobs,

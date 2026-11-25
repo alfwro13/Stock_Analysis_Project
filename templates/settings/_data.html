@@ -245,6 +245,83 @@
                     <button type="button" class="btn btn-primary mt-0" onclick="triggerNewsFetch()">▶ Fetch News Now</button>
                     <span id="news-fetch-status" class="ms-2 text-sm"></span>
                 </div>
+
+                {% set gf = config.SCHEDULING.GFETCHER %}
+                <div class="settings-panel-sm border-left-blue" id="gfetcher-panel" data-search-keywords="google news fetcher, gfetcher, google finance, google news">
+                    <h4 class="settings-panel-header text-blue">🌐 Google News Fetcher</h4>
+                    <p class="settings-desc-sm">Reads the news list on Google Finance quote pages for your Portfolio, Watchlist and the Markets indexes, downloads the article text and stores it next to the News Feed's articles, so the News page, sentiment and the MCP Server see it. Google Finance has no public API and its terms do not allow automated access, so requests are few and spaced 3-6 s apart at random; when Google refuses an address it pauses (1 h, then 6 h, then 24 h) and the run carries on over the other address of Advanced Network's IPv4/IPv6 setting. Paywalled sites are skipped and bot-blocking sites keep their headline only.</p>
+                    <div class="checkbox-group">
+                        <input type="checkbox" id="GFETCHER_ENABLED" {% if gf.ENABLED %}checked{% endif %}>
+                        <label for="GFETCHER_ENABLED">Enable the Google News Fetcher</label>
+                    </div>
+                    <div class="flex-gap-15 mb-10">
+                        <div class="form-group flex-1">
+                            <label>Active Days</label>
+                            <select id="GFETCHER_FREQ" class="form-select">
+                                <option value="mon-fri" {% if gf.FREQUENCY == 'mon-fri' %}selected{% endif %}>Mon-Fri</option>
+                                <option value="*" {% if gf.FREQUENCY == '*' %}selected{% endif %}>Every Day</option>
+                            </select>
+                        </div>
+                        <div class="form-group flex-1">
+                            <label>Start Time</label>
+                            <input type="time" id="GFETCHER_START" class="form-control" value="{{ gf.START_TIME | default('07:00') }}">
+                        </div>
+                        <div class="form-group flex-1">
+                            <label>End Time</label>
+                            <input type="time" id="GFETCHER_END" class="form-control" value="{{ gf.END_TIME | default('22:00') }}">
+                        </div>
+                        <div class="form-group flex-1">
+                            <label>Interval</label>
+                            <select id="GFETCHER_INTERVAL" class="form-select">
+                                {% for m in [15, 20, 30, 60] %}<option value="{{ m }}" {% if gf.INTERVAL_MINUTES == m %}selected{% endif %}>{{ m }} min</option>{% endfor %}
+                            </select>
+                        </div>
+                    </div>
+                    <div class="flex-gap-15 mb-10">
+                        <div class="checkbox-group">
+                            <input type="checkbox" id="GFETCHER_SCOPE_PORTFOLIO" {% if 'portfolio' in gf.SCOPES %}checked{% endif %}>
+                            <label for="GFETCHER_SCOPE_PORTFOLIO">Portfolio</label>
+                        </div>
+                        <div class="checkbox-group">
+                            <input type="checkbox" id="GFETCHER_SCOPE_WATCHLIST" {% if 'watchlist' in gf.SCOPES %}checked{% endif %}>
+                            <label for="GFETCHER_SCOPE_WATCHLIST">Watchlist</label>
+                        </div>
+                        <div class="checkbox-group">
+                            <input type="checkbox" id="GFETCHER_SCOPE_INDEXES" {% if 'indexes' in gf.SCOPES %}checked{% endif %}>
+                            <label for="GFETCHER_SCOPE_INDEXES"><abbr title="The Markets &amp; Market Pulse indexes Google Finance has a page for; FX, commodities and rates are not fetched.">Indexes</abbr></label>
+                        </div>
+                        <div class="checkbox-group">
+                            <input type="checkbox" id="GFETCHER_FULL_TEXT" {% if gf.FETCH_FULL_TEXT %}checked{% endif %}>
+                            <label for="GFETCHER_FULL_TEXT">Download article text</label>
+                        </div>
+                    </div>
+                    <div class="flex-gap-15 mb-10">
+                        <div class="form-group flex-1">
+                            <label><abbr title="Tickers fetched per run; the oldest fetch goes first, so a short interval with a small cap spreads the requests.">Tickers / Run</abbr></label>
+                            <input type="number" id="GFETCHER_MAX_TICKERS" class="form-control" value="{{ gf.MAX_TICKERS_PER_RUN | default(12) }}" min="1" max="{{ gfetcher_limits.max_tickers }}">
+                        </div>
+                        <div class="form-group flex-1">
+                            <label><abbr title="Most requests to Google in any 24 hours, over every address together.">Daily Request Budget</abbr></label>
+                            <input type="number" id="GFETCHER_MAX_REQUESTS" class="form-control" value="{{ gf.MAX_REQUESTS_PER_DAY | default(300) }}" min="1" max="{{ gfetcher_limits.max_requests }}">
+                        </div>
+                        <div class="form-group flex-1">
+                            <label><abbr title="Shortest gap between two Google requests; each gap is drawn at random between this and twice it.">Min Gap (s)</abbr></label>
+                            <input type="number" id="GFETCHER_DELAY" class="form-control" value="{{ gf.GOOGLE_DELAY_SECONDS | default(3) }}" min="{{ gfetcher_limits.min_delay }}" max="{{ gfetcher_limits.max_delay }}" step="0.5">
+                        </div>
+                        <div class="form-group flex-1">
+                            <label>Max Articles / Ticker</label>
+                            <input type="number" id="GFETCHER_MAX_PER" class="form-control" value="{{ gf.MAX_PER_TICKER | default(10) }}" min="1" max="{{ gfetcher_limits.max_per_ticker }}">
+                        </div>
+                        <div class="form-group flex-1">
+                            <label>Retain Articles (Days)</label>
+                            <input type="number" id="GFETCHER_MAX_AGE" class="form-control" value="{{ gf.MAX_AGE_DAYS | default(7) }}" min="1" max="30">
+                        </div>
+                    </div>
+                    <div id="gfetcher-health" class="mb-10"></div>
+                    <button type="button" class="btn btn-primary mt-0" id="gfetcher-run-btn" onclick="triggerGfetcherRun()">▶ Run Now</button>
+                    <button type="button" class="btn btn-secondary mt-0" onclick="loadGfetcherStatus()">↻ Refresh Status</button>
+                    <span id="gfetcher-status-msg" class="ms-2 text-sm"></span>
+                </div>
             </details>
 
             <details class="settings-card" id="macro-data-card">

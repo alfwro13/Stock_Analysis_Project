@@ -3922,6 +3922,20 @@ The connector changes nothing without my yes: never claim to have placed a trade
 <p>The model runs entirely locally on the server — no data is sent to an external API. It processes news articles in batches nightly, truncating text to the 512-token BERT input limit (roughly 380 words). For very long articles, the sentiment reflects the first 380 words, which is typically the most informative section (headline, key announcement) rather than boilerplate legal language at the end.</p>""",
     },
     {
+        "term_key": "google-news-fetcher",
+        "section_id": "methodology",
+        "term_title": "Google News Fetcher",
+        "question": "What does the Google News Fetcher do when Google refuses one of its addresses?",
+        "answer": "It pauses that address (1 hour, then 6, then 24) and carries on over the other address when IPv4 and IPv6 are both enabled",
+        "distractors": [
+            "It retries the same request at once until Google answers",
+            "It switches to a proxy service to get around the block",
+            "It stops for good until the operator re-enables it in Settings",
+        ],
+        "explanation": """<p>The <strong>Google News Fetcher</strong> is an optional second news source, off by default (Settings → News &amp; RSS). On its own schedule it reads the news list Google Finance shows on each quote page for your Portfolio, your Watchlist and the Markets indexes, downloads the article text from the publisher and stores the articles next to the News Feed's, where the News page, FinBERT sentiment and the MCP Server read them.</p>
+<p>Google Finance has no public API and its terms do not allow automated access, so the fetcher behaves politely: a few tickers per run, a random gap of 3-6 seconds between requests, a daily request budget, and an immediate pause for any address Google refuses (1 hour, then 6, then 24). With IPv4 and IPv6 both enabled in Advanced Network it alternates the two addresses and carries on over the other when one is paused; it never tries to get around a block. Paywalled sites are skipped, and sites that block automated downloads keep their headline only.</p>""",
+    },
+    {
         "term_key": "glossary-learning-spaced-repetition",
         "section_id": "methodology",
         "term_title": "Glossary Learning (Spaced Repetition)",

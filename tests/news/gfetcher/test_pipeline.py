@@ -134,7 +134,7 @@ def test_the_run_stops_at_the_first_refusal_and_keeps_what_it_got(monkeypatch):
     assert result.status == "refused" and result.refused_reason == "ipv4: HTTP 429"
     assert not any("MSFT" in u for u in fake.urls)
     assert [r["ticker"] for r in _rows()] == ["AAPL"]
-    assert result.refused_routes == ["ipv4"]
+    assert [r["route"] for r in result.refused_routes] == ["ipv4"]
 
 
 def test_a_run_during_a_cooldown_sends_nothing(monkeypatch):
@@ -210,8 +210,8 @@ def test_the_page_date_replaces_a_coarse_estimate(monkeypatch):
 def test_a_valid_page_with_no_news_three_runs_running_is_a_layout_suspect(monkeypatch):
     _lists(monkeypatch, {"AAPL": "portfolio"})
     monkeypatch.setattr(client, "fetch_body", FakeGoogle({"AAPL:NASDAQ": quote_page()}))
-    results = [_run(min_refetch_minutes=0) for _ in range(3)]
-    assert [r.layout_suspects for r in results] == [[], [], ["AAPL"]]
+    results = [_run(min_refetch_minutes=0) for _ in range(4)]
+    assert [r.layout_suspects for r in results] == [[], [], ["AAPL"], []]
 
 
 def test_scoring_runs_only_when_articles_were_added(monkeypatch):
@@ -233,7 +233,7 @@ def test_a_dual_stack_run_carries_on_over_ipv6_after_ipv4_is_refused(monkeypatch
     monkeypatch.setattr(client, "fetch_body", fake)
     _publishers(monkeypatch)
     result = _run()
-    assert result.status == "ok" and result.refused_routes == ["ipv4"]
+    assert result.status == "ok" and [r["route"] for r in result.refused_routes] == ["ipv4"]
     assert [k["family"] for k in fake.calls] == [socket.AF_INET, socket.AF_INET6, socket.AF_INET6]
     assert result.tickers_fetched == 2
     assert store.get_state(IPV4).cooldown_until is not None

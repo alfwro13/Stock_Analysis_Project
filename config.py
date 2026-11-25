@@ -260,6 +260,20 @@ DEFAULT_CONFIG = {
             "MAX_PER_TICKER": 5,
             "MAX_AGE_DAYS": 7
         },
+        "GFETCHER": {
+            "ENABLED": False,
+            "FREQUENCY": "mon-fri",
+            "START_TIME": "07:00",
+            "END_TIME": "22:00",
+            "INTERVAL_MINUTES": 30,
+            "SCOPES": ["portfolio", "watchlist", "indexes"],
+            "MAX_TICKERS_PER_RUN": 12,
+            "MAX_REQUESTS_PER_DAY": 300,
+            "GOOGLE_DELAY_SECONDS": 3,
+            "FETCH_FULL_TEXT": True,
+            "MAX_PER_TICKER": 10,
+            "MAX_AGE_DAYS": 7
+        },
         "TRAP_MONITORS": {
             "ENABLED": False,
             "BULL_TRAP": True,

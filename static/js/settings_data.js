@@ -294,8 +294,72 @@ async function removeFromBlacklist() {
     }
 }
 
+function _gfetcherTime(value, stored) {
+    if (!value) return '—';
+    const d = new Date(stored ? value.replace(' ', 'T') + 'Z' : value);
+    return isNaN(d) ? value : d.toLocaleString();
+}
+
+function _gfetcherRoute(r) {
+    const state = r.cooling
+        ? `paused until ${_gfetcherTime(r.cooldown_until)} (${r.cooldown_reason})`
+        : (r.consecutive_refusals ? `available (refused ${r.consecutive_refusals}x in a row)` : 'available');
+    return `${state}; last answer ${_gfetcherTime(r.last_success_at)}`;
+}
+
+async function loadGfetcherStatus() {
+    const box = document.getElementById('gfetcher-health');
+    if (!box) return;
+    try {
+        const response = await fetch('/api/gfetcher/status');
+        const data = await response.json();
+        if (!response.ok || data.status !== 'success') {
+            setStatus('gfetcher-status-msg', 'error', 'Failed to load the Google News Fetcher status.');
+            return;
+        }
+        const policy = data.publishers || {};
+        const count = prefix => Object.entries(policy).filter(([k]) => k.startsWith(prefix)).reduce((n, [, v]) => n + v, 0);
+        const rows = [
+            ['Last run', `${_gfetcherTime(data.last_run, true)}${data.last_status ? ' (' + data.last_status + ')' : ''}`],
+            ...data.routes.map(r => [`Route ${r.route}`, _gfetcherRoute(r)]),
+            ['Requests (24 h)', `${data.requests_24h} sent, ${data.refusals_24h} refused`],
+            ['Articles', `${data.articles.stored} stored, ${data.articles.added} added in 24 h, ${data.articles.with_text} with text`],
+            ['Publisher rules', `${count('allow')} allowed, ${count('block_paywall')} paywall (dropped), ${count('block_bots')} bot block (headline only)`],
+        ];
+        const table = document.createElement('table');
+        table.className = 'diag-table';
+        const body = table.createTBody();
+        rows.forEach(([label, value]) => {
+            const tr = body.insertRow();
+            const th = document.createElement('th');
+            th.textContent = label;
+            tr.appendChild(th);
+            tr.insertCell().textContent = value;
+        });
+        box.replaceChildren(table);
+        document.getElementById('gfetcher-run-btn').disabled = !data.enabled;
+    } catch (error) {
+        setStatus('gfetcher-status-msg', 'error', 'Network error while loading the Google News Fetcher status.');
+    }
+}
+
+async function triggerGfetcherRun() {
+    const btn = document.getElementById('gfetcher-run-btn');
+    btn.disabled = true;
+    setStatus('gfetcher-status-msg', 'info', 'Queuing...');
+    try {
+        const { ok, message } = await postJobTrigger('/api/gfetcher/run-now');
+        setStatus('gfetcher-status-msg', ok ? 'success' : 'warning', message || (ok ? 'Queued.' : 'Not started.'));
+    } catch (error) {
+        setStatus('gfetcher-status-msg', 'error', 'Network error — check server logs.');
+    } finally {
+        setTimeout(() => { btn.disabled = false; loadGfetcherStatus(); }, 4000);
+    }
+}
+
 document.addEventListener('DOMContentLoaded', () => {
     loadBlacklist();
+    loadGfetcherStatus();
     fetchProfilerQueueStatus();
     setInterval(fetchProfilerQueueStatus, 30000);
 });
