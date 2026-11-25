@@ -1,3 +1,4 @@
+# GUI name: "News Feed". Canonical scheduled-job names live in scheduler_manifest.JOB_GRAPH.
 import hashlib
 import logging
 import re

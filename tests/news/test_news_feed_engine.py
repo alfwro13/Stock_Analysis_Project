@@ -1,5 +1,5 @@
 """
-tests/test_news_feed_engine.py — unit tests for news_feed_engine pure functions
+Unit tests for news.news_feed_engine pure functions.
 
 Covers:
   _make_article_id()        — UUID present vs absent, SHA-256 hash determinism
@@ -8,22 +8,19 @@ Covers:
   _score_unscoredrows()     — sentiment is computed before the write transaction opens
 """
 import logging
-import sys
 import time
-from pathlib import Path
 from unittest.mock import patch, MagicMock
 
 import pytest
 
 pytestmark = pytest.mark.restore_tables("data_migrations", "news_articles")
 
-sys.path.insert(0, str(Path(__file__).parent.parent))
 from db import database
 from db import schema as _db_schema
 from db import connection as _conn
-import news_feed_engine
+import news.news_feed_engine
 import outbound_fetch_helpers
-from news_feed_engine import (
+from news.news_feed_engine import (
     _make_article_id,
     _build_ticker_source_map,
     _fetch_full_text,
@@ -67,8 +64,8 @@ class TestBuildTickerSourceMap:
         cfg = {"IGNORED_TICKERS": ignored or []}
         with (
             patch("accounts.accounts_engine.get_combined_holdings", return_value=combined),
-            patch("news_feed_engine.get_watchlist_tickers", return_value=watchlist_tickers),
-            patch("news_feed_engine.load_config", return_value=cfg),
+            patch("news.news_feed_engine.get_watchlist_tickers", return_value=watchlist_tickers),
+            patch("news.news_feed_engine.load_config", return_value=cfg),
         ):
             return _build_ticker_source_map()
 
@@ -96,20 +93,20 @@ class TestBuildTickerSourceMap:
 
 class TestFetchFullText:
     def test_extracts_text_from_the_vetted_body(self):
-        with patch("news_feed_engine.fetch_body", return_value="<html>x</html>") as fetch, \
+        with patch("news.news_feed_engine.fetch_body", return_value="<html>x</html>") as fetch, \
              patch("trafilatura.extract", return_value="Article text") as extract, \
              patch("trafilatura.fetch_url", side_effect=AssertionError("trafilatura must not download")):
             assert _fetch_full_text("https://publisher.example/a") == "Article text"
-        assert fetch.call_args.kwargs == {"max_redirects": news_feed_engine._ARTICLE_MAX_REDIRECTS}
+        assert fetch.call_args.kwargs == {"max_redirects": news.news_feed_engine._ARTICLE_MAX_REDIRECTS}
         assert extract.call_args.args == ("<html>x</html>",)
 
     def test_article_fetch_allows_two_redirects_and_two_megabytes(self):
-        assert news_feed_engine._ARTICLE_MAX_REDIRECTS == 2
+        assert news.news_feed_engine._ARTICLE_MAX_REDIRECTS == 2
         assert outbound_fetch_helpers.DEFAULT_MAX_BODY_BYTES == 2 * 1024 * 1024
 
     @pytest.mark.parametrize("url", ["", "N/A", None])
     def test_missing_url_returns_none_without_fetching(self, url):
-        with patch("news_feed_engine.fetch_body") as fetch:
+        with patch("news.news_feed_engine.fetch_body") as fetch:
             assert _fetch_full_text(url) is None
         fetch.assert_not_called()
 
@@ -126,19 +123,19 @@ class TestFetchFullText:
 
     @pytest.mark.parametrize("body", ["", "   \n\t"])
     def test_empty_body_skips_trafilatura_and_logs_no_errors(self, body, caplog):
-        with patch("news_feed_engine.fetch_body", return_value=body), \
+        with patch("news.news_feed_engine.fetch_body", return_value=body), \
              patch("trafilatura.extract", side_effect=AssertionError("must not parse an empty body")), \
              caplog.at_level(logging.DEBUG):
             assert _fetch_full_text("https://publisher.example/a") is None
         assert not [r for r in caplog.records if r.name.startswith("trafilatura")]
 
     def test_empty_body_with_real_trafilatura_logs_no_errors(self, caplog):
-        with patch("news_feed_engine.fetch_body", return_value=""), caplog.at_level(logging.DEBUG):
+        with patch("news.news_feed_engine.fetch_body", return_value=""), caplog.at_level(logging.DEBUG):
             assert _fetch_full_text("https://publisher.example/a") is None
         assert not [r for r in caplog.records if r.name.startswith("trafilatura")]
 
     def test_fetch_failure_returns_none(self):
-        with patch("news_feed_engine.fetch_body", side_effect=Exception("TLS handshake failed")):
+        with patch("news.news_feed_engine.fetch_body", side_effect=Exception("TLS handshake failed")):
             assert _fetch_full_text("https://publisher.example/a") is None
 
 
@@ -181,7 +178,7 @@ class TestScoreUnscoredRows:
         try:
             with patch("huggingface_engine._get_finbert_analyzer", return_value=object()), \
                  patch("huggingface_engine._score_text", side_effect=score_text):
-                news_feed_engine._score_unscoredrows(conn)
+                news.news_feed_engine._score_unscoredrows(conn)
             rows = conn.execute(
                 "SELECT sentiment_score, sentiment_label FROM news_articles WHERE ticker = 'LOCKTEST'"
             ).fetchall()
@@ -201,7 +198,7 @@ class TestScoreUnscoredRows:
         try:
             with patch("huggingface_engine._get_finbert_analyzer", return_value=object()), \
                  patch("huggingface_engine._score_text", side_effect=score_text):
-                news_feed_engine._score_unscoredrows(conn)
+                news.news_feed_engine._score_unscoredrows(conn)
             rows = conn.execute(
                 "SELECT article_id, sentiment_score FROM news_articles WHERE ticker = 'LOCKTEST' ORDER BY article_id"
             ).fetchall()
@@ -292,7 +289,7 @@ class TestRepeatedSummaries:
             seen = []
             with patch("huggingface_engine._get_finbert_analyzer", return_value=object()), \
                  patch("huggingface_engine._score_text", side_effect=lambda analyzer, text: seen.append(text) or 0.0):
-                news_feed_engine._score_unscoredrows(conn)
+                news.news_feed_engine._score_unscoredrows(conn)
         finally:
             conn.close()
         assert sorted(seen) == ["One", "Three", "Two"]

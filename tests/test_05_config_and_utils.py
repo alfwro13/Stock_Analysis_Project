@@ -765,12 +765,12 @@ def test_indicators_module_exports_required_functions():
         )
 
 
-# ── news_feed_engine: _label_from_score ───────────────────────────────────────
+# ── news.news_feed_engine: _label_from_score ───────────────────────────────────────
 
 @pytest.mark.utils
 def test_label_from_score_positive():
     """Scores above 0.15 must map to 'positive'."""
-    from news_feed_engine import _label_from_score
+    from news.news_feed_engine import _label_from_score
     assert _label_from_score(0.16) == "positive"
     assert _label_from_score(0.5)  == "positive"
     assert _label_from_score(1.0)  == "positive"
@@ -779,7 +779,7 @@ def test_label_from_score_positive():
 @pytest.mark.utils
 def test_label_from_score_negative():
     """Scores below -0.15 must map to 'negative'."""
-    from news_feed_engine import _label_from_score
+    from news.news_feed_engine import _label_from_score
     assert _label_from_score(-0.16) == "negative"
     assert _label_from_score(-0.5)  == "negative"
     assert _label_from_score(-1.0)  == "negative"
@@ -788,7 +788,7 @@ def test_label_from_score_negative():
 @pytest.mark.utils
 def test_label_from_score_neutral_boundary():
     """Scores in [-0.15, 0.15] inclusive boundaries must map to 'neutral'."""
-    from news_feed_engine import _label_from_score
+    from news.news_feed_engine import _label_from_score
     assert _label_from_score(0.0)   == "neutral"
     assert _label_from_score(0.15)  == "neutral"
     assert _label_from_score(-0.15) == "neutral"
@@ -799,7 +799,7 @@ def test_label_from_score_neutral_boundary():
 @pytest.mark.utils
 def test_label_from_score_exact_boundary_positive():
     """0.151 is just over threshold — must be 'positive', 0.15 must be 'neutral'."""
-    from news_feed_engine import _label_from_score
+    from news.news_feed_engine import _label_from_score
     assert _label_from_score(0.151) == "positive"
     assert _label_from_score(0.15)  == "neutral"
 
@@ -807,7 +807,7 @@ def test_label_from_score_exact_boundary_positive():
 @pytest.mark.utils
 def test_label_from_score_exact_boundary_negative():
     """-0.151 is just under threshold — must be 'negative', -0.15 must be 'neutral'."""
-    from news_feed_engine import _label_from_score
+    from news.news_feed_engine import _label_from_score
     assert _label_from_score(-0.151) == "negative"
     assert _label_from_score(-0.15)  == "neutral"
 

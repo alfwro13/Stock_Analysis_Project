@@ -95,7 +95,7 @@ def _now() -> datetime:
 def scope_tickers(settings: FetchSettings) -> dict:
     """{ticker: source_list} of every ticker in the selected scopes that Google can have a page for."""
     from market_pulse import get_index_tickers
-    from news_feed_engine import _build_ticker_source_map
+    from news.news_feed_engine import _build_ticker_source_map
 
     wanted: dict = {}
     if SCOPE_PORTFOLIO in settings.scopes or SCOPE_WATCHLIST in settings.scopes:
@@ -162,7 +162,7 @@ def _published(card: Card, page_date, now: datetime) -> tuple[Optional[datetime]
 
 def run_fetch(settings: FetchSettings, *, sleep: Callable[[float], None] = time.sleep) -> RunResult:
     """One run of the Google News Fetcher; stops at Google's first refusal and leaves stored rows as they are on any failure."""
-    from news_feed_engine import _get_company_name
+    from news.news_feed_engine import _get_company_name
 
     now = _now()
     store.prune_request_log(now - REQUEST_LOG_RETENTION)

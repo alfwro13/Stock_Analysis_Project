@@ -4,7 +4,7 @@ from pydantic import Field
 
 from constants import MCP_NEWS_HEADLINE_MAX_CHARS, MCP_NEWS_MAX_ROWS, MCP_NEWS_SUMMARY_MAX_CHARS, MCP_TICKER_MAX_CHARS
 from db.helpers import article_summary, get_repeated_news_summaries, parse_utc_epoch
-from news_feed_engine import fetch_articles, mentions_ticker
+from news.news_feed_engine import fetch_articles, mentions_ticker
 from scheduler_engine import get_all_job_last_runs
 from utils import clean_display_text
 

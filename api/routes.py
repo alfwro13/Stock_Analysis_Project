@@ -56,7 +56,7 @@ from insider_engine import run_insider_alert
 from ai_prompts.ai_engine import AIPromptEngine
 from ai_prompts.ai_regime_engine import AIRegimePromptEngine
 from ai_prompts.ai_sentiment_engine import AISentimentPromptEngine
-from news_feed_engine import fetch_articles, run_news_feed_job
+from news.news_feed_engine import fetch_articles, run_news_feed_job
 from intraday_bottom_engine import IntradayBottomEngine
 from data_engine import DataEngine, load_or_fetch_intraday_history
 import glossary_learn_engine
