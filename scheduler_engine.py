@@ -886,7 +886,9 @@ def reload_scheduler():
             scheduler.add_job(
                 run_gfetcher_job,
                 # Minute 11 keeps it off the other interval jobs' minutes; jitter keeps Google from seeing a fixed clock.
-                CronTrigger(day_of_week=freq, hour=f"{start_h}-{end_h}", minute=f"11-59/{mins}", timezone=user_tz, jitter=120),
+                # A cron minute step must be below 60, so the hourly setting is the single minute 11.
+                CronTrigger(day_of_week=freq, hour=f"{start_h}-{end_h}", minute="11" if mins >= 60 else f"11-59/{mins}",
+                            timezone=user_tz, jitter=120),
                 id="gfetcher_job",
                 replace_existing=True,
                 misfire_grace_time=300,

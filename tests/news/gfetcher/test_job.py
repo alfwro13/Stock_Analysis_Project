@@ -62,6 +62,29 @@ def test_the_job_is_registered_only_when_enabled():
         scheduler_engine.reload_scheduler()
 
 
+@pytest.mark.parametrize("interval,minute,runs_per_hour", [(15, "11-59/15", 4), (20, "11-59/20", 3), (30, "11-59/30", 2), (60, "11", 1)])
+def test_every_interval_settings_offers_builds_a_valid_trigger(interval, minute, runs_per_hour):
+    cfg = {"SCHEDULING": {"GFETCHER": {**ENABLED["SCHEDULING"]["GFETCHER"], "INTERVAL_MINUTES": interval}}}
+    try:
+        with patch("scheduler_engine.load_config", return_value=cfg), patch("scheduler_engine.logger") as log:
+            scheduler_engine.reload_scheduler()
+            job = scheduler_engine.scheduler.get_job("gfetcher_job")
+        assert not any("Google News Fetcher" in str(c) for c in log.error.call_args_list)
+        assert job is not None
+        assert {f.name: str(f) for f in job.trigger.fields}["minute"] == minute
+        from datetime import datetime, timedelta
+        start = datetime(2026, 12, 1, 9, 0, tzinfo=job.trigger.timezone)
+        fires, t = [], start
+        while True:
+            t = job.trigger.get_next_fire_time(None, t + timedelta(seconds=1)) if fires else job.trigger.get_next_fire_time(None, t)
+            if t >= start + timedelta(hours=1):
+                break
+            fires.append(t.minute)
+        assert len(fires) == runs_per_hour and 11 <= fires[0] <= 13
+    finally:
+        scheduler_engine.reload_scheduler()
+
+
 def test_the_manifest_names_the_job_once():
     assert JOB_GRAPH["gfetcher_job"]["label"] == "Google News Fetcher"
     assert display_name_for_config_key("GFETCHER") == "Google News Fetcher"
