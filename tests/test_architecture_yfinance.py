@@ -31,7 +31,7 @@ ALLOWED_EXCEPTIONS = {
 
 
 def _collect_py_files() -> list[Path]:
-    """All .py files in the project root, tests/ (recursive), tools/, api/, db/, accounts/, patterns/, visuals/, pages/, backtesting/, ai_prompts/ and mcp_server/ (recursive)."""
+    """All .py files in the project root, tests/ (recursive), tools/, api/, db/, accounts/, patterns/, visuals/, pages/, backtesting/, ai_prompts/, and mcp_server/ and news/ (recursive)."""
     files = []
     for p in PROJECT_ROOT.iterdir():
         if p.suffix == ".py" and p.is_file():
@@ -45,9 +45,10 @@ def _collect_py_files() -> list[Path]:
         package_dir = PROJECT_ROOT / package
         if package_dir.is_dir():
             files.extend(package_dir.glob("*.py"))
-    mcp_dir = PROJECT_ROOT / "mcp_server"
-    if mcp_dir.is_dir():
-        files.extend(mcp_dir.rglob("*.py"))
+    for package in ("mcp_server", "news"):
+        package_dir = PROJECT_ROOT / package
+        if package_dir.is_dir():
+            files.extend(package_dir.rglob("*.py"))
     return sorted(files)
 
 

@@ -45,7 +45,7 @@ from scheduler_engine import (
 from sentiment_engine import run_nextcloud_alert
 from earnings_engine import run_earnings_alert
 from insider_engine import run_insider_alert
-from tools.network_engine import GLOBAL_IPV6_STATUS
+from tools.network_engine import GLOBAL_IPV6_STATUS, network_routing
 from utils import TICKER_FORMAT_RULE, check_requirements_drift, is_valid_ticker, pip_install_command, requirements_lock_path
 from yahoo_engine import yahoo_engine
 from curl_cffi import requests as cffi_requests
@@ -859,10 +859,8 @@ def ui_theme_css():
 @system_router.get("/settings/network-status")
 def get_network_status():
     """Returns the current active route and health status for Yahoo Finance connections."""
-    config_data = load_config()
-    ipv6_addr = config_data.get("YAHOO_IPV6_ADDRESS", "").strip()
-    use_ipv4 = config_data.get("YAHOO_USE_IPV4", True)
-    use_ipv6 = config_data.get("YAHOO_USE_IPV6", bool(ipv6_addr)) and bool(ipv6_addr)
+    routing = network_routing(load_config(), apply_fault_latch=False)
+    ipv6_addr, use_ipv4, use_ipv6 = routing.ipv6_address, routing.use_ipv4, routing.use_ipv6
 
     if use_ipv4 and use_ipv6:
         routing_mode = "Dual (Round-robin)"

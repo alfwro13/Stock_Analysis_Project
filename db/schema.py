@@ -930,7 +930,9 @@ def init_db() -> None:
                 is_premium      INTEGER DEFAULT 0,
                 fetched_at      INTEGER NOT NULL,
                 sentiment_score REAL,
-                sentiment_label TEXT
+                sentiment_label TEXT,
+                feed_source     TEXT NOT NULL DEFAULT 'yahoo',
+                published_precision TEXT
             )
         ''')
         cursor.execute('''
@@ -944,6 +946,66 @@ def init_db() -> None:
         cursor.execute('''
             CREATE INDEX IF NOT EXISTS idx_news_source
             ON news_articles(source_list)
+        ''')
+
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS gfetcher_request_log (
+                id            INTEGER PRIMARY KEY AUTOINCREMENT,
+                requested_at  TEXT    NOT NULL,
+                ticker        TEXT,
+                interface     TEXT    NOT NULL,
+                kind          TEXT    NOT NULL,
+                http_status   INTEGER,
+                outcome       TEXT    NOT NULL,
+                duration_ms   INTEGER,
+                retry_after_s INTEGER
+            )
+        ''')
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_gfetcher_request_log_at ON gfetcher_request_log(requested_at)")
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS gfetcher_state (
+                interface            TEXT PRIMARY KEY,
+                cooldown_until       TEXT,
+                cooldown_reason      TEXT,
+                consecutive_refusals INTEGER NOT NULL DEFAULT 0,
+                last_success_at      TEXT
+            )
+        ''')
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS gfetcher_symbol_map (
+                ticker            TEXT PRIMARY KEY,
+                google_symbol     TEXT,
+                google_exchange   TEXT,
+                kind              TEXT NOT NULL,
+                verified_at       TEXT,
+                verified_title    TEXT,
+                last_probe_status TEXT NOT NULL
+            )
+        ''')
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS gfetcher_publishers (
+                domain            TEXT PRIMARY KEY,
+                policy            TEXT NOT NULL,
+                source            TEXT NOT NULL,
+                reason            TEXT,
+                full_count        INTEGER NOT NULL DEFAULT 0,
+                short_count       INTEGER NOT NULL DEFAULT 0,
+                blocked_count     INTEGER NOT NULL DEFAULT 0,
+                paywall_count     INTEGER NOT NULL DEFAULT 0,
+                unreachable_count INTEGER NOT NULL DEFAULT 0,
+                no_text_count     INTEGER NOT NULL DEFAULT 0,
+                error_count       INTEGER NOT NULL DEFAULT 0,
+                updated_at        TEXT NOT NULL
+            )
+        ''')
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS gfetcher_ticker_state (
+                ticker             TEXT PRIMARY KEY,
+                scope              TEXT NOT NULL,
+                last_fetched_at    TEXT,
+                last_article_count INTEGER,
+                empty_streak       INTEGER NOT NULL DEFAULT 0
+            )
         ''')
 
         # --- INTRADAY DIP RADAR ---
@@ -2303,17 +2365,18 @@ def migrate_db(conn, cursor) -> None:
                 logger.error("[MIGRATION ERROR] Failed on macro_indicators: %s", e)
                 continue
 
-    # news_articles — add sentiment columns if not present
+    # news_articles — add later columns if not present
     try:
         cursor.execute("PRAGMA table_info(news_articles)")
         news_cols = [c['name'] for c in cursor.fetchall()]
-        for col, dtype in [("sentiment_score", "REAL"), ("sentiment_label", "TEXT")]:
+        for col, dtype in [("sentiment_score", "REAL"), ("sentiment_label", "TEXT"),
+                           ("feed_source", "TEXT NOT NULL DEFAULT 'yahoo'"), ("published_precision", "TEXT")]:
             if col not in news_cols:
                 cursor.execute(f"ALTER TABLE news_articles ADD COLUMN {col} {dtype}")
                 logger.info("[MIGRATION] Added column %s to news_articles.", col)
         conn.commit()
     except Exception as e:
-        logger.error("[MIGRATION ERROR] news_articles sentiment columns: %s", e)
+        logger.error("[MIGRATION ERROR] news_articles columns: %s", e)
 
     # price_hmm_states (guard for pre-feature DBs)
     try:

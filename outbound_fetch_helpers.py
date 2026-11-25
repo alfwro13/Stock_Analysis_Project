@@ -15,6 +15,14 @@ class FetchRefused(ValueError):
     pass
 
 
+class FetchRedirected(FetchRefused):
+    """A redirect that was not followed; `location` is the absolute target, so a caller can tell a CAPTCHA page from a moved article."""
+
+    def __init__(self, message: str, location: Optional[str]):
+        super().__init__(message)
+        self.location = location
+
+
 class _Redirected(Exception):
     def __init__(self, location: Optional[str]):
         super().__init__(location)
@@ -22,11 +30,14 @@ class _Redirected(Exception):
 
 
 class _PinnedAdapter(HTTPAdapter):
-    def __init__(self, hostname: str):
+    def __init__(self, hostname: str, source_address: Optional[str] = None):
         self._hostname = hostname
+        self._source_address = source_address
         super().__init__()
 
     def init_poolmanager(self, *args, **kwargs):
+        if self._source_address:
+            kwargs["source_address"] = (self._source_address, 0)
         super().init_poolmanager(*args, server_hostname=self._hostname, assert_hostname=self._hostname, **kwargs)
 
 
@@ -38,8 +49,8 @@ def normalise_host(value: str) -> str:
         return host
 
 
-def _resolve(host: str, port: int) -> list:
-    infos = socket.getaddrinfo(host, port, type=socket.SOCK_STREAM)
+def _resolve(host: str, port: int, family: int = 0) -> list:
+    infos = socket.getaddrinfo(host, port, family=family, type=socket.SOCK_STREAM)
     return list(dict.fromkeys(info[4][0] for info in infos))
 
 
@@ -65,10 +76,11 @@ def parse_https_url(url: str):
     return parts, port or 443, None
 
 
-def _get_pinned(hostname: str, port: int, address: str, target: str, headers: dict, max_bytes: int) -> str:
+def _get_pinned(hostname: str, port: int, address: str, target: str, headers: dict, max_bytes: int,
+                source_address: Optional[str] = None) -> str:
     netloc = f"[{address}]" if ":" in address else address
     with requests.Session() as session:
-        session.mount("https://", _PinnedAdapter(hostname))
+        session.mount("https://", _PinnedAdapter(hostname, source_address))
         resp = session.get(
             f"https://{netloc}:{port}{target}", headers=headers, timeout=_REQUEST_TIMEOUT_SECONDS,
             allow_redirects=False, stream=True,
@@ -89,12 +101,13 @@ def _get_pinned(hostname: str, port: int, address: str, target: str, headers: di
 
 def _fetch_hop(
     url: str, headers: dict, allowed_hosts: frozenset, refused_hint: str, max_bytes: int,
+    family: int = 0, source_address: Optional[str] = None,
 ) -> str:
     parts, port, error = parse_https_url(url)
     if error:
         raise FetchRefused(error)
     host = normalise_host(parts.hostname)
-    addresses = _resolve(host, port)
+    addresses = _resolve(host, port, family)
     if host not in allowed_hosts and not all(_is_public(a) for a in addresses):
         raise FetchRefused(f"That address is not allowed. {refused_hint}".strip())
     host_header = f"[{host}]" if ":" in host else host
@@ -103,7 +116,7 @@ def _fetch_hop(
     last_error = None
     for address in addresses[:_MAX_ADDRESS_ATTEMPTS]:
         try:
-            return _get_pinned(host, port, address, target, request_headers, max_bytes)
+            return _get_pinned(host, port, address, target, request_headers, max_bytes, source_address)
         except requests.ConnectionError as e:
             last_error = e
     raise last_error
@@ -117,17 +130,20 @@ def fetch_body(
     refused_hint: str = "",
     max_redirects: int = 0,
     max_bytes: int = DEFAULT_MAX_BODY_BYTES,
+    family: int = 0,
+    source_address: Optional[str] = None,
 ) -> str:
-    """https-only GET that refuses non-public addresses unless the requested host is allow-listed, connects to the vetted IP and re-vets every redirect hop."""
+    """https-only GET that refuses non-public addresses unless the requested host is allow-listed, connects to the vetted IP and re-vets every redirect hop; `family` (socket.AF_INET/AF_INET6) and `source_address` pick the IP stack and local address."""
     allowed = frozenset(normalise_host(h) for h in allowed_hosts)
     for hop in range(max_redirects + 1):
         try:
-            return _fetch_hop(url, headers, allowed, refused_hint, max_bytes)
+            return _fetch_hop(url, headers, allowed, refused_hint, max_bytes, family, source_address)
         except _Redirected as redirect:
             if hop == max_redirects:
-                raise FetchRefused(
+                raise FetchRedirected(
                     "The page redirected. Redirects are not followed, so use the final URL."
-                    if max_redirects == 0 else "Too many redirects."
+                    if max_redirects == 0 else "Too many redirects.",
+                    urljoin(url, redirect.location) if redirect.location else None,
                 )
             if not redirect.location:
                 raise FetchRefused("The page redirected without saying where.")

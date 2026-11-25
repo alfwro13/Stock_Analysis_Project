@@ -891,3 +891,36 @@ class TestGetYahooApiCallLog:
         assert rows[0]["minute_ts"] == "2099-04-02 09:05"
         assert rows[0]["job_id"] == "quant_analysis_job"
         assert rows[0]["call_count"] == 3
+
+
+class TestNetworkRouting:
+    """network_routing() is the one reader of the Advanced Network routing, shared by Yahoo, the network-status route and the Google News Fetcher."""
+
+    @pytest.mark.parametrize("cfg,expected", [
+        ({"YAHOO_IPV6_ADDRESS": "", "YAHOO_USE_IPV4": True, "YAHOO_USE_IPV6": False}, (True, False, False)),
+        ({"YAHOO_IPV6_ADDRESS": "::1", "YAHOO_USE_IPV4": True, "YAHOO_USE_IPV6": True}, (True, True, True)),
+        ({"YAHOO_IPV6_ADDRESS": "::1", "YAHOO_USE_IPV4": False, "YAHOO_USE_IPV6": True}, (False, True, False)),
+        ({"YAHOO_IPV6_ADDRESS": "", "YAHOO_USE_IPV4": True, "YAHOO_USE_IPV6": True}, (True, False, False)),
+        ({"YAHOO_IPV6_ADDRESS": " ::1 ", "YAHOO_USE_IPV4": True}, (True, True, True)),
+        ({}, (True, False, False)),
+    ])
+    def test_reads_the_settings(self, cfg, expected):
+        with patch("tools.network_engine._maybe_restore_latch"):
+            routing = ne.network_routing(cfg)
+        assert (routing.use_ipv4, routing.use_ipv6, routing.dual) == expected
+        if routing.use_ipv6:
+            assert routing.ipv6_address == "::1"
+
+    def test_a_hard_ipv6_fault_leaves_ipv4_only(self):
+        ne.GLOBAL_IPV6_STATUS["is_failing"] = True
+        cfg = {"YAHOO_IPV6_ADDRESS": "::1", "YAHOO_USE_IPV4": False, "YAHOO_USE_IPV6": True}
+        with patch("tools.network_engine._maybe_restore_latch"):
+            routing = ne.network_routing(cfg)
+            configured = ne.network_routing(cfg, apply_fault_latch=False)
+        assert (routing.use_ipv4, routing.use_ipv6) == (True, False)
+        assert (configured.use_ipv4, configured.use_ipv6) == (False, True)
+
+    def test_restores_the_latch_from_the_flag_file_first(self):
+        with patch("tools.network_engine._maybe_restore_latch") as restore:
+            ne.network_routing({"YAHOO_USE_IPV4": True})
+        restore.assert_called_once()
