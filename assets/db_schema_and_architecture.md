@@ -297,6 +297,27 @@ Tables added after initial schema creation. All managed via `db/schema.py:init_d
 * **Purpose:** Full-text news articles with FinBERT sentiment scores, deduped by `article_id`.
 * **Key Columns:** `id` (PK autoincrement), `article_id` (UNIQUE), `ticker`, `source_list`, `headline`, `published_at`, `sentiment_score`, `sentiment_label`. `publisher` is the name Yahoo sent or, for its RSS feed, the article link's host; `summary` has the feed's split decimals and glued `Key Takeaways` heading repaired at write time.
 * **Read by:** `news_feed_engine.fetch_articles()` — `GET /api/news-feed` (full row, including the trafilatura `full_text`) and the MCP Server's `get_news` (`include_full_text=False`, so the body is never selected).
+* **Sources:** `feed_source` is `yahoo` (the News Feed; the column default, so every row written before the column existed reads as Yahoo) or `google` (the Google News Fetcher, `news/gfetcher/`). Google rows use `source_list` values `index` (a Markets registry index) and `market` (pseudo ticker `MARKET`, Google's generic market-wide list) besides `portfolio`/`watchlist`/`both`, and carry `published_precision` (`minute`, `hour`, `day`, `week`, `month`, `year`: Google gives relative ages only, so the time is an estimate good to that unit; `day` also when the article page's own date was used). `published_precision` is `NULL` on Yahoo rows. Each fetcher prunes only its own rows. See `assets/google_news_fetcher.md`.
+
+#### `gfetcher_request_log`
+* **Purpose:** One row per request the Google News Fetcher sends to google.com — the input of its rate-limit monitoring and daily budget. Pruned to 30 days at the start of each run.
+* **Key Columns:** `id` (PK autoincrement), `requested_at` (UTC), `ticker`, `kind` (`quote_page`), `http_status` (`NULL` when no answer arrived), `outcome` (`ok`, `rate_limited`, `captcha`, `error`), `duration_ms`, `retry_after_s` (Google's `Retry-After`, `NULL` when not sent).
+
+#### `gfetcher_state`
+* **Purpose:** Single row (`id = 1`): the fetcher's circuit breaker. A run inside `cooldown_until` sends nothing.
+* **Key Columns:** `cooldown_until` (UTC, `NULL` when not cooling down), `cooldown_reason` (`HTTP 429`, `HTTP 503`, `CAPTCHA page`), `consecutive_refusals` (picks the 1 h / 6 h / 24 h step; reset by a successful run), `last_success_at`, `last_run_started_at`.
+
+#### `gfetcher_symbol_map`
+* **Purpose:** App ticker → Google Finance `symbol:exchange`, learned from the first request that found a page, so later runs need one request per ticker.
+* **Key Columns:** `ticker` (PK, as stored in the app), `google_symbol`, `google_exchange` (both `NULL` when Google has no page), `kind` (`listing`, `index`), `verified_at` (UTC), `verified_title` (the page title that confirmed it), `last_probe_status` (`found`, `not_found`; a `not_found` ticker is asked again after 7 days).
+
+#### `gfetcher_publishers`
+* **Purpose:** The fetcher's per-domain publisher policy: download the article text, keep the headline only, or drop the article.
+* **Key Columns:** `domain` (PK, without `www.`; also covers subdomains), `policy` (`allow`, `block_paywall` — article dropped, `block_bots` — headline kept without text), `source` (`manual` for the seeded rules, which never change policy; `auto` for learned ones), `reason`, one count per download outcome (`full_count`, `short_count`, `blocked_count`, `paywall_count`, `unreachable_count`, `no_text_count`, `error_count`), `updated_at` (UTC; an `auto` block older than 14 days is retried once).
+
+#### `gfetcher_ticker_state`
+* **Purpose:** Per-ticker fetch queue state: who is due, and the layout-change signal.
+* **Key Columns:** `ticker` (PK), `scope` (the `source_list` value), `last_fetched_at` (UTC), `last_article_count` (cards on the page), `empty_streak` (runs in a row with a valid page and no cards; 3 makes the ticker a layout suspect).
 
 #### `smgb_predictions`
 * **Purpose:** Orphaned table (retained for data preservation). Was used by the removed SMGB.L Morning Price Predictor (`smgb_predictor.py`). No code reads or writes to this table anymore.

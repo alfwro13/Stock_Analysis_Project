@@ -1,0 +1,231 @@
+# GUI name: "Google News Fetcher". Canonical scheduled-job names live in scheduler_manifest.JOB_GRAPH.
+import hashlib
+import logging
+import time
+from dataclasses import dataclass, field
+from datetime import datetime, time as dt_time, timedelta, timezone
+from itertools import combinations
+from typing import Callable, Optional
+
+from db.helpers import get_mutual_fund_tickers
+from utils import ignored_tickers_set, is_synthetic_ticker, is_valid_ticker
+
+from . import store, symbols
+from .article_text import fetch_article
+from .client import BudgetSpent, GoogleClient, GoogleRefused
+from .parse import Card, looks_english_title
+from .publishers import DROP, FETCH, PublisherPolicy
+
+logger = logging.getLogger(__name__)
+
+SCOPE_PORTFOLIO = "portfolio"
+SCOPE_WATCHLIST = "watchlist"
+SCOPE_INDEXES = "indexes"
+SCOPES = (SCOPE_PORTFOLIO, SCOPE_WATCHLIST, SCOPE_INDEXES)
+
+FEED_SOURCE = "google"
+MARKET_TICKER = "MARKET"
+MARKET_SOURCE_LIST = "market"
+INDEX_SOURCE_LIST = "index"
+_SCOPE_RANK = {"portfolio": 0, "both": 0, "watchlist": 1, INDEX_SOURCE_LIST: 2}
+
+GENERIC_OVERLAP = 0.8
+GENERIC_MIN_LIST = 5
+SUMMARY_CHARS = 300
+EMPTY_STREAK_ALARM = 3
+REQUEST_LOG_RETENTION = timedelta(days=30)
+_PAGE_DATE_UNITS = ("day", "week", "month", "year")
+
+
+@dataclass
+class FetchSettings:
+    scopes: tuple = SCOPES
+    max_tickers_per_run: int = 12
+    min_refetch_minutes: int = 60
+    max_requests_per_day: int = 300
+    google_delay_seconds: float = 3.0
+    fetch_full_text: bool = True
+    max_per_ticker: int = 10
+    max_age_days: int = 7
+    publisher_delay_seconds: float = 1.0
+
+
+@dataclass
+class RunResult:
+    status: str
+    tickers_fetched: int = 0
+    google_requests: int = 0
+    articles_new: int = 0
+    articles_pruned: int = 0
+    refused_reason: Optional[str] = None
+    cooldown_until: Optional[datetime] = None
+    layout_suspects: list = field(default_factory=list)
+    text_statuses: dict = field(default_factory=dict)
+
+
+@dataclass
+class _Found:
+    card: Card
+    tickers: list
+
+
+def _now() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def select_tickers(settings: FetchSettings, now: datetime) -> list[tuple[str, str]]:
+    """(ticker, source_list) pairs due for a fetch: never-fetched first in scope order, then the oldest fetch."""
+    from market_pulse import get_index_tickers
+    from news_feed_engine import _build_ticker_source_map
+
+    wanted: dict = {}
+    if SCOPE_PORTFOLIO in settings.scopes or SCOPE_WATCHLIST in settings.scopes:
+        for ticker, source_list in _build_ticker_source_map().items():
+            held = source_list in ("portfolio", "both")
+            if (held and SCOPE_PORTFOLIO in settings.scopes) or (source_list != "portfolio" and SCOPE_WATCHLIST in settings.scopes):
+                wanted[ticker] = source_list
+    if SCOPE_INDEXES in settings.scopes:
+        for ticker in get_index_tickers():
+            if ticker in symbols.INDEX_SYMBOLS:
+                wanted.setdefault(ticker, INDEX_SOURCE_LIST)
+    ignored = ignored_tickers_set()
+    funds = get_mutual_fund_tickers(list(wanted))
+    usable = {t: s for t, s in wanted.items()
+              if is_valid_ticker(t) and not is_synthetic_ticker(t) and t not in funds and t.upper() not in ignored}
+    last = store.ticker_last_fetched(usable)
+    floor = now - timedelta(minutes=settings.min_refetch_minutes)
+    due = [(t, s) for t, s in usable.items() if last.get(t) is None or last[t] <= floor]
+    due.sort(key=lambda p: (last.get(p[0]) is not None, last.get(p[0]) or now, _SCOPE_RANK.get(p[1], 3), p[0]))
+    return due[: settings.max_tickers_per_run]
+
+
+def find_generic(url_sets: dict) -> set:
+    """Tickers showing Google's market-wide fallback list: real per-ticker lists never overlap this much, and one such ticker alone cannot be detected."""
+    generic = set()
+    for a, b in combinations(url_sets, 2):
+        sa, sb = url_sets[a], url_sets[b]
+        if len(sa) >= GENERIC_MIN_LIST and len(sb) >= GENERIC_MIN_LIST and len(sa & sb) / len(sa | sb) >= GENERIC_OVERLAP:
+            generic |= {a, b}
+    return generic
+
+
+def merge(cards_by_ticker: dict) -> list[_Found]:
+    """One entry per article URL with every ticker it was listed under; an article seen only in fallback lists belongs to MARKET."""
+    generic = find_generic({t: {c.url for c in cards} for t, cards in cards_by_ticker.items()})
+    by_url: dict = {}
+    for ticker, cards in cards_by_ticker.items():
+        for card in cards:
+            found = by_url.setdefault(card.url, _Found(card, []))
+            if ticker not in found.tickers:
+                found.tickers.append(ticker)
+    for found in by_url.values():
+        specific = [t for t in found.tickers if t not in generic]
+        found.tickers = specific or [MARKET_TICKER]
+    return list(by_url.values())
+
+
+def article_id(ticker: str, url: str) -> str:
+    return hashlib.sha256(f"{FEED_SOURCE}|{ticker}|{url}".encode()).hexdigest()
+
+
+def _published(card: Card, page_date, now: datetime) -> tuple[Optional[datetime], Optional[str]]:
+    if page_date and (card.precision is None or card.precision in _PAGE_DATE_UNITS):
+        stamped = datetime.combine(page_date, dt_time(12, 0), tzinfo=timezone.utc)
+        if stamped <= now:
+            return stamped, "day"
+    return card.published, card.precision
+
+
+def run_fetch(settings: FetchSettings, *, sleep: Callable[[float], None] = time.sleep) -> RunResult:
+    """One run of the Google News Fetcher; stops at Google's first refusal and leaves stored rows as they are on any failure."""
+    from news_feed_engine import _get_company_name
+
+    now = _now()
+    store.prune_request_log(now - REQUEST_LOG_RETENTION)
+    state = store.get_state()
+    if state.cooldown_until and state.cooldown_until > now:
+        return RunResult("cooling_down", refused_reason=state.cooldown_reason, cooldown_until=state.cooldown_until)
+    store.mark_run_started(now)
+    due = select_tickers(settings, now)
+    if not due:
+        return RunResult("no_tickers")
+
+    client = GoogleClient(settings.google_delay_seconds, settings.max_requests_per_day, sleep=sleep)
+    result = RunResult("ok")
+    source_lists = dict(due)
+    cards_by_ticker: dict = {}
+    cutoff = now - timedelta(days=settings.max_age_days)
+    for ticker, source_list in due:
+        try:
+            resolved = symbols.resolve(ticker, client, now)
+        except GoogleRefused as e:
+            result.status, result.refused_reason, result.cooldown_until = "refused", e.reason, e.until
+            break
+        except BudgetSpent:
+            result.status = "budget_spent"
+            break
+        if resolved is None:
+            continue
+        cards = [c for c in resolved.page.cards
+                 if looks_english_title(c.title) and (c.published is None or c.published >= cutoff)][: settings.max_per_ticker]
+        result.tickers_fetched += 1
+        if store.save_ticker_fetch(ticker, source_list, now, len(resolved.page.cards)) >= EMPTY_STREAK_ALARM:
+            result.layout_suspects.append(ticker)
+        cards_by_ticker[ticker] = cards
+    result.google_requests = client.requests_made
+
+    found = merge(cards_by_ticker)
+    stored = store.existing_article_ids(article_id(t, f.card.url) for f in found for t in f.tickers)
+    fresh = [f for f in found if any(article_id(t, f.card.url) not in stored for t in f.tickers)]
+    policy = PublisherPolicy(now)
+    rows = []
+    for item in fresh:
+        decision = policy.decide(item.card.url)
+        if decision == DROP:
+            result.text_statuses["dropped_paywall"] = result.text_statuses.get("dropped_paywall", 0) + 1
+            continue
+        text, status, page_date = None, "skipped", None
+        if decision == FETCH and settings.fetch_full_text:
+            got = fetch_article(item.card.url)
+            policy.record(item.card.url, got.status)
+            text, status, page_date = got.text, got.status, got.page_date
+            sleep(settings.publisher_delay_seconds)
+        elif not settings.fetch_full_text:
+            status = "not_requested"
+        result.text_statuses[status] = result.text_statuses.get(status, 0) + 1
+        if status in ("paywall", "non_english"):
+            continue
+        published, precision = _published(item.card, page_date, now)
+        if published is None or published < cutoff:
+            continue
+        fetched_at = int(now.timestamp())
+        for ticker in item.tickers:
+            rows.append({
+                "article_id": article_id(ticker, item.card.url),
+                "ticker": ticker,
+                "company_name": None if ticker == MARKET_TICKER else _get_company_name(ticker),
+                "source_list": MARKET_SOURCE_LIST if ticker == MARKET_TICKER else source_lists.get(ticker, INDEX_SOURCE_LIST),
+                "headline": item.card.title,
+                "summary": text[:SUMMARY_CHARS] if text else None,
+                "full_text": text,
+                "body_fetched": 1 if text else 0,
+                "url": item.card.url,
+                "publisher": item.card.source or None,
+                "published_at": int(published.timestamp()),
+                "is_premium": 0,
+                "fetched_at": fetched_at,
+                "feed_source": FEED_SOURCE,
+                "published_precision": precision,
+            })
+    policy.save()
+    result.articles_new = store.insert_articles(rows)
+    if result.status == "ok" and result.tickers_fetched:
+        store.mark_success(now)
+    result.articles_pruned = store.prune_articles(int(cutoff.timestamp()))
+    if result.articles_new:
+        store.score_unscored_articles()
+    logger.info(
+        "Google News Fetcher: %s; %d tickers, %d Google requests, %d new articles, %d pruned.",
+        result.status, result.tickers_fetched, result.google_requests, result.articles_new, result.articles_pruned,
+    )
+    return result

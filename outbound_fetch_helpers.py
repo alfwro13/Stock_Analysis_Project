@@ -15,6 +15,14 @@ class FetchRefused(ValueError):
     pass
 
 
+class FetchRedirected(FetchRefused):
+    """A redirect that was not followed; `location` is the absolute target, so a caller can tell a CAPTCHA page from a moved article."""
+
+    def __init__(self, message: str, location: Optional[str]):
+        super().__init__(message)
+        self.location = location
+
+
 class _Redirected(Exception):
     def __init__(self, location: Optional[str]):
         super().__init__(location)
@@ -125,9 +133,10 @@ def fetch_body(
             return _fetch_hop(url, headers, allowed, refused_hint, max_bytes)
         except _Redirected as redirect:
             if hop == max_redirects:
-                raise FetchRefused(
+                raise FetchRedirected(
                     "The page redirected. Redirects are not followed, so use the final URL."
-                    if max_redirects == 0 else "Too many redirects."
+                    if max_redirects == 0 else "Too many redirects.",
+                    urljoin(url, redirect.location) if redirect.location else None,
                 )
             if not redirect.location:
                 raise FetchRefused("The page redirected without saying where.")

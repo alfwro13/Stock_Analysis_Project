@@ -354,6 +354,15 @@ def test_redirect_loop_stops_after_the_limit(trust_test_cert):
     assert len(seen) == 3
 
 
+def test_an_unfollowed_redirect_names_its_absolute_target(trust_test_cert):
+    routes = {"/quote": (302, "/sorry/index?continue=x", b"")}
+    with _TlsServer(*trust_test_cert, _redirecting_handler(routes, [])) as server:
+        with pytest.raises(fetch_helpers.FetchRedirected) as raised:
+            _fetch_local(server, "/quote")
+    assert isinstance(raised.value, fetch_helpers.FetchRefused)
+    assert raised.value.location == f"https://scraper.test:{server.port}/sorry/index?continue=x"
+
+
 @pytest.mark.parametrize("location", [
     "http://scraper.test/plain",
     "https://internal.test/secret",
