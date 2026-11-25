@@ -1,5 +1,5 @@
 """
-tests/test_news_feed_engine.py — unit tests for news.news_feed_engine pure functions
+Unit tests for news.news_feed_engine pure functions.
 
 Covers:
   _make_article_id()        — UUID present vs absent, SHA-256 hash determinism
