@@ -280,3 +280,45 @@ def score_unscored_articles() -> None:
     finally:
         if conn:
             conn.close()
+
+
+def request_counts_since(since: datetime) -> list[dict]:
+    """(interface, outcome, count) of the Google requests logged since `since`."""
+    conn = None
+    try:
+        conn = get_connection()
+        rows = conn.execute(
+            "SELECT interface, outcome, COUNT(*) AS n FROM gfetcher_request_log WHERE requested_at >= ? "
+            "GROUP BY interface, outcome ORDER BY interface, outcome",
+            (stamp(since),),
+        ).fetchall()
+    finally:
+        if conn:
+            conn.close()
+    return [dict(r) for r in rows]
+
+
+def google_article_counts(since_epoch: int) -> dict:
+    conn = None
+    try:
+        conn = get_connection()
+        row = conn.execute(
+            "SELECT COUNT(*) AS stored, COALESCE(SUM(fetched_at >= ?), 0) AS added, COALESCE(SUM(body_fetched), 0) AS with_text "
+            "FROM news_articles WHERE feed_source = 'google'",
+            (since_epoch,),
+        ).fetchone()
+    finally:
+        if conn:
+            conn.close()
+    return dict(row)
+
+
+def publisher_policy_counts() -> dict:
+    conn = None
+    try:
+        conn = get_connection()
+        rows = conn.execute("SELECT policy, source, COUNT(*) AS n FROM gfetcher_publishers GROUP BY policy, source").fetchall()
+    finally:
+        if conn:
+            conn.close()
+    return {f"{r['policy']}:{r['source']}": r["n"] for r in rows}

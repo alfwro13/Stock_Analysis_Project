@@ -1209,6 +1209,23 @@ def run_stable_shortlist_job():
         record_job_run("stable_shortlist_job")
 
 
+def run_gfetcher_job():
+    """Google News Fetcher: one run over Google Finance quote pages; only refusals, outages, a spent budget, a possible layout change and recoveries are notified."""
+    from news.gfetcher import run_fetch, run_notices, settings_from_config
+    _mark_job_started(job_label("gfetcher_job"))
+    try:
+        block = load_config().get("SCHEDULING", {}).get("GFETCHER", {})
+        result = run_fetch(settings_from_config(block))
+        for message_type, text in run_notices(result):
+            log_sched_notification(message_type, text)
+    except Exception as e:
+        logger.error("Google News Fetcher failed: %s", e)
+        log_sched_notification("Error", f"Google News Fetcher failed: {e}")
+    finally:
+        _mark_job_done(job_label("gfetcher_job"))
+        record_job_run("gfetcher_job")
+
+
 def run_pattern_detection_job():
     from patterns.pattern_detection_engine import PatternDetectionEngine, DETECTORS
     config = load_config()

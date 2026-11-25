@@ -4,7 +4,38 @@ The Google News Fetcher (code: the `news/gfetcher/` package) reads the news list
 
 Google Finance has no public API and its terms do not allow automated access. The fetcher therefore keeps its volume low, stops at Google's first refusal and never tries to get around a block. It is built to be removable: everything except the seams listed under **Removal** lives in `news/gfetcher/`.
 
-No scheduled job, route or Settings panel calls it; `news.gfetcher.run_fetch(FetchSettings(...))` is the entry point.
+It is off by default. Settings → **News & RSS** → **Google News Fetcher** turns it on and holds its schedule and limits; the scheduled job `gfetcher_job` (Workflow Monitor label "Google News Fetcher", fed by the external node "Google Finance") calls `news.gfetcher.run_fetch(settings_from_config(SCHEDULING.GFETCHER))`.
+
+## Settings, job and notifications
+
+| Setting (`SCHEDULING.GFETCHER`) | Default | Meaning |
+|---|---|---|
+| `ENABLED` | off | registers the job; `POST /api/gfetcher/run-now` answers `409` while it is off |
+| `FREQUENCY`, `START_TIME`, `END_TIME` | Mon-Fri, 07:00-22:00 | `USER_TIMEZONE` wall-clock window (the hours, inclusive) |
+| `INTERVAL_MINUTES` | 30 | 15, 20, 30 or 60; runs start at minute 11 of the hour and every interval after it, each moved by up to 2 minutes at random (`jitter`) so Google never sees a fixed clock |
+| `SCOPES` | Portfolio, Watchlist, Indexes | which lists are fetched |
+| `MAX_TICKERS_PER_RUN` | 12 | tickers per run (1-50) |
+| `MAX_REQUESTS_PER_DAY` | 300 | rolling 24-hour budget over every route (1-1,000) |
+| `GOOGLE_DELAY_SECONDS` | 3 | shortest gap; each gap is drawn from [gap, 2 × gap] (3-60) |
+| `FETCH_FULL_TEXT` | on | download the article text |
+| `MAX_PER_TICKER` | 10 | articles kept per ticker and run (1-30) |
+| `MAX_AGE_DAYS` | 7 | articles older than this are not stored and are pruned (1-30) |
+
+`POST /api/settings` refuses any other value with `422`; the limits are the `GFETCHER_*` constants in `constants.py`. The panel's health table (`GET /api/gfetcher/status`) shows the last run, each route's state (available, or paused until when and why), the requests and refusals of the last 24 hours, the stored articles and the publisher rules; **Run Now** queues a run (`409` while one runs).
+
+The job runner (`scheduler_jobs.run_gfetcher_job()`) records every run in the scheduler run history like any job and sends notifications only for events, each once, through the job's own row in Settings → Notification Settings (`news.gfetcher.run_notices()`):
+
+| Event | Type |
+|---|---|
+| Google refused one route (it pauses; the run carried on over the other) | Warning |
+| Google refused every route (no request until the earliest pause ends) | Warning |
+| No route could connect | Error |
+| The daily budget was spent during the run | Warning |
+| A valid page showed no news three runs in a row (fired on the third run only) | Warning |
+| A route that had been refused answered again | Info |
+| The run failed with an exception | Error |
+
+A normal run, a run inside a cooldown and a run with nothing due send nothing.
 
 ## Modules
 
@@ -84,7 +115,7 @@ The quote page's class names are obfuscated and can change. A ticker whose valid
 
 ## Removal
 
-Delete `news/gfetcher/` and `tests/news/gfetcher/`, drop the five `gfetcher_*` tables and delete the `feed_source = 'google'` rows of `news_articles` through a `db/schema.py:migrate_db()` step, and delete this file. The `feed_source` and `published_precision` columns of `news_articles` can stay. Other seams: `FetchRedirected` and the `family`/`source_address` arguments of `fetch_body()` in `outbound_fetch_helpers.py`, and `network_routing()` in `tools/network_engine.py` (all harmless to keep; the last is shared with Yahoo) and the `news` entries in the folder lists of `tests/test_architecture_yfinance.py` and `tests/test_notification_engine.py`.
+Turn it off in Settings. Delete `news/gfetcher/`, `tests/news/gfetcher/` and `api/routes_gfetcher.py` (and its `include_router` line in `api/routes.py`), the `gfetcher_job` runner in `scheduler_jobs.py` and its `add_job` block in `scheduler_engine.py`, the `gfetcher_job` and `google_finance_source` entries and the `GFETCHER` key in `scheduler_manifest.py`, the `GFETCHER` block of `config.py` `DEFAULT_CONFIG`, `GfetcherScheduleConfig` in `api/routes_system.py`, the `GFETCHER_*` constants, the panel in `templates/settings/_data.html` with its `settings_data.js` functions and `settings_shared.js` block (bump `CSS_VERSION`), the `gfetcher_limits` context of `pages.page_routes.settings_page`, the README bullet, the glossary term-box and its Learning card; drop the five `gfetcher_*` tables and delete the `feed_source = 'google'` rows of `news_articles` through a `db/schema.py:migrate_db()` step, and delete this file. The `feed_source` and `published_precision` columns of `news_articles` can stay. Other seams: `FetchRedirected` and the `family`/`source_address` arguments of `fetch_body()` in `outbound_fetch_helpers.py`, and `network_routing()` in `tools/network_engine.py` (all harmless to keep; the last is shared with Yahoo) and the `news` entries in the folder lists of `tests/test_architecture_yfinance.py` and `tests/test_notification_engine.py`.
 
 ## Tests
 

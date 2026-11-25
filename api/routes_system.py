@@ -27,7 +27,10 @@ from config import (
     mcp_public_host_overlaps_allowed_hosts, update_config_atomic, validate_mcp_public_host, validate_mcp_remote_cidrs, validate_meta_scoring,
     validate_xray_targets,
 )
-from constants import DEPENDENCY_INSTALL_RESUME_RETRIES, DEPENDENCY_INSTALL_TIMEOUT_SECONDS
+from constants import (
+    DEPENDENCY_INSTALL_RESUME_RETRIES, DEPENDENCY_INSTALL_TIMEOUT_SECONDS, GFETCHER_MAX_DELAY_SECONDS, GFETCHER_MAX_PER_TICKER,
+    GFETCHER_MAX_REQUESTS_PER_DAY, GFETCHER_MAX_TICKERS_PER_RUN, GFETCHER_MIN_DELAY_SECONDS,
+)
 from db.database import get_connection, get_nextcloud_talk_today, get_ticker_registry, get_ticker_registry_row, upsert_ticker_registry_row, soft_delete_ticker_registry_row
 from accounts.ghostfolio_sync import purge_ghostfolio_files
 from log_config import configure_file_logging as _configure_file_logging, resolve_log_dir
@@ -271,6 +274,24 @@ class RiskOrchestratorScheduleConfig(FiniteModel):
     WEIGHTS: Optional[RiskOrchestratorWeightsConfig] = None
     THRESHOLDS: Optional[RiskOrchestratorThresholdsConfig] = None
 
+_HH_MM = r"^([01][0-9]|2[0-3]):[0-5][0-9]$"
+
+
+class GfetcherScheduleConfig(FiniteModel):
+    ENABLED: Optional[bool] = None
+    FREQUENCY: Optional[Literal["mon-fri", "*"]] = None
+    START_TIME: Optional[str] = Field(default=None, pattern=_HH_MM)
+    END_TIME: Optional[str] = Field(default=None, pattern=_HH_MM)
+    INTERVAL_MINUTES: Optional[Literal[15, 20, 30, 60]] = None
+    SCOPES: Optional[List[Literal["portfolio", "watchlist", "indexes"]]] = Field(default=None, max_length=3)
+    MAX_TICKERS_PER_RUN: Optional[int] = Field(default=None, ge=1, le=GFETCHER_MAX_TICKERS_PER_RUN)
+    MAX_REQUESTS_PER_DAY: Optional[int] = Field(default=None, ge=1, le=GFETCHER_MAX_REQUESTS_PER_DAY)
+    GOOGLE_DELAY_SECONDS: Optional[float] = Field(default=None, ge=GFETCHER_MIN_DELAY_SECONDS, le=GFETCHER_MAX_DELAY_SECONDS)
+    FETCH_FULL_TEXT: Optional[bool] = None
+    MAX_PER_TICKER: Optional[int] = Field(default=None, ge=1, le=GFETCHER_MAX_PER_TICKER)
+    MAX_AGE_DAYS: Optional[int] = Field(default=None, ge=1, le=30)
+
+
 class SchedulingConfig(FiniteModel):
     SYNC_INDICES: Optional[ScheduleItemConfig] = None
     PROFILER_ENGINE: Optional[ScheduleItemConfig] = None
@@ -293,6 +314,7 @@ class SchedulingConfig(FiniteModel):
     CB_NLP_ALERT: Optional[ScheduleItemConfig] = None
     AI_CONTAGION: Optional[ScheduleItemConfig] = None
     NEWS_FEED: Optional[ScheduleItemConfig] = None
+    GFETCHER: Optional[GfetcherScheduleConfig] = None
     TRAP_MONITORS: Optional[ScheduleItemConfig] = None
     BUBBLE_RADAR: Optional[ScheduleItemConfig] = None
     PAIRS_SPREAD_MONITOR: Optional[ScheduleItemConfig] = None

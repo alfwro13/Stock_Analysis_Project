@@ -227,6 +227,21 @@ async function saveSettings(silent = false) {
                 "MAX_PER_TICKER": parseInt(document.getElementById('NEWS_FEED_MAX_PER').value) || 5,
                 "MAX_AGE_DAYS": parseInt(document.getElementById('NEWS_FEED_MAX_AGE').value) || 7
             },
+            "GFETCHER": {
+                "ENABLED": document.getElementById('GFETCHER_ENABLED').checked,
+                "FREQUENCY": document.getElementById('GFETCHER_FREQ').value,
+                "START_TIME": document.getElementById('GFETCHER_START').value,
+                "END_TIME": document.getElementById('GFETCHER_END').value,
+                "INTERVAL_MINUTES": parseInt(document.getElementById('GFETCHER_INTERVAL').value) || 30,
+                "SCOPES": [['portfolio', 'GFETCHER_SCOPE_PORTFOLIO'], ['watchlist', 'GFETCHER_SCOPE_WATCHLIST'], ['indexes', 'GFETCHER_SCOPE_INDEXES']]
+                    .filter(([, id]) => document.getElementById(id).checked).map(([scope]) => scope),
+                "MAX_TICKERS_PER_RUN": parseInt(document.getElementById('GFETCHER_MAX_TICKERS').value) || 12,
+                "MAX_REQUESTS_PER_DAY": parseInt(document.getElementById('GFETCHER_MAX_REQUESTS').value) || 300,
+                "GOOGLE_DELAY_SECONDS": parseFloat(document.getElementById('GFETCHER_DELAY').value) || 3,
+                "FETCH_FULL_TEXT": document.getElementById('GFETCHER_FULL_TEXT').checked,
+                "MAX_PER_TICKER": parseInt(document.getElementById('GFETCHER_MAX_PER').value) || 10,
+                "MAX_AGE_DAYS": parseInt(document.getElementById('GFETCHER_MAX_AGE').value) || 7
+            },
             "CRASH_ALERTS": {
                 "ENABLED": document.getElementById('CRASH_ALERTS_SCHED_ENABLED').checked,
                 "FREQUENCY": document.getElementById('CRASH_ALERTS_FREQ').value,

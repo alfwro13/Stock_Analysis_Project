@@ -28,7 +28,11 @@ from visuals.ai import (
     create_ai_contagion_correlation_heatmap,
 )
 from fx_drag_engine import portfolio_lifetime_fx_breakdown
-from constants import PREDICTION_HORIZON_DAYS, PREDICTION_RETURN_THRESHOLD, CSS_VERSION, INVESTMENT_POLICY_MAX_CHARS, MCP_ACTIVITY_ROWS, MCP_KEY_NAME_MAX_CHARS, MCP_PUBLIC_HOST_MAX_CHARS
+from constants import (
+    PREDICTION_HORIZON_DAYS, PREDICTION_RETURN_THRESHOLD, CSS_VERSION, GFETCHER_MAX_DELAY_SECONDS, GFETCHER_MAX_PER_TICKER,
+    GFETCHER_MAX_REQUESTS_PER_DAY, GFETCHER_MAX_TICKERS_PER_RUN, GFETCHER_MIN_DELAY_SECONDS, INVESTMENT_POLICY_MAX_CHARS,
+    MCP_ACTIVITY_ROWS, MCP_KEY_NAME_MAX_CHARS, MCP_PUBLIC_HOST_MAX_CHARS,
+)
 from pages.page_helpers import get_unread_count
 from pages.page_routes_etf import page_router_etf
 from pages.page_routes_macro import page_router_macro
@@ -90,6 +94,11 @@ def settings_page(request: Request):
             "mcp_public_host_max": MCP_PUBLIC_HOST_MAX_CHARS,
             "mcp_activity_rows": MCP_ACTIVITY_ROWS,
             "investment_policy_max": INVESTMENT_POLICY_MAX_CHARS,
+            "gfetcher_limits": {
+                "max_tickers": GFETCHER_MAX_TICKERS_PER_RUN, "max_requests": GFETCHER_MAX_REQUESTS_PER_DAY,
+                "min_delay": GFETCHER_MIN_DELAY_SECONDS, "max_delay": GFETCHER_MAX_DELAY_SECONDS,
+                "max_per_ticker": GFETCHER_MAX_PER_TICKER,
+            },
             "dashboard_username": os.environ.get("DASHBOARD_USERNAME", "admin"),
             "secrets_set": {
                 name: bool(os.environ.get(name))

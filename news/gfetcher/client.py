@@ -9,6 +9,7 @@ from urllib.parse import quote
 
 import requests
 
+from constants import GFETCHER_MIN_DELAY_SECONDS
 from outbound_fetch_helpers import FetchRedirected, FetchRefused, fetch_body
 from tools.network_engine import network_routing
 
@@ -23,7 +24,7 @@ HEADERS = {
     # Skips the EU consent page that would otherwise replace the quote page.
     "Cookie": "CONSENT=YES+",
 }
-MIN_DELAY_SECONDS = 3.0
+MIN_DELAY_SECONDS = GFETCHER_MIN_DELAY_SECONDS
 # The gap before each request is drawn from [delay, delay * DELAY_SPREAD], so requests never tick at a fixed rate.
 DELAY_SPREAD = 2.0
 MAX_PAGE_BYTES = 5 * 1024 * 1024
@@ -105,6 +106,7 @@ class GoogleClient:
         self._last: Optional[float] = None
         self._turn = 0
         states = store.get_states()
+        self._refusals_before = {name: state.consecutive_refusals for name, state in states.items()}
         self.cooling: dict = {}
         self.active: list[Route] = []
         for route in routes if routes is not None else configured_routes():
@@ -115,6 +117,7 @@ class GoogleClient:
                 self.active.append(route)
         self.succeeded: set = set()
         self.dropped: set = set()
+        self.refused_now: list = []
 
     def refusal(self) -> GoogleRefused:
         reason = "; ".join(f"{name}: {why}" for name, (why, _) in sorted(self.cooling.items()))
@@ -169,7 +172,9 @@ class GoogleClient:
         store.record_request(now, ticker, route.name, "quote_page", status, outcome, int((self._last - started) * 1000), retry_after)
         if outcome in ("captcha", "rate_limited"):
             reason = f"HTTP {status}" if outcome == "rate_limited" else "CAPTCHA page"
-            self.cooling[route.name] = (reason, enter_cooldown(route.name, reason, retry_after, now))
+            until = enter_cooldown(route.name, reason, retry_after, now)
+            self.cooling[route.name] = (reason, until)
+            self.refused_now.append({"route": route.name, "reason": reason, "until": until})
             self.active.remove(route)
             if not self.active:
                 raise self.refusal()
@@ -185,8 +190,12 @@ class GoogleClient:
             return html
         return None
 
-    def finish(self) -> None:
-        """A route that answered without being refused this run starts its next refusal from the first cooldown step again."""
+    def finish(self) -> list[str]:
+        """A route that answered without being refused this run starts its next refusal from the first cooldown step again; returns the routes that had been refused before (recovered)."""
         now = _now()
-        for name in self.succeeded - set(self.cooling):
+        recovered = []
+        for name in sorted(self.succeeded - set(self.cooling)):
             store.mark_success(name, now)
+            if self._refusals_before.get(name):
+                recovered.append(name)
+        return recovered
