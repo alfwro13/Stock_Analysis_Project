@@ -44,6 +44,26 @@ def test_run_all_skips_tbill_synthetic_tickers(tmp_path):
     assert analyzed == {"AAPL"}
 
 
+def test_run_all_only_and_exclude_split_the_scan_for_the_universe_history_pool(tmp_path):
+    """The Update Pipeline scans the universe-history pool after its download (only=) and everything else before it (exclude=), so a pool ticker is priced from that night's bar, not the previous one."""
+    for name in ("AAPL", "CCEP.L", "IHG.L"):
+        (tmp_path / f"{name}.parquet").touch()
+    pool = {"CCEP.L", "IHG.L"}
+
+    engine = QuantEngine()
+    with patch("quant_signals.HISTORICAL_DIR", tmp_path), \
+         patch.object(engine, "_history_kind", return_value="bars"), \
+         patch.object(engine, "analyze_ticker") as mock_analyze:
+        engine.run_all(exclude=frozenset(pool))
+        before = {c.args[0] for c in mock_analyze.call_args_list}
+        mock_analyze.reset_mock()
+        engine.run_all(only=pool)
+        after = {c.args[0] for c in mock_analyze.call_args_list}
+
+    assert before == {"AAPL"}
+    assert after == pool
+
+
 def _write_history(directory, name, closes, bars=True):
     index = pd.date_range("2026-01-01", periods=len(closes), freq="D")
     frame = pd.DataFrame({"Close": closes}, index=index)

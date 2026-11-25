@@ -243,7 +243,7 @@ def run_update_pipeline():
         from regime_engine import calculate_systemic_macro_threat, calculate_market_regime
         calculate_systemic_macro_threat()
         regime_result = calculate_market_regime()
-        QuantEngine().run_all()
+        QuantEngine().run_all(exclude=frozenset(data_engine.get_universe_history_pool()))
         from universe_fundamentals_engine import sync_etf_holdings_cache
         sync_etf_holdings_cache(data_engine.get_all_tickers())
         logger.info("Background update complete.")
@@ -299,7 +299,9 @@ def run_update_pipeline():
                 if conn_alert:
                     conn_alert.close()
 
-        data_engine.bulk_download_historical([], universe=data_engine.get_universe_history_pool())
+        universe_pool = data_engine.get_universe_history_pool()
+        data_engine.bulk_download_historical([], universe=universe_pool)
+        QuantEngine().run_all(only=set(universe_pool))
 
     except Exception as e:
         log_sched_notification("Error", f"Update Pipeline failed: {e}")
