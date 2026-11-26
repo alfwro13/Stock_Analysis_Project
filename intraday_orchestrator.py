@@ -24,6 +24,7 @@ from notification_engine import notify
 import market_session_helpers
 from market_pulse_write import upsert_live_price
 from utils import clamp_beta
+from price_history_helpers import pct_from_anchor, previous_settled_close
 
 logger = logging.getLogger(__name__)
 
@@ -391,7 +392,7 @@ class IntradayOrchestrator:
         return float(df['Close'].iloc[-1])
 
     def _bulk_change_pct(self, df_bulk: pd.DataFrame, download_list: List[str], ticker: str) -> Optional[float]:
-        """Session open-to-latest % change for one ticker, sliced from the already-fetched bulk 5m frame."""
+        """Previous-close-to-latest % change for one ticker, sliced from the already-fetched bulk 5m frame; the same reference the crash trigger uses."""
         try:
             if isinstance(df_bulk.columns, pd.MultiIndex):
                 if ticker not in df_bulk.columns.get_level_values(0):
@@ -409,10 +410,8 @@ class IntradayOrchestrator:
             if len(m_df) < 2 or self._seconds_since(m_df.index[-1]) > _STALE_SECONDS:
                 return None
 
-            m_open = float(m_df['Close'].iloc[0])
-            m_curr = self._settled_close(m_df)
-            if m_open > 0:
-                return ((m_curr - m_open) / m_open) * 100.0
+            prev_close = previous_settled_close(ticker, m_df.index[-1].date())
+            return pct_from_anchor(self._settled_close(m_df), prev_close)
         except Exception:
             logger.error("Bulk change pct extraction failed for %s", ticker, exc_info=True)
         return None
@@ -662,7 +661,6 @@ class IntradayOrchestrator:
                     m_spike = ((m_curr - m_open) / m_open) * 100.0
 
                     if m_ticker == "SPY":
-                        spy_change_pct = m_spike
                         continue
 
                     # If yield spikes more than 1.5% intraday, it's a systemic shock
@@ -690,10 +688,11 @@ class IntradayOrchestrator:
             except Exception:
                 logger.error("Macro eval failed for %s", m_ticker, exc_info=True)
 
-        for bench_ticker in benchmark_index_tickers:
+        for bench_ticker in [*benchmark_index_tickers, "SPY"]:
             pct = self._bulk_change_pct(df_bulk, download_list, bench_ticker)
             if pct is not None:
                 benchmark_changes[bench_ticker] = pct
+        spy_change_pct = benchmark_changes.get("SPY")
 
         peer_changes: Dict[str, Dict[str, float]] = {}
         for t in tickers:

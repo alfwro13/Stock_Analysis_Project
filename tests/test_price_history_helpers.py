@@ -25,6 +25,7 @@ from price_history_helpers import (
     load_daily_close,
     normalized_close,
     pct_from_anchor,
+    previous_settled_close,
 )
 
 
@@ -428,6 +429,31 @@ class TestLoadDailyClose:
             assert load_daily_close("AAA") is None
         with patch("price_history_helpers.load_or_fetch_daily_history", return_value=self._frame().rename(columns={"Close": "Open"})):
             assert load_daily_close("AAA") is None
+
+
+class TestPreviousSettledClose:
+    def _frame(self, dates, closes):
+        return pd.DataFrame({"Close": closes}, index=pd.DatetimeIndex(dates))
+
+    def test_excludes_the_live_dates_own_bar(self):
+        frame = self._frame(["2026-11-23", "2026-11-24", "2026-11-25"], [100.0, 101.0, 90.0])
+        with patch("price_history_helpers.load_or_fetch_daily_history", return_value=frame) as load:
+            assert previous_settled_close("AAA", date(2026, 11, 25)) == 101.0
+        load.assert_called_once_with("AAA", cache_only=False, read_only=True)
+
+    def test_last_bar_before_the_live_date_when_the_live_bar_is_not_stored(self):
+        frame = self._frame(["2026-11-20", "2026-11-23"], [100.0, 102.0])
+        with patch("price_history_helpers.load_or_fetch_daily_history", return_value=frame):
+            assert previous_settled_close("AAA", date(2026, 11, 25)) == 102.0
+
+    def test_none_when_every_bar_is_on_or_after_the_live_date(self):
+        frame = self._frame(["2026-11-25"], [90.0])
+        with patch("price_history_helpers.load_or_fetch_daily_history", return_value=frame):
+            assert previous_settled_close("AAA", date(2026, 11, 25)) is None
+
+    def test_none_without_a_loader_result(self):
+        with patch("price_history_helpers.load_or_fetch_daily_history", return_value=None):
+            assert previous_settled_close("AAA", date(2026, 11, 25)) is None
 
 
 class TestLastSessionChange:

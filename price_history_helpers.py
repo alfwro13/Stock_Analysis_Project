@@ -132,6 +132,17 @@ def load_daily_close(ticker: str, *, cache_only: bool = False, read_only: bool =
     return normalized_close(df["Close"], tail)
 
 
+def previous_settled_close(ticker: str, live_date: date) -> Optional[float]:
+    """Last stored daily close dated before `live_date`, so the live session's own still-forming bar is never the reference; None when no such bar exists."""
+    close = load_daily_close(ticker, read_only=True, tail=3)
+    if close is None:
+        return None
+    earlier = close[close.index.date < live_date]
+    if earlier.empty:
+        return None
+    return float(earlier.iloc[-1])
+
+
 def last_session_change(ticker: str, price: float, sessions: int = 1) -> Optional[Tuple[float, float]]:
     """(change per share, change %) between the last stored daily close and the one `sessions` bars earlier, only when the last stored close is `price`; None otherwise, so a price from another source never gets a change measured against a different bar."""
     close = load_daily_close(ticker, read_only=True, tail=sessions + 1)
