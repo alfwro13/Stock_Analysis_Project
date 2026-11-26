@@ -6,6 +6,7 @@ from starlette.background import BackgroundTasks
 
 import scheduler_engine
 import scheduler_jobs
+from constants import GFETCHER_MAX_REQUESTS_PER_DAY
 from news.gfetcher.pipeline import FetchSettings, RunResult
 from scheduler_manifest import JOB_GRAPH, display_name_for_config_key
 
@@ -128,7 +129,8 @@ def test_settings_save_round_trips_the_block(client, step_up_headers):
 
 @pytest.mark.parametrize("field,value", [
     ("INTERVAL_MINUTES", 45), ("GOOGLE_DELAY_SECONDS", 1), ("GOOGLE_DELAY_SECONDS", "Infinity"),
-    ("SCOPES", ["portfolio", "universe"]), ("MAX_REQUESTS_PER_DAY", 5000), ("START_TIME", "7am"), ("FREQUENCY", "sat"),
+    ("SCOPES", ["portfolio", "universe"]), ("MAX_REQUESTS_PER_DAY", GFETCHER_MAX_REQUESTS_PER_DAY + 1),
+    ("START_TIME", "7am"), ("FREQUENCY", "sat"),
 ])
 def test_settings_save_refuses_a_bad_value(client, step_up_headers, field, value):
     resp = client.post("/api/settings", json={"SCHEDULING": {"GFETCHER": {**VALID_BLOCK, field: value}}}, headers=step_up_headers)
