@@ -11,11 +11,13 @@ import tempfile
 import unicodedata
 from contextlib import contextmanager
 from contextvars import ContextVar
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from time import perf_counter
 from typing import Any, Optional
 from urllib.parse import quote, urlsplit
+
+from constants import FUNDAMENTALS_IDENTITY_KEYS, FUNDAMENTALS_MAX_AGE_DAYS
 
 logger = logging.getLogger(__name__)
 
@@ -376,14 +378,25 @@ def has_cached_fundamentals(ticker: Optional[str]) -> bool:
     return path is not None and os.path.exists(path)
 
 
+def fundamentals_dump_age(path: Any) -> timedelta:
+    return datetime.now(timezone.utc) - datetime.fromtimestamp(os.path.getmtime(path), timezone.utc)
+
+
+def age_bounded_info(info: dict, path: Any) -> dict:
+    """A `.info` dump older than FUNDAMENTALS_MAX_AGE_DAYS keeps only its identity keys, so no reader serves its figures."""
+    if fundamentals_dump_age(path) <= timedelta(days=FUNDAMENTALS_MAX_AGE_DAYS):
+        return info
+    return {key: value for key, value in info.items() if key in FUNDAMENTALS_IDENTITY_KEYS}
+
+
 def cached_fundamentals_extra(ticker: Optional[str]) -> Optional[dict]:
-    """Raw numbers from the ticker's `.info` dump under FUNDAMENTALS_DIR, or None when the file is missing, unsafe or unreadable. Money fields are in Yahoo's units: `market_cap` in the quote currency's major unit (GBP for a GBp quote), the rest in `financial_currency`."""
+    """Raw numbers (None past FUNDAMENTALS_MAX_AGE_DAYS) from the ticker's `.info` dump, or None when the file is missing, unsafe or unreadable. Money fields are in Yahoo's units: `market_cap` in the quote currency's major unit (GBP for a GBp quote), the rest in `financial_currency`."""
     path = _fundamentals_dump_path(ticker)
     if path is None or not os.path.exists(path):
         return None
     try:
         with open(path) as f:
-            d = json.load(f)
+            d = age_bounded_info(json.load(f), path)
         ex_dividend_date = epoch_to_iso_date(d.get("exDividendDate"))
         total_cash = d.get("totalCash")
         total_debt = d.get("totalDebt")

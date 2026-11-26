@@ -7,11 +7,21 @@ from datetime import datetime, timedelta, timezone
 from typing import List, Optional
 
 from config import FUNDAMENTALS_DIR
+from constants import (
+    FUNDAMENTALS_MAX_AGE_DAYS, FUNDAMENTALS_REFRESH_DAYS, FUNDAMENTALS_REFRESH_MAX_RATE_LIMITS,
+    FUNDAMENTALS_REFRESH_SETTLE_SECONDS,
+)
 from yahoo_engine import yahoo_engine
 from db.database import get_connection, log_notification
 from fundamentals_helpers import calculate_peter_lynch_peg, currency_safe_price_ratios, dividend_yield_fraction
+from profile_engine import load_blacklist
 from time_engine import parse_stored_utc
-from utils import contained_ticker_path, epoch_to_iso_date, next_earnings_iso_date
+from tools.network_engine import wait_for_yahoo_rate_limit_reset, yahoo_rate_limit_trips
+from universe_deep_sync_engine import _get_universe_target_tickers
+from utils import (
+    contained_ticker_path, epoch_to_iso_date, fundamentals_dump_age, ignored_tickers_set, is_excluded_from_yahoo_fetch,
+    next_earnings_iso_date, normalize_ticker,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -19,24 +29,22 @@ logger = logging.getLogger(__name__)
 # avoids re-fetching on every quant_analysis_job run while still catching drift eventually.
 _HOLDINGS_REFRESH_DAYS = 30
 
-# Under the weekly Universe Deep Sync cadence, so every run refetches the dump: the nightly drip-feed refreshes only held, watched and Markets tickers.
-_INFO_REFRESH_DAYS = 6
-
 
 def _fetch_info(ticker: str) -> dict:
-    """The cached `.info` dump while younger than _INFO_REFRESH_DAYS, else a fresh fetch; a failed fetch keeps the old dump."""
+    """The cached `.info` dump while younger than FUNDAMENTALS_REFRESH_DAYS, else a fresh fetch; a failed fetch falls back to the old dump only up to FUNDAMENTALS_MAX_AGE_DAYS."""
     cache_path = contained_ticker_path(FUNDAMENTALS_DIR, ticker, ".json")
     if cache_path is None:
         return {}
     cached: dict = {}
+    age = timedelta(0)
     if os.path.exists(cache_path):
         try:
             with open(cache_path, 'r') as f:
                 cached = json.load(f)
         except Exception:
             logger.warning("Corrupted fundamentals cache for %s, re-fetching", ticker, exc_info=True)
-        written_at = datetime.fromtimestamp(os.path.getmtime(cache_path), timezone.utc)
-        if cached and written_at >= datetime.now(timezone.utc) - timedelta(days=_INFO_REFRESH_DAYS):
+        age = fundamentals_dump_age(cache_path)
+        if cached and age <= timedelta(days=FUNDAMENTALS_REFRESH_DAYS):
             return cached
     try:
         info = yahoo_engine.get_ticker_info(ticker) or {}
@@ -48,7 +56,65 @@ def _fetch_info(ticker: str) -> dict:
         with open(cache_path, 'w') as f:
             json.dump(info, f)
         return info
-    return cached or info
+    if not cached:
+        return info
+    return cached if age <= timedelta(days=FUNDAMENTALS_MAX_AGE_DAYS) else {}
+
+
+def _due_fundamentals_tickers(scope: set) -> list:
+    """Scan-scope tickers whose dump is older than FUNDAMENTALS_REFRESH_DAYS plus index stocks with none; missing first, then oldest."""
+    due = {}
+    for path in FUNDAMENTALS_DIR.glob("*.json"):
+        if normalize_ticker(path.stem) in scope:
+            age = fundamentals_dump_age(path)
+            if age > timedelta(days=FUNDAMENTALS_REFRESH_DAYS):
+                due[path.stem] = age
+    for ticker in _get_universe_target_tickers(freetrade_firewall=False):
+        path = contained_ticker_path(FUNDAMENTALS_DIR, ticker, ".json")
+        if path is not None and not os.path.exists(path):
+            due[ticker] = timedelta.max
+    blacklist = load_blacklist()
+    ignored = ignored_tickers_set()
+    fetchable = [t for t in sorted(due) if t not in blacklist and not is_excluded_from_yahoo_fetch(t, ignored)]
+    return sorted(fetchable, key=due.__getitem__, reverse=True)
+
+
+def refresh_due_fundamentals() -> None:
+    """Refetches every due dump ahead of the universe Quant Scan; never raises, and a ticker that fails stays due for the next run."""
+    try:
+        from quant_signals import QuantEngine
+        scope = QuantEngine._scan_scope()
+        due = _due_fundamentals_tickers(scope) if scope else []
+    except Exception:
+        logger.error("Fundamentals refresh: could not list the due dumps.", exc_info=True)
+        return
+    if not due:
+        logger.info("Fundamentals refresh: nothing due.")
+        return
+
+    logger.info("Fundamentals refresh: %s dump(s) due.", len(due))
+    trips_at_start = trips_seen = yahoo_rate_limit_trips()
+    refreshed = 0
+    for ticker in due:
+        try:
+            _fetch_info(ticker)
+            path = contained_ticker_path(FUNDAMENTALS_DIR, ticker, ".json")
+            if path and os.path.exists(path) and fundamentals_dump_age(path) <= timedelta(days=FUNDAMENTALS_REFRESH_DAYS):
+                refreshed += 1
+        except Exception as e:
+            logger.warning("[%s] Fundamentals refresh failed: %s", ticker, e)
+
+        trips = yahoo_rate_limit_trips()
+        if trips - trips_at_start >= FUNDAMENTALS_REFRESH_MAX_RATE_LIMITS:
+            logger.warning("Fundamentals refresh stopped after %s Yahoo rate limits; the rest are retried next run.", trips - trips_at_start)
+            break
+        if trips != trips_seen:
+            wait_for_yahoo_rate_limit_reset()
+            time.sleep(FUNDAMENTALS_REFRESH_SETTLE_SECONDS)
+            trips_seen = yahoo_rate_limit_trips()
+        else:
+            time.sleep(0.4)
+    logger.info("Fundamentals refresh: %s of %s due dump(s) refreshed.", refreshed, len(due))
 
 
 def _compute_fundamental_score(info: dict) -> tuple:
@@ -254,7 +320,7 @@ def _upsert_fundamentals(ticker: str, info: dict) -> None:
         # holdings_updated_at and piotroski_f_score/altman_z_score/beneish_m_score/
         # forensic_last_updated, which are owned by other engines' own targeted UPDATEs.
         # current_price is only filled while NULL: the Quant Scan owns it from the daily bar, and the
-        # `.info` quote is up to _INFO_REFRESH_DAYS old.
+        # `.info` quote can be days old.
         cursor.execute("""
             INSERT INTO stock_signals (
                 ticker, last_updated, company_name, sector, country, currency, quote_type,

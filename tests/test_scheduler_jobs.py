@@ -162,14 +162,18 @@ class TestRunUpdatePipelineRefreshesUniverseHistoryLast:
              patch("regime_engine.calculate_market_regime", return_value={}), \
              patch("universe_fundamentals_engine.sync_etf_holdings_cache",
                    side_effect=lambda t: order.append("etf_holdings")), \
+             patch("universe_fundamentals_engine.refresh_due_fundamentals",
+                   side_effect=lambda: order.append("fundamentals")) as refresh, \
              patch("scheduler_jobs.record_job_run") as record, \
              patch("scheduler_jobs.log_sched_notification"):
             scheduler_jobs.run_update_pipeline()
 
         pool = {"NVDA", "VOD.L"}
         assert order == [
-            "update_all_data", ("quant", {"exclude": frozenset(pool)}), "etf_holdings", "universe", ("quant", {"only": pool}),
+            "update_all_data", ("quant", {"exclude": frozenset(pool)}), "etf_holdings", "universe", "fundamentals",
+            ("quant", {"only": pool}),
         ]
+        refresh.assert_called_once_with()
         engine.bulk_download_historical.assert_called_once_with([], universe=["NVDA", "VOD.L"])
         record.assert_called_once_with("quant_analysis_job")
 
