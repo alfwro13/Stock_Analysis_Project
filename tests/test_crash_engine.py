@@ -39,6 +39,11 @@ def _make_df(prices: list[float]) -> pd.DataFrame:
     return pd.DataFrame({"Close": prices})
 
 
+def _intraday_frame(prices: list[float]) -> pd.DataFrame:
+    idx = pd.date_range("2026-11-25 14:30", periods=len(prices), freq="5min", tz="UTC")
+    return pd.DataFrame({"Close": prices}, index=idx)
+
+
 def _engine(**overrides) -> CrashEngine:
     cfg = {
         "NOTIFICATIONS": {
@@ -352,12 +357,29 @@ class TestSpyMarketContext:
 
     def test_fetch_market_context_fetches_when_nyse_open(self):
         eng = _engine()
-        spy_df = pd.DataFrame({"Close": [400.0, 398.0, 396.0, 394.0, 392.0]})
+        spy_df = _intraday_frame([400.0, 398.0, 396.0, 394.0, 392.0])
         with patch("crash_engine.market_session_helpers.is_exchange_open", return_value=True), \
-             patch("crash_engine.yahoo_engine.get_intraday", return_value={"SPY": spy_df}):
+             patch("crash_engine.yahoo_engine.get_intraday", return_value={"SPY": spy_df}), \
+             patch("crash_engine.previous_settled_close", return_value=400.0):
             result = eng._fetch_market_context()
         assert result is not None
         assert result < 0
+
+    def test_live_change_is_measured_from_the_previous_close_not_the_first_bar(self):
+        eng = _engine()
+        df = _intraday_frame([92.0, 92.0, 92.0, 92.0])
+        with patch("crash_engine.yahoo_engine.get_intraday", return_value={"AAA": df}), \
+             patch("crash_engine.previous_settled_close", return_value=100.0) as prev:
+            result = eng._fetch_live_change_pct("AAA", None)
+        prev.assert_called_once_with("AAA", df.index[-1].date())
+        assert result == pytest.approx(-8.0)
+
+    def test_live_change_is_none_without_a_previous_close(self):
+        eng = _engine()
+        df = _intraday_frame([92.0, 92.0, 92.0, 92.0])
+        with patch("crash_engine.yahoo_engine.get_intraday", return_value={"AAA": df}), \
+             patch("crash_engine.previous_settled_close", return_value=None):
+            assert eng._fetch_live_change_pct("AAA", None) is None
 
 
 # ── Volume and peer context ───────────────────────────────────────────────────

@@ -12,6 +12,7 @@ from utils import clamp_beta
 from yahoo_engine import yahoo_engine, news_item_published_at, news_item_text
 from db.database import get_ticker_registry_row_by_exchange
 import market_pulse
+from price_history_helpers import pct_from_anchor, previous_settled_close
 import market_session_helpers
 import markets_engine
 
@@ -48,10 +49,8 @@ class CrashEngine:
             _result = yahoo_engine.get_intraday([ticker], period="1d", interval="5m")
             data = _result.get(ticker)
             if data is not None and len(data) >= 2:
-                session_open = float(data['Close'].iloc[0])
-                curr_price = float(data['Close'].iloc[-1])
-                if session_open > 0:
-                    return ((curr_price - session_open) / session_open) * 100.0
+                prev_close = previous_settled_close(ticker, data.index[-1].date())
+                return pct_from_anchor(float(data['Close'].iloc[-1]), prev_close)
         except Exception as e:
             logger.warning("Failed to fetch benchmark context (%s): %s", ticker, e)
         return None

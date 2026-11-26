@@ -63,14 +63,22 @@ _COMPANY_SUFFIXES = frozenset({
     "lp", "llc", "holdings", "group", "the", "ord", "adr", "class",
 })
 _MIN_MATCH_CHARS = 3
+_MAGNITUDE = r"(?:thousand|million|billion|bill|trillion|mln|bln|mn|bn|tn|k|m|b)\b"
 
 
 def mentions_ticker(ticker: str, company_name: Optional[str], headline: Optional[str], summary: Optional[str]) -> bool:
-    """True when the headline or summary names the ticker's symbol (whole word, at least 3 characters, exchange suffix dropped) or the first two words of its company name before any corporate suffix; False means neither appears, not that the article is unrelated (an article may call the company by another name)."""
+    """True when the headline or summary names the ticker's symbol (whole word, at least 3 characters, exchange suffix dropped, not as a currency amount such as `49B NOK`) or the first two words of its company name before any corporate suffix; False means neither appears, not that the article is unrelated (an article may call the company by another name)."""
     text = f"{headline or ''} {summary or ''}"
     symbol = ticker.split(".")[0]
-    if len(symbol) >= _MIN_MATCH_CHARS and re.search(rf"(?<![A-Za-z0-9]){re.escape(symbol)}(?![A-Za-z0-9])", text):
-        return True
+    if len(symbol) >= _MIN_MATCH_CHARS:
+        sym = re.escape(symbol)
+        amount = rf"\d[\d.,]*(?:\s*[-–]\s*\d[\d.,]*)?\s*{_MAGNITUDE}"
+        as_amount = re.compile(rf"(?<![A-Za-z0-9]){sym}\s+{amount}(?![A-Za-z0-9])|(?<![A-Za-z0-9.,]){amount}\s+{sym}(?![A-Za-z0-9])", re.IGNORECASE)
+        whole_word = re.compile(rf"(?<![A-Za-z0-9]){sym}(?![A-Za-z0-9])")
+        amount_spans = [m.span() for m in as_amount.finditer(text)]
+        for m in whole_word.finditer(text):
+            if not any(a <= m.start() and m.end() <= b for a, b in amount_spans):
+                return True
     words = [re.sub(r"[^a-z0-9&'-]", "", w) for w in (company_name or "").lower().split()]
     significant = []
     for word in words:

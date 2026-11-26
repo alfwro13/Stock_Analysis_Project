@@ -125,6 +125,32 @@ class TestSettledClose:
         assert IntradayOrchestrator()._settled_close(df) == 100.0
 
 
+class TestBulkChangePct:
+    @staticmethod
+    def _frame(closes, minutes_ago_last=10):
+        end = pd.Timestamp.now(tz=timezone.utc) - pd.Timedelta(minutes=minutes_ago_last)
+        idx = pd.date_range(end=end, periods=len(closes), freq="5min")
+        return pd.DataFrame({"Close": closes}, index=idx)
+
+    def test_a_name_that_gapped_down_then_went_flat_shows_the_gap(self):
+        df = self._frame([92.0, 92.0, 92.0, 92.0])
+        with patch("intraday_orchestrator.previous_settled_close", return_value=100.0) as prev:
+            pct = IntradayOrchestrator()._bulk_change_pct(df, ["AAA"], "AAA")
+        prev.assert_called_once_with("AAA", df.index[-1].date())
+        assert pct == pytest.approx(-8.0)
+
+    def test_multiindex_frame_slices_the_ticker(self):
+        df = self._frame([92.0, 92.0, 92.0])
+        bulk = pd.concat({"AAA": df, "BBB": df * 0 + 50.0}, axis=1)
+        with patch("intraday_orchestrator.previous_settled_close", return_value=100.0):
+            assert IntradayOrchestrator()._bulk_change_pct(bulk, ["AAA", "BBB"], "AAA") == pytest.approx(-8.0)
+
+    def test_none_without_a_previous_close(self):
+        df = self._frame([92.0, 92.0, 92.0])
+        with patch("intraday_orchestrator.previous_settled_close", return_value=None):
+            assert IntradayOrchestrator()._bulk_change_pct(df, ["AAA"], "AAA") is None
+
+
 # ── _refresh_account_performance_cache ────────────────────────────────────────
 
 class TestRefreshAccountPerformanceCache:
@@ -288,6 +314,20 @@ class TestQuoteSettlementGating:
         mock_settled, _ = self._run_with_ticker(tmp_path, ticker="AAPL", currency="USD", is_settled=True)
         mock_settled.assert_called_with("NYSE", include_premarket=True)
 
+
+    @pytest.mark.db
+    def test_spy_change_is_injected_from_the_previous_close(self, tmp_path):
+        seen = {}
+
+        def capture(engine, *args, **kwargs):
+            seen["spy"] = engine.spy_change_pct
+            seen["bench"] = dict(engine.benchmark_changes)
+
+        with patch("crash_engine.CrashEngine.evaluate", autospec=True, side_effect=capture), \
+             patch("intraday_orchestrator.previous_settled_close", return_value=100.0):
+            self._run_with_ticker(tmp_path, ticker="AAPL", currency="USD", is_settled=True)
+        assert seen["spy"] == pytest.approx(2.0)
+        assert seen["bench"]["SPY"] == pytest.approx(2.0)
 
     @pytest.mark.db
     def test_crash_evaluate_receives_todays_session_volume_and_its_projection(self, tmp_path):

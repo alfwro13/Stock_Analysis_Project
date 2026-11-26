@@ -240,6 +240,28 @@ class TestMentionsTicker:
         assert not mentions_ticker("AAPL", None, "Apple gains", "")
 
 
+class TestMentionsTickerCurrencyAmounts:
+    NOK = "Nokia Oyj"
+
+    @pytest.mark.parametrize("headline", [
+        "Norsk Hydro reaffirms 2030 EBITDA target of up to 49B NOK",
+        "Hydro cuts 2026 capex outlook by NOK 1 bln, targets NOK 3 bln in savin",
+        "NHY: Integrated strengths underpin selective growth and NOK 43–46 bill",
+    ])
+    def test_a_currency_amount_is_not_a_mention(self, headline):
+        assert not mentions_ticker("NOK", self.NOK, headline, "")
+
+    @pytest.mark.parametrize("headline", [
+        "Why NOK jumped today",
+        "NOK 5% higher on 5G deal",
+    ])
+    def test_a_real_symbol_mention_still_counts(self, headline):
+        assert mentions_ticker("NOK", self.NOK, headline, "")
+
+    def test_an_amount_and_a_real_mention_in_the_same_text_counts(self):
+        assert mentions_ticker("NOK", self.NOK, "Hydro targets 49B NOK; NOK shares rally", "")
+
+
 def _repeat_rows(conn, ticker, headlines, summary, publisher="trefis.com", score=-0.9):
     for index, headline in enumerate(headlines):
         conn.execute(

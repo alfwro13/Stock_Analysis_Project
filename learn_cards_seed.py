@@ -3885,7 +3885,7 @@ The connector changes nothing without my yes: never claim to have placed a trade
             "It asks the operator to classify each crash by hand before the alert is sent",
             "It compares the ticker only with its own 50-day moving average",
         ],
-        "explanation": """<p>A broad-market benchmark alone cannot tell a company-specific crash from a sector sell-off: while the S&amp;P 500 is flat, a whole industry such as semiconductors can be falling together. A Crash Alert's context report therefore also compares the crashing ticker with the other holdings scanned in the same cycle that share its industry (its sector when the industry is unknown), using each holding's move since the session open.</p>
+        "explanation": """<p>A broad-market benchmark alone cannot tell a company-specific crash from a sector sell-off: while the S&amp;P 500 is flat, a whole industry such as semiconductors can be falling together. A Crash Alert's context report therefore also compares the crashing ticker with the other holdings scanned in the same cycle that share its industry (its sector when the industry is unknown), using each holding's move since the previous daily close, the same reference the crash trigger uses.</p>
 <p>The report says how many of those peers are also down and their median move, and it only calls the event isolated when the peers are not selling off too. With fewer than two peers that have a live move, or no industry or sector on record, the alert says peer context is unavailable instead of claiming the crash is isolated. The volume line of the same report quotes today's volume so far and its full-session pace against the 20-day average, not a stored daily bar.</p>""",
     },
     # --- methodology ---
