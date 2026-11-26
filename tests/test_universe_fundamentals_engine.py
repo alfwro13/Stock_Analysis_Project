@@ -1,17 +1,25 @@
 """Tests for universe_fundamentals_engine pure functions."""
 import json
 import math
+import os
 from datetime import datetime, timedelta, timezone
-from unittest.mock import patch
+from types import SimpleNamespace
+from unittest.mock import MagicMock, call, patch
 
 import pandas as pd
 import pytest
 
+from constants import (
+    FUNDAMENTALS_MAX_AGE_DAYS, FUNDAMENTALS_REFRESH_DAYS, FUNDAMENTALS_REFRESH_MAX_RATE_LIMITS,
+    FUNDAMENTALS_REFRESH_SETTLE_SECONDS,
+)
 from db import database as _db
 from universe_fundamentals_engine import (
     _compute_fundamental_score, _clean, _needs_holdings_refresh, sync_etf_holdings_cache,
     _upsert_fundamentals,
 )
+
+pytestmark = pytest.mark.restore_tables("stock_signals")
 
 
 # ---------------------------------------------------------------------------
@@ -395,6 +403,14 @@ class TestUpsertFundamentalsStoresYahooUnits:
         assert (row["price_to_book"], row["price_to_sales"]) == (pytest.approx(1.4), pytest.approx(0.7))
 
 
+def _write_aged_dump(directory, ticker, payload, days_old):
+    path = directory / f"{ticker}.json"
+    path.write_text(json.dumps(payload))
+    written = (datetime.now(timezone.utc) - timedelta(days=days_old)).timestamp()
+    os.utime(path, (written, written))
+    return path
+
+
 class TestFetchInfoRefreshesAnAgedDump:
     """The Universe Deep Sync read data/fundamentals/{ticker}.json whatever its age, so universe-only
     tickers carried a six-month-old `.info` quote (CCEP.L at 6925 GBp against an 8875 close) and
@@ -403,13 +419,7 @@ class TestFetchInfoRefreshesAnAgedDump:
     TICKER = "ZZINFOAGE.L"
 
     def _write_dump(self, directory, payload, days_old):
-        import os
-
-        path = directory / f"{self.TICKER}.json"
-        path.write_text(json.dumps(payload))
-        written = (datetime.now(timezone.utc) - timedelta(days=days_old)).timestamp()
-        os.utime(path, (written, written))
-        return path
+        return _write_aged_dump(directory, self.TICKER, payload, days_old)
 
     def test_a_young_dump_is_used_without_a_lookup(self, tmp_path):
         import universe_fundamentals_engine as engine
@@ -423,22 +433,155 @@ class TestFetchInfoRefreshesAnAgedDump:
     def test_an_aged_dump_is_fetched_again_and_replaced(self, tmp_path):
         import universe_fundamentals_engine as engine
 
-        path = self._write_dump(tmp_path, {"quoteType": "EQUITY", "regularMarketPrice": 6925.0}, days_old=engine._INFO_REFRESH_DAYS + 1)
+        path = self._write_dump(tmp_path, {"quoteType": "EQUITY", "regularMarketPrice": 6925.0}, days_old=FUNDAMENTALS_REFRESH_DAYS + 1)
         fresh = {"quoteType": "EQUITY", "regularMarketPrice": 8890.0}
         with patch.object(engine, "FUNDAMENTALS_DIR", tmp_path), \
              patch.object(engine.yahoo_engine, "get_ticker_info", return_value=fresh):
             assert engine._fetch_info(self.TICKER) == fresh
         assert json.loads(path.read_text()) == fresh
 
-    def test_a_failed_fetch_keeps_the_aged_dump(self, tmp_path):
+    @pytest.mark.parametrize("days_old", [FUNDAMENTALS_REFRESH_DAYS + 1, FUNDAMENTALS_MAX_AGE_DAYS - 1])
+    def test_a_failed_fetch_keeps_the_aged_dump(self, tmp_path, days_old):
         import universe_fundamentals_engine as engine
 
         old = {"quoteType": "EQUITY", "regularMarketPrice": 6925.0}
-        path = self._write_dump(tmp_path, old, days_old=engine._INFO_REFRESH_DAYS + 1)
+        path = self._write_dump(tmp_path, old, days_old=days_old)
         with patch.object(engine, "FUNDAMENTALS_DIR", tmp_path), \
-             patch.object(engine.yahoo_engine, "get_ticker_info", return_value=None):
+             patch.object(engine.yahoo_engine, "get_ticker_info", return_value=None) as lookup:
             assert engine._fetch_info(self.TICKER) == old
+        lookup.assert_called_once()
         assert json.loads(path.read_text()) == old
+
+    @pytest.mark.parametrize("failure", [{"return_value": None}, {"side_effect": RuntimeError("boom")}])
+    def test_a_failed_fetch_does_not_serve_an_over_age_dump_but_keeps_the_file(self, tmp_path, failure):
+        import universe_fundamentals_engine as engine
+
+        old = {"quoteType": "EQUITY", "regularMarketPrice": 6925.0}
+        path = self._write_dump(tmp_path, old, days_old=FUNDAMENTALS_MAX_AGE_DAYS + 1)
+        with patch.object(engine, "FUNDAMENTALS_DIR", tmp_path), \
+             patch.object(engine.yahoo_engine, "get_ticker_info", **failure):
+            assert engine._fetch_info(self.TICKER) == {}
+        assert json.loads(path.read_text()) == old
+
+
+class TestDueFundamentalsTickers:
+    def test_missing_index_dumps_come_first_then_the_oldest_in_scope_dumps(self, tmp_path):
+        import universe_fundamentals_engine as engine
+
+        aged, old = FUNDAMENTALS_REFRESH_DAYS + 1, FUNDAMENTALS_MAX_AGE_DAYS + 30
+        for ticker, days_old in (
+            ("AGED", aged), ("OLDEST", old), ("YOUNG", FUNDAMENTALS_REFRESH_DAYS - 1),
+            ("OUTSIDE", old), ("BLACKAGED", old), ("IGNAGED", old),
+        ):
+            _write_aged_dump(tmp_path, ticker, {"quoteType": "EQUITY"}, days_old)
+        scope = {"AGED", "OLDEST", "YOUNG", "BLACKAGED", "IGNAGED", "NODUMP", "BLACKNEW", "IGNNEW", "SCOPEDNODUMP"}
+        index = ["AGED", "BLACKNEW", "IGNNEW", "NODUMP", "YOUNG"]
+
+        with patch.object(engine, "FUNDAMENTALS_DIR", tmp_path), \
+             patch.object(engine, "_get_universe_target_tickers", return_value=index) as targets, \
+             patch.object(engine, "load_blacklist", return_value={"BLACKAGED", "BLACKNEW"}), \
+             patch.object(engine, "ignored_tickers_set", return_value={"IGNAGED", "IGNNEW"}):
+            due = engine._due_fundamentals_tickers(scope)
+
+        assert due == ["NODUMP", "OLDEST", "AGED"]
+        targets.assert_called_once_with(freetrade_firewall=False)
+
+
+class TestRefreshDueFundamentals:
+    @pytest.fixture
+    def run(self):
+        """The refresh with its scope, due list, fetch, rate-limit breaker and clock patched; `parent` records their call order."""
+        import universe_fundamentals_engine as engine
+
+        parent = MagicMock()
+        state = {"trips": 7}
+        with patch("quant_signals.QuantEngine._scan_scope", return_value={"AAA"}) as scope, \
+             patch.object(engine, "_due_fundamentals_tickers", return_value=["AAA", "BBB", "CCC", "DDD"]) as due, \
+             patch.object(engine, "_fetch_info") as fetch, \
+             patch.object(engine, "yahoo_rate_limit_trips", side_effect=lambda: state["trips"]), \
+             patch.object(engine, "wait_for_yahoo_rate_limit_reset") as wait, \
+             patch.object(engine, "time") as clock:
+            parent.attach_mock(fetch, "fetch")
+            parent.attach_mock(wait, "wait")
+            parent.attach_mock(clock.sleep, "sleep")
+            yield SimpleNamespace(engine=engine, scope=scope, due=due, fetch=fetch, wait=wait, sleep=clock.sleep, calls=parent, state=state)
+
+    def test_refetches_the_aged_and_missing_dumps_only(self, tmp_path, caplog):
+        import universe_fundamentals_engine as engine
+
+        _write_aged_dump(tmp_path, "AGED", {"quoteType": "EQUITY", "beta": 1.0}, FUNDAMENTALS_MAX_AGE_DAYS + 1)
+        young = _write_aged_dump(tmp_path, "YOUNG", {"quoteType": "EQUITY", "beta": 1.0}, 1)
+        fresh = {"quoteType": "EQUITY", "beta": 2.0}
+        with patch("quant_signals.QuantEngine._scan_scope", return_value={"AGED", "YOUNG", "NODUMP"}), \
+             patch.object(engine, "FUNDAMENTALS_DIR", tmp_path), \
+             patch.object(engine, "_get_universe_target_tickers", return_value=["NODUMP"]), \
+             patch.object(engine, "load_blacklist", return_value=set()), \
+             patch.object(engine, "ignored_tickers_set", return_value=set()), \
+             patch.object(engine.yahoo_engine, "get_ticker_info", return_value=fresh) as lookup, \
+             patch.object(engine, "time"), \
+             caplog.at_level("INFO", logger="universe_fundamentals_engine"):
+            engine.refresh_due_fundamentals()
+
+        assert lookup.call_args_list == [call("NODUMP"), call("AGED")]
+        assert json.loads((tmp_path / "AGED.json").read_text()) == fresh
+        assert json.loads((tmp_path / "NODUMP.json").read_text()) == fresh
+        assert json.loads(young.read_text())["beta"] == 1.0
+        assert "2 of 2 due dump(s) refreshed" in caplog.text
+
+    def test_one_rate_limit_waits_for_the_reset_settles_and_continues(self, run):
+        def fetch(ticker):
+            if ticker == "BBB":
+                run.state["trips"] += 1
+
+        run.fetch.side_effect = fetch
+        run.engine.refresh_due_fundamentals()
+
+        assert run.calls.mock_calls == [
+            call.fetch("AAA"), call.sleep(0.4),
+            call.fetch("BBB"), call.wait(), call.sleep(FUNDAMENTALS_REFRESH_SETTLE_SECONDS),
+            call.fetch("CCC"), call.sleep(0.4),
+            call.fetch("DDD"), call.sleep(0.4),
+        ]
+
+    def test_stops_for_the_night_at_the_rate_limit_ceiling(self, run, caplog):
+        def fetch(ticker):
+            run.state["trips"] += 1
+
+        run.fetch.side_effect = fetch
+        with caplog.at_level("WARNING", logger="universe_fundamentals_engine"):
+            run.engine.refresh_due_fundamentals()
+
+        assert run.fetch.call_count == FUNDAMENTALS_REFRESH_MAX_RATE_LIMITS
+        assert run.wait.call_count == FUNDAMENTALS_REFRESH_MAX_RATE_LIMITS - 1
+        assert "Fundamentals refresh stopped" in caplog.text
+
+    def test_a_ticker_that_raises_does_not_stop_the_loop(self, run):
+        def fetch(ticker):
+            if ticker == "AAA":
+                raise OSError("disk full")
+
+        run.fetch.side_effect = fetch
+        run.engine.refresh_due_fundamentals()
+
+        assert run.fetch.call_args_list == [call("AAA"), call("BBB"), call("CCC"), call("DDD")]
+
+    @pytest.mark.parametrize("failing", ["scope", "due"])
+    def test_a_failed_listing_is_logged_and_never_raises(self, run, caplog, failing):
+        getattr(run, failing).side_effect = OSError("unreadable")
+        with caplog.at_level("ERROR", logger="universe_fundamentals_engine"):
+            run.engine.refresh_due_fundamentals()
+
+        run.fetch.assert_not_called()
+        assert "could not list the due dumps" in caplog.text
+
+    @pytest.mark.parametrize("scope", [None, set()])
+    def test_without_a_scan_scope_nothing_is_done(self, run, scope):
+        run.scope.return_value = scope
+        run.engine.refresh_due_fundamentals()
+
+        run.due.assert_not_called()
+        run.fetch.assert_not_called()
+        run.sleep.assert_not_called()
 
 
 class TestUpsertFundamentalsLeavesTheBarPrice:

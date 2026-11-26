@@ -301,6 +301,8 @@ def run_update_pipeline():
 
         universe_pool = data_engine.get_universe_history_pool()
         data_engine.bulk_download_historical([], universe=universe_pool)
+        from universe_fundamentals_engine import refresh_due_fundamentals
+        refresh_due_fundamentals()
         QuantEngine().run_all(only=set(universe_pool))
 
     except Exception as e:

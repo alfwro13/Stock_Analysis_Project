@@ -4,8 +4,11 @@ tests/test_quant_signals.py
 Unit tests for quant_signals.QuantEngine.run_all() business logic.
 """
 
+import json
 import logging
+import os
 import sys
+import time
 from pathlib import Path
 from unittest.mock import patch
 
@@ -14,11 +17,12 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+from constants import FUNDAMENTALS_MAX_AGE_DAYS
 from db import database as _db
 import quant_signals
 from quant_signals import QuantEngine
 
-pytestmark = pytest.mark.restore_tables("score_history")
+pytestmark = pytest.mark.restore_tables("asset_profiles", "atr_stop_history", "quant_signals", "score_history", "stock_signals")
 
 
 @pytest.fixture(autouse=True)
@@ -289,6 +293,53 @@ class TestLoadFundamentalsProfileFallback:
     def test_missing_fundamentals_and_no_profile_returns_empty(self, tmp_path):
         with patch("quant_signals.FUNDAMENTALS_DIR", tmp_path):
             assert QuantEngine().load_fundamentals("ZZNOPROFILE.L") == {}
+
+
+class TestOverAgeFundamentalsDump:
+    TICKER = "TST_QS_OVERAGE"
+    IDENTITY = {"shortName": "Test Co", "currency": "GBp", "quoteType": "EQUITY", "sector": "Technology", "country": "United Kingdom"}
+    FIGURES = {"trailingPE": 22.5, "targetMeanPrice": 150.0, "returnOnEquity": 0.3}
+
+    def _dump(self, directory, days_old):
+        path = directory / f"{self.TICKER}.json"
+        path.write_text(json.dumps({**self.IDENTITY, **self.FIGURES}))
+        written = time.time() - days_old * 86400
+        os.utime(path, (written, written))
+
+    def test_a_dump_inside_the_age_limit_is_served_whole(self, tmp_path):
+        self._dump(tmp_path, FUNDAMENTALS_MAX_AGE_DAYS - 1)
+        with patch("quant_signals.FUNDAMENTALS_DIR", tmp_path):
+            assert QuantEngine().load_fundamentals(self.TICKER) == {**self.IDENTITY, **self.FIGURES}
+
+    def test_an_over_age_dump_keeps_identity_and_drops_figures(self, tmp_path):
+        self._dump(tmp_path, FUNDAMENTALS_MAX_AGE_DAYS + 1)
+        with patch("quant_signals.FUNDAMENTALS_DIR", tmp_path):
+            assert QuantEngine().load_fundamentals(self.TICKER) == self.IDENTITY
+
+    def test_the_scan_stores_null_figures_for_an_over_age_dump(self, tmp_path):
+        self._dump(tmp_path, FUNDAMENTALS_MAX_AGE_DAYS + 1)
+        conn = _db.get_connection()
+        try:
+            conn.execute("INSERT INTO stock_signals (ticker, trailing_pe, target_price) VALUES (?, 99.0, 999.0)", (self.TICKER,))
+            conn.commit()
+        finally:
+            conn.close()
+        index = pd.date_range("2024-01-01", periods=260, freq="B")
+        close = pd.Series(range(260), index=index) * 0.1 + 100.0
+        frame = pd.DataFrame({"Open": close, "High": close + 1, "Low": close - 1, "Close": close, "Volume": 1_000_000.0})
+
+        engine = QuantEngine()
+        with patch("quant_signals.FUNDAMENTALS_DIR", tmp_path), patch.object(engine, "load_parquet", return_value=frame):
+            engine.analyze_ticker(self.TICKER)
+
+        conn = _db.get_connection()
+        try:
+            row = conn.execute(
+                "SELECT company_name, currency, trailing_pe, target_price FROM stock_signals WHERE ticker=?", (self.TICKER,)
+            ).fetchone()
+        finally:
+            conn.close()
+        assert tuple(row) == ("Test Co", "GBp", None, None)
 
 
 def test_quant_cache_readers_reject_symlinks_outside_cache_roots(tmp_path):

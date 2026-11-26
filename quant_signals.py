@@ -16,7 +16,7 @@ from fundamentals_helpers import calculate_peter_lynch_peg, currency_safe_price_
 from patterns.pattern_geometry_helpers import (
     candle_body_wick_metrics, is_bullish_engulfing, is_bearish_engulfing, is_hammer, is_shooting_star,
 )
-from utils import contained_ticker_path, epoch_to_iso_date, is_synthetic_ticker, next_earnings_iso_date, normalize_ticker
+from utils import age_bounded_info, contained_ticker_path, epoch_to_iso_date, is_synthetic_ticker, next_earnings_iso_date, normalize_ticker
 from constants import (
     DAILY_BAR_COLUMNS, QUANT_SCAN_ALWAYS_TICKERS,
     RSI_HEALTHY_MIN, RSI_HEALTHY_MAX,
@@ -207,7 +207,7 @@ class QuantEngine:
         if not os.path.exists(filepath):
             return self._fundamentals_from_profile(ticker)
         with open(filepath, 'r') as f:
-            return json.load(f)
+            return age_bounded_info(json.load(f), filepath)
 
     @staticmethod
     def _fundamentals_from_profile(ticker: str) -> dict:

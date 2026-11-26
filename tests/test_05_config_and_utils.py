@@ -1454,6 +1454,29 @@ class TestCachedFundamentalsExtra:
         assert extra["long_name"] == "Invesco EQQQ NASDAQ-100 UCITS ETF"
         assert extra["free_cash_flow"] is None and extra["roa"] is None
 
+    @pytest.mark.parametrize("over_age", [False, True])
+    def test_an_over_age_dump_answers_identity_only(self, tmp_path, monkeypatch, over_age):
+        import os
+        import time
+
+        from constants import FUNDAMENTALS_MAX_AGE_DAYS
+        from utils import cached_fundamentals_extra
+        self._dump(tmp_path, monkeypatch, "ZZFX", {
+            "marketCap": 2.5e9, "totalCash": 900, "totalDebt": 400, "financialCurrency": "USD", "exDividendDate": 1781740800,
+            "fullTimeEmployees": 1200, "website": "https://example.com", "payoutRatio": 0.37, "longName": "Test Co plc",
+        })
+        written = time.time() - (FUNDAMENTALS_MAX_AGE_DAYS + (1 if over_age else -1)) * 86400
+        os.utime(tmp_path / "ZZFX.json", (written, written))
+
+        extra = cached_fundamentals_extra("ZZFX")
+
+        assert (extra["long_name"], extra["website"], extra["financial_currency"]) == ("Test Co plc", "https://example.com", "USD")
+        figures = {key: value for key, value in extra.items() if key not in ("long_name", "website", "financial_currency")}
+        if over_age:
+            assert all(value is None for value in figures.values()), figures
+        else:
+            assert (figures["market_cap"], figures["net_cash"], figures["payout_ratio"]) == (2.5e9, 500, 0.37)
+
     def test_net_cash_is_null_when_either_side_is_missing(self, tmp_path, monkeypatch):
         from utils import cached_fundamentals_extra
         self._dump(tmp_path, monkeypatch, "ZZFX", {"totalCash": 900})

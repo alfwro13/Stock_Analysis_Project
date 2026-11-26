@@ -86,6 +86,11 @@ UNIVERSE_HISTORY_MIN_BATCH_SECONDS = 25  # a 250-ticker universe-history batch t
 UNIVERSE_HISTORY_SETTLE_SECONDS = 60     # pause after the 429 cooldown before the next universe-history batch; the limit outlasted a bare 60 s cooldown
 UNIVERSE_HISTORY_MIN_WRITTEN = 0.99      # a universe-history refresh that writes a smaller share of its pool raises the degraded-refresh alert; a healthy night writes all but a handful of dead symbols
 UNIVERSE_HISTORY_EMPTY_NIGHTS_TO_BLACKLIST = 5  # consecutive counted nights a universe-history ticker may come back without a usable bar before it is blacklisted and purged; a night with a 429 trip or a degraded write neither counts nor resets
+FUNDAMENTALS_REFRESH_DAYS = 6  # a Yahoo .info dump older than this is due; under a week, so a weekly run always refetches it
+FUNDAMENTALS_MAX_AGE_DAYS = 21  # past this no reader serves a dump's figures; allows two weeks of failed retries after it falls due
+FUNDAMENTALS_IDENTITY_KEYS = ("shortName", "longName", "quoteType", "currency", "financialCurrency", "sector", "category", "country", "website")  # what an over-age dump still answers: without them a ticker falls back to USD/EQUITY defaults
+FUNDAMENTALS_REFRESH_SETTLE_SECONDS = 60  # pause after the 429 cooldown before the fundamentals refresh continues
+FUNDAMENTALS_REFRESH_MAX_RATE_LIMITS = 2  # the fundamentals refresh stops for the night at this many 429 trips
 QUOTE_CHANGE_TOLERANCE_PCT = 0.5  # a Yahoo regularMarketChange within this many percent of regularMarketPreviousClose (of its size) from the negative of it is the glitch that sent -19.92 for a 19.92 previous close; any other disagreement is left to Yahoo's fields, because regularMarketPreviousClose is sometimes a session stale (^AXJO, ^HSI, DX-Y.NYB)
 
 QUOTE_CLOSE_GRACE_SECONDS = 900  # a cached quote taken this close before its exchange's close still counts as that session's last one: the intraday scan runs every 10 minutes and stops at the close, so its final quote is up to 10 minutes short of it

@@ -206,9 +206,9 @@ Permanently deletes **all** notifications from the database. Cannot be undone.
 
 ### `POST /api/update`
 
-Triggers a full data pipeline update for all portfolio and watchlist tickers. Runs asynchronously.
+Runs the Update Pipeline (job "Quantamental Analysis Engine") asynchronously.
 
-Pipeline steps: Ghostfolio sync → price history download → quant signals → ML inference → tail risk (VaR/CVaR).
+Pipeline steps: market baselines, then daily and intraday prices and fundamentals dumps for the nightly set (Portfolio, Watchlist, Accounts, Markets) → macro threat and market regime → Quant Scan of the nightly set → ETF holdings cache → universe price-history download → fundamentals refresh of the due dumps → Quant Scan of the universe-history pool.
 
 **Request body:** none  
 **Response:** standard background task response
