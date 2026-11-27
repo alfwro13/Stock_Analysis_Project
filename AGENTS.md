@@ -11,12 +11,12 @@ Detailed references live in `agents/`. **Do not edit `AGENTS.md` or `agents/` yo
 
 `agents/` and `audit/` are local, Git-ignored directories symlinked into feature worktrees. Keep symlinks intact for the entire task; edit operator-approved changes through the link (never replace with a worktree copy or stage in a PR). `AGENTS.md` is tracked on the feature branch.
 
-**Protocol:** Before writing/changing code, read in full every matching file below (when unsure, read it). Stubbed rules below are pointers, not the rule — never act on a stub without reading its file.
+**Protocol:** Before writing/changing code, read in full every matching file below (when unsure, read it). `DIRECTORY_LAYOUT.md` and `DATABASE_SCHEMA.md` are lookup files: grep them for the module or table you need, and read the matching section in full only when adding a file, package or table. Stubbed rules below are pointers, not the rule — never act on a stub without reading its file.
 
 | File (`agents/`) | Read when touching / doing |
 |---|---|
-| `DIRECTORY_LAYOUT.md` | Finding where a module/template/JS file lives, or before creating any new file. |
-| `DATABASE_SCHEMA.md` | Any SQLite table, query, migration, or `db/` module. |
+| `DIRECTORY_LAYOUT.md` | Lookup (grep): where a module/template/JS file lives; read the target package's section before creating a new file. |
+| `DATABASE_SCHEMA.md` | Lookup (grep): columns and writers of the table you touch; read the section in full before adding a table, column or migration. |
 | `RULES_DATA_CACHING_HELPERS.md` | Rules 3, 15–17: external data fetch/cache, on-demand refresh coordination, FX/historical freshness, ticker fetch priority (`data_engine.py`/universe), shared calculations, or **any** new utility/calculation helper. |
 | `RULE_12_CENTRAL_ENGINES.md` | Rules 12 & 21: time/timezone, Yahoo Finance, scheduling, notifications, persisted scikit-learn models, font sizes, price scraping, backup, Pattern Detection, market ticker registry; adding/splitting files; **always** for POST-TASK AUDIT central-engine check. |
 | `RULE_12_DATA_PITFALLS.md` | Rule 12 (cont.): daily-bar completeness, live-quote/price freshness, ticker filtering before Yahoo calls, `roe`/`debt_to_equity` units, "fill in the actual" backfill loops, ticker-native vs transaction currency. |
@@ -39,9 +39,10 @@ Detailed references live in `agents/`. **Do not edit `AGENTS.md` or `agents/` yo
 | `SUBSYSTEM_GFETCHER.md` | `news/gfetcher/`, `gfetcher_*` tables, `news_articles` Google rows (`feed_source = 'google'`), `SCHEDULING.GFETCHER`, `gfetcher_job`, `gfetcher_probe_source`, `api/routes_gfetcher.py`. |
 | `RULE_22_ADMIN_AUTH_AND_MCP_ACCESS.md` | Rule 22: admin/state-changing routes, `require_step_up`, `X-API-Key`/`API_KEY_ROUTES`, login/password/reset routes, MCP keys/OAuth, `MCP_PUBLIC_HOST`, `PublicHostGuard`. |
 | `RULES_NOTIFICATIONS_AND_ERROR_TEXT.md` | Rules 9 & 23: notifications, alert sources, `notification_engine`, Nextcloud Talk, route error responses, log handlers, logging URLs/tokens/exceptions. |
-| `TESTING.md` | Tests, fixtures, markers, `conftest.py`, new `run_*` job runners, full-suite cadence. |
-| `DOCUMENTATION_MAINTENANCE.md` | Adding/changing features, endpoints, tables, config keys, glossary terms, Learning cards, Portfolio/Watchlist columns, README entries. |
-| `CODING_GUIDELINES_DETAIL.md` | UI text, CSS/JS (tooltips, font sizes, DataTables), request models, nullable columns, displaying suspect data. |
+| `TESTING.md` | Tests, fixtures, markers, `conftest.py`, new `run_*` job runners, MCP tests, performance measurement, full-suite cadence. |
+| `DOCUMENTATION_MAINTENANCE.md` | Adding/changing features, endpoints, tables, config keys, glossary terms, Learning cards, Portfolio/Watchlist columns, README entries; current-state check; `audit/issues_to_fix.md` / `issues_to_followup.md` rows. |
+| `CODING_GUIDELINES_DETAIL.md` | Writing or changing any code, templates, CSS, JS or SQL (comments, logging, DB connection pattern, scope, UI text, CSS/JS, request models, nullable columns, suspect data). |
+| `INTEGRATIONS_AND_MODELS.md` | External services (Ghostfolio, Yahoo, HuggingFace/FinBERT, Nextcloud Talk, inbound MCP, FRED/BoE/ONS, SEC EDGAR) and their config keys; ML model files in `models/` and retraining. |
 
 ## Key Architecture Rules
 
@@ -55,7 +56,7 @@ Detailed references live in `agents/`. **Do not edit `AGENTS.md` or `agents/` yo
 8. **One canonical user-facing name per feature:** Every scheduled job, engine, page, tool, metric, signal, config option, and feature has one display name used identically across Settings (panels + Master APScheduler Matrix), Workflow Monitor, System Diagnostics, `templates/glossary.html`, `assets/`, and `README.md`. Never invent per-surface names or expose title-cased config keys (e.g. `ML_TRAINING` → "Ml Training"). On add/rename, grep and update all surfaces in the same change; resolve Settings-panel/job cardinality mismatches rather than papering over them.
    - Scheduled-job source of truth: `scheduler_manifest.JOB_GRAPH[job_id]["label"]` (re-exported via `scheduler_engine.JOB_GRAPH`; matches Settings panel). Config-keyed surfaces (Master Matrix, diagnostics last-run) must resolve via `scheduler_engine.CONFIG_KEY_TO_JOB` + `job_label()`/`scheduler_display_names()`. Active-Jobs panel uses `_mark_job_started(job_label("<job_id>"))`, never a literal.
    - Code identifiers (job IDs, `run_*`, config keys, module/class names) are intentionally *not* renamed to match; engines whose code name differs from their GUI name must carry top-of-module comment `# GUI name: "<name>". Canonical scheduled-job names live in scheduler_manifest.JOB_GRAPH.`
-9. **Unified notification router:** Dispatch all user-facing notifications (job status + alerts) via `notification_engine.notify(source, message_type, message_text, ...)`. Never call `nextcloud_talk.send_text_message()` or `INSERT` into `system_notifications` from feature engines (sole exception: password-reset link in `api/routes_auth.py`). Register new sources in `notification_engine.NOTIFICATION_SOURCES`; dedup/cooldown stay in the engine and failing Talk delivery never defeats dedup. → `agents/RULES_NOTIFICATIONS_AND_ERROR_TEXT.md`.
+9. **Unified notification router:** Send every user-facing notification (job status + alerts) through `notification_engine.notify()`; never call `nextcloud_talk.send_text_message()` or `INSERT` into `system_notifications` from feature engines. → `agents/RULES_NOTIFICATIONS_AND_ERROR_TEXT.md`.
 10. **Never starve the web-server thread pool in background jobs.** → `agents/RULES_CONCURRENCY_ALERTS_DEPENDENCIES.md`.
 11. **Bootstrap 5 front-end on `base.html` (migration complete).** → `agents/RULES_FRONTEND_UI.md`.
 12. **AI manageability & central-engine compliance.** → `agents/RULE_12_CENTRAL_ENGINES.md` (+ `agents/RULE_12_DATA_PITFALLS.md` for price/data freshness).
@@ -116,27 +117,3 @@ Update docs in the same task before marking work done: `templates/glossary.html`
 - **Data integrity:** Never mask bad data in `visuals/*.py`, templates, or serialisers — fix the pipeline or add a `db/schema.py:migrate_db()` migration. Missing value = `NULL` (never `0.0`, `""`, or placeholder); failed fetches leave stored values untouched.
 - **Request validation:** Float fields inherit `api.deps.FiniteModel`; user-growable lists/text take `max_length` from `constants.py`; routes writing `config.json`, the ledger, or Yahoo-bound loops take `@limiter.limit`.
 - Full detail: `agents/CODING_GUIDELINES_DETAIL.md`.
-
-## External Integrations
-
-| Service | Purpose | Config key |
-|---|---|---|
-| Ghostfolio | Live portfolio holdings | `GHOSTFOLIO_URL`, `API_TOKEN` |
-| Yahoo Finance (`yfinance`) | Price, OHLCV, fundamentals | (public) |
-| HuggingFace (`transformers`) | FinBERT sentiment at pinned `constants.NLP_FINBERT_REVISION`, `model.safetensors` only (`use_safetensors=True`, never `.bin`), `HF_HUB_OFFLINE=1` in systemd unit; revision changes need manual pre-download (`assets/nlp_sentiment_architecture.md`); weights CC BY-NC-SA 4.0 (non-commercial) | `HF_TOKEN` in `.env` (download + Settings token test only) |
-| Nextcloud Talk | Push alerts | `NEXTCLOUD_*` in `.env` |
-| MCP Server (inbound) | `/mcp` for Claude Code, Desktop, claude.ai; Bearer auth; read-only except confirm-gated Watchlist changes (Rule 22) | Named keys in Settings → MCP Server → Local/LAN Access (`mcp_api_keys`) |
-| FRED / BoE / ONS | Macro indicators | (public) |
-| SEC EDGAR | Insider Form 4 filings | (public) |
-
-## ML Models (`models/`)
-
-| File | Description |
-|---|---|
-| `ml_ensemble.joblib` | Primary soft-voting classifier (XGBoost + RF) |
-| `quantile_q10.joblib`, `quantile_q90.joblib` | Q10/Q90 quantile models for ML upside range |
-| `feature_stats.json` | Training mean/std for inference drift check (plain JSON, not pickle) |
-| `alert_referee_trapmonitor.joblib`, `alert_referee_confluence.joblib` | Alert Confidence Referee models |
-| `*.sklearn-version` | Version sidecars written by `model_compatibility_engine` |
-
-Retrain: Settings → Machine Learning & AI Engine → **Run Backfill Now** (Historical Data Backfill & Sync) → **Run Training Now** (Global Model Training).
