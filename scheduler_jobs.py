@@ -1223,7 +1223,7 @@ def run_gfetcher_job():
         for message_type, text in run_notices(result):
             log_sched_notification(message_type, text)
     except Exception as e:
-        logger.error("Google News Fetcher failed: %s", e)
+        logger.exception("Google News Fetcher failed: %s", e)
         log_sched_notification("Error", f"Google News Fetcher failed: {e}")
     finally:
         _mark_job_done(job_label("gfetcher_job"))

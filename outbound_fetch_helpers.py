@@ -1,5 +1,9 @@
 import ipaddress
 import socket
+import sys
+import threading
+import warnings
+from contextlib import contextmanager
 from typing import Iterable, Optional
 from urllib.parse import urljoin, urlsplit, urlunsplit
 
@@ -9,6 +13,7 @@ from requests.adapters import HTTPAdapter
 DEFAULT_MAX_BODY_BYTES = 2 * 1024 * 1024
 _REQUEST_TIMEOUT_SECONDS = 15
 _MAX_ADDRESS_ATTEMPTS = 3
+_import_lock = threading.Lock()
 
 
 class FetchRefused(ValueError):
@@ -39,6 +44,17 @@ class _PinnedAdapter(HTTPAdapter):
         if self._source_address:
             kwargs["source_address"] = (self._source_address, 0)
         super().init_poolmanager(*args, server_hostname=self._hostname, assert_hostname=self._hostname, **kwargs)
+
+
+@contextmanager
+def preserved_warning_filters(module: str):
+    """Wrap the first import of a library that silences warnings process-wide at import (trafilatura disables urllib3's InsecureRequestWarning)."""
+    with _import_lock:
+        if module in sys.modules:
+            yield
+            return
+        with warnings.catch_warnings():
+            yield
 
 
 def normalise_host(value: str) -> str:
@@ -76,6 +92,14 @@ def parse_https_url(url: str):
     return parts, port or 443, None
 
 
+def _decode_body(body: bytes, encoding: str) -> str:
+    try:
+        return body.decode(encoding, errors="replace")
+    except (LookupError, ValueError):
+        # The charset is whatever the server declares, such as "utf-8mb4", and may not be a Python text codec.
+        return body.decode("utf-8", errors="replace")
+
+
 def _get_pinned(hostname: str, port: int, address: str, target: str, headers: dict, max_bytes: int,
                 source_address: Optional[str] = None) -> str:
     netloc = f"[{address}]" if ":" in address else address
@@ -96,7 +120,7 @@ def _get_pinned(hostname: str, port: int, address: str, target: str, headers: di
         # requests reports ISO-8859-1 for text/* without a header charset, which garbles UTF-8 pages.
         declares_charset = "charset" in resp.headers.get("Content-Type", "").lower()
         encoding = resp.encoding if declares_charset and resp.encoding else "utf-8"
-        return bytes(body).decode(encoding, errors="replace")
+        return _decode_body(bytes(body), encoding)
 
 
 def _fetch_hop(

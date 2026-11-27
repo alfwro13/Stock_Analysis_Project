@@ -2,16 +2,16 @@
 import hashlib
 import logging
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime, time as dt_time, timedelta, timezone
 from itertools import combinations
 from typing import Callable, Optional
 
 from db.database import get_mutual_fund_tickers
-from utils import ignored_tickers_set, is_synthetic_ticker, is_valid_ticker
+from utils import ignored_tickers_set, is_synthetic_ticker, is_valid_ticker, publisher_from_url
 
-from . import store, symbols
-from .article_text import fetch_article
+from . import boilerplate, store, symbols
+from .article_text import ArticleText, fetch_article, text_status
 from .client import BudgetSpent, GoogleClient, GoogleRefused, NoRoute
 from .parse import Card, looks_english_title
 from .publishers import DROP, FETCH, PublisherPolicy
@@ -34,6 +34,8 @@ GENERIC_MIN_LIST = 5
 SUMMARY_CHARS = 300
 EMPTY_STREAK_ALARM = 3
 REQUEST_LOG_RETENTION = timedelta(days=30)
+LEAD_RETENTION = timedelta(days=30)
+LEADS_PER_PUBLISHER = 50
 _PAGE_DATE_UNITS = ("day", "week", "month", "year")
 
 
@@ -160,12 +162,28 @@ def _published(card: Card, page_date, now: datetime) -> tuple[Optional[datetime]
     return card.published, card.precision
 
 
+def _download(card: Card, now: datetime) -> ArticleText:
+    """One article's cleaned text, a wall counting as `blocked`; any failure costs this article only."""
+    try:
+        got = fetch_article(card.url)
+        if got.text is None:
+            return got
+        text = boilerplate.clean(card.url, card.title, got.text, now)
+        if not text:
+            return replace(got, text=None, status="blocked")
+        return replace(got, text=text, status=text_status(text))
+    except Exception:
+        logger.exception("Google News Fetcher: an article from %s failed.", publisher_from_url(card.url))
+        return ArticleText(None, "error")
+
+
 def run_fetch(settings: FetchSettings, *, sleep: Callable[[float], None] = time.sleep) -> RunResult:
     """One run of the Google News Fetcher; stops at Google's first refusal and leaves stored rows as they are on any failure."""
     from news.news_feed_engine import _get_company_name
 
     now = _now()
     store.prune_request_log(now - REQUEST_LOG_RETENTION)
+    store.prune_leads(now - LEAD_RETENTION, LEADS_PER_PUBLISHER)
     client = GoogleClient(settings.google_delay_seconds, settings.max_requests_per_day, sleep=sleep)
     if not client.active:
         refused = client.refusal()
@@ -215,7 +233,7 @@ def run_fetch(settings: FetchSettings, *, sleep: Callable[[float], None] = time.
             continue
         text, status, page_date = None, "skipped", None
         if decision == FETCH and settings.fetch_full_text:
-            got = fetch_article(item.card.url)
+            got = _download(item.card, now)
             policy.record(item.card.url, got.status)
             text, status, page_date = got.text, got.status, got.page_date
             sleep(settings.publisher_delay_seconds)

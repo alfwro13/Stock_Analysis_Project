@@ -325,6 +325,10 @@ Tables added after initial schema creation. All managed via `db/schema.py:init_d
 * **Purpose:** Per-ticker fetch queue state: who is due, and the layout-change signal.
 * **Key Columns:** `ticker` (PK), `scope` (the `source_list` value), `last_fetched_at` (UTC), `last_article_count` (cards on the page), `empty_streak` (runs in a row with a valid page and no cards; 3 makes the ticker a layout suspect).
 
+#### `gfetcher_leads`
+* **Purpose:** The opening of each article text the Google News Fetcher downloads, compared across a publisher's headlines to find a shared preamble (`news/gfetcher/boilerplate.py`). Written and read only by the fetcher. Pruned at the start of each run: rows older than 30 days, and rows beyond the newest 50 of their `domain`.
+* **Key Columns:** `url` (PK), `domain` (publisher host without `www.`; indexed), `headline`, `lead` (the first 6,000 characters of the text left by the known-preamble rules), `fetched_at` (UTC).
+
 #### `smgb_predictions`
 * **Purpose:** Orphaned table (retained for data preservation). Was used by the removed SMGB.L Morning Price Predictor (`smgb_predictor.py`). No code reads or writes to this table anymore.
 * **Key Columns:** `id` (PK autoincrement), `target_date` (UNIQUE), `predicted_price`, `actual_open`, `absolute_error`, `pct_error`, `direction_correct`.

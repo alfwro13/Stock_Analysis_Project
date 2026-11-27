@@ -6,7 +6,7 @@ from typing import Optional
 
 import requests
 
-from outbound_fetch_helpers import FetchRefused, fetch_body
+from outbound_fetch_helpers import FetchRefused, fetch_body, preserved_warning_filters
 
 from .client import HEADERS
 
@@ -34,6 +34,10 @@ def _status_for_http(code: Optional[int]) -> str:
     return "error"
 
 
+def text_status(text: str) -> str:
+    return "full" if len(text) >= MIN_FULL_CHARS else "short"
+
+
 def fetch_article(url: str) -> ArticleText:
     """Download one article and extract its body; `status` says what was got (full, short, paywall, blocked, unreachable, no_text, non_english, error)."""
     try:
@@ -49,8 +53,8 @@ def fetch_article(url: str) -> ArticleText:
     lang = _LANG_RE.search(html[:5000])
     if lang and lang.group(1).lower() != "en":
         return ArticleText(None, "non_english", 200)
-    # Imported here, not at module level: importing trafilatura silences urllib3's InsecureRequestWarning process-wide.
-    import trafilatura
+    with preserved_warning_filters("trafilatura"):
+        import trafilatura
     try:
         doc = trafilatura.bare_extraction(
             html, url=url, with_metadata=True, include_comments=False, include_tables=False, favor_recall=True,
@@ -68,4 +72,4 @@ def fetch_article(url: str) -> ArticleText:
             page_date = None
     if not text:
         return ArticleText(None, "no_text", 200, page_date)
-    return ArticleText(text, "full" if len(text) >= MIN_FULL_CHARS else "short", 200, page_date)
+    return ArticleText(text, text_status(text), 200, page_date)

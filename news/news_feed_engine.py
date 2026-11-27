@@ -10,7 +10,7 @@ from config import load_config
 from yahoo_engine import yahoo_engine, news_item_published_at, news_item_text
 from db.database import get_connection, get_watchlist_tickers
 from db.helpers import article_summary, get_repeated_news_summaries
-from outbound_fetch_helpers import fetch_body
+from outbound_fetch_helpers import fetch_body, preserved_warning_filters
 
 logger = logging.getLogger(__name__)
 
@@ -120,7 +120,8 @@ def _fetch_full_text(url: str) -> str | None:
     if not url or url == "N/A":
         return None
     try:
-        import trafilatura
+        with preserved_warning_filters("trafilatura"):
+            import trafilatura
         html = fetch_body(url, _ARTICLE_HEADERS, max_redirects=_ARTICLE_MAX_REDIRECTS)
         if not html or not html.strip():
             logger.debug("Article body empty for %s", url)
