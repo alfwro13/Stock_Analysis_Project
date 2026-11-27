@@ -24,6 +24,7 @@ class ArticleText:
     status: str
     http_status: Optional[int] = None
     page_date: Optional[date] = None
+    crashed: bool = False
 
 
 def _status_for_http(code: Optional[int]) -> str:

@@ -307,15 +307,16 @@ def _run_tracked_job(job_id: str, trigger_source: str, fn, *args, **kwargs):
         logger.warning("Manual run of %s skipped: it is already running.", job_id)
         return None
     started = datetime.now(timezone.utc)
-    rss_before = memory_helpers.rss_mib()
+    rss_before = None
     previous_context = getattr(_job_execution_context, "current", None)
     context = {"error_detail": None}
     _job_execution_context.current = context
     set_job_source(job_id)
     try:
+        rss_before = memory_helpers.rss_mib()
         return fn(*args, **kwargs)
     except Exception as e:
-        context["error_detail"] = str(e)
+        context["error_detail"] = str(e) or type(e).__name__
         raise
     finally:
         finished = datetime.now(timezone.utc)
@@ -337,7 +338,8 @@ def _run_tracked_job(job_id: str, trigger_source: str, fn, *args, **kwargs):
                 _running_job_runs[job_id] = remaining
             else:
                 _running_job_runs.pop(job_id, None)
-        memory_helpers.log_job_memory(job_id, rss_before, (finished - started).total_seconds())
+        if rss_before is not None:
+            memory_helpers.log_job_memory(job_id, rss_before, (finished - started).total_seconds())
 
 
 def _on_job_event(event) -> None:

@@ -252,7 +252,7 @@ Tables added after initial schema creation. All managed via `db/schema.py:init_d
 #### `scheduler_run_history`
 * **Purpose:** Stores per-execution details for the run-history window opened by clicking a job name in Settings → System Diagnostics → Master APScheduler Matrix.
 * **Key Columns:** `id` (PK autoincrement), `job_id`, `started_at` (UTC), `finished_at` (UTC), `duration_sec`, `trigger_source` (`scheduled`/`manual`), `status` (`success`/`error`), `error_detail`.
-* **Written by:** the shared scheduler execution wrapper for scheduled jobs and mapped **Run Now** actions.
+* **Written by:** the shared scheduler execution wrapper for scheduled jobs and mapped **Run Now** actions. A run whose process-memory reading before the job fails is written with status `error` and the job itself does not run.
 * **Retention:** **Database & File Maintenance** keeps the newest 20 rows per `job_id` and deletes older executions.
 
 #### `score_history`
@@ -328,6 +328,10 @@ Tables added after initial schema creation. All managed via `db/schema.py:init_d
 #### `gfetcher_leads`
 * **Purpose:** The opening of each article text the Google News Fetcher downloads, compared across a publisher's headlines to find a shared preamble (`news/gfetcher/boilerplate.py`). Written and read only by the fetcher. Pruned at the start of each run: rows older than 30 days, and rows beyond the newest 50 of their `domain`.
 * **Key Columns:** `url` (PK), `domain` (publisher host without `www.`; indexed), `headline`, `lead` (the first 6,000 characters of the text left by the known-preamble rules), `fetched_at` (UTC).
+
+#### `gfetcher_crashes`
+* **Purpose:** Retry counter for articles the Google News Fetcher leaves unstored because their download raised an unexpected exception in a run with no article text (3 or more crashes in the run, or an article that already has a counter), so a fault common to a whole run does not leave articles stored headline-only before they are retried (`assets/google_news_fetcher.md`, **One run**). Written and read only by the fetcher. A row is deleted when its article is stored; rows whose `last_crash_at` is older than 30 days are pruned at the start of each run.
+* **Key Columns:** `url` (PK: the article URL), `crashes` (number of runs with no article text counted against this download; the run that takes it past 3 stores the article headline-only), `last_crash_at` (UTC).
 
 #### `smgb_predictions`
 * **Purpose:** Orphaned table (retained for data preservation). Was used by the removed SMGB.L Morning Price Predictor (`smgb_predictor.py`). No code reads or writes to this table anymore.

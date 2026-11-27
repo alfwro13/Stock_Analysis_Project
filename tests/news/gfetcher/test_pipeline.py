@@ -8,9 +8,10 @@ import socket
 from datetime import datetime, timedelta, timezone
 
 import pytest
+import requests
 
 from db.database import get_connection
-from news.gfetcher import article_text, boilerplate, client, pipeline, store
+from news.gfetcher import article_text, boilerplate, client, pipeline, run_notices, store
 from news.gfetcher.client import IPV4, IPV6, Route
 from news.gfetcher.pipeline import FetchSettings, run_fetch
 from news.gfetcher.publishers import ALLOW, AUTO, BLOCK_BOTS, MANUAL
@@ -390,3 +391,194 @@ def test_a_run_prunes_old_and_surplus_leads_even_while_cooling_down(monkeypatch)
     assert store.peer_leads("old.example", "") == []
     kept = {headline for headline, _ in store.peer_leads("busy.example", "")}
     assert kept == {f"H{i}" for i in range(pipeline.LEADS_PER_PUBLISHER)}
+
+
+def _site(name):
+    return f"https://{name}.example/{name}"
+
+
+def _crashing(names="abc"):
+    return {_site(n): RuntimeError("boom") for n in names}
+
+
+def _crashes():
+    conn = get_connection()
+    try:
+        return {r["url"]: r["crashes"] for r in conn.execute("SELECT url, crashes FROM gfetcher_crashes")}
+    finally:
+        conn.close()
+
+
+def _crash_counts(result):
+    return result.crashed_downloads, result.articles_held, result.articles_new
+
+
+def test_downloads_that_all_crash_are_retried_three_times_then_stored_headline_only(monkeypatch):
+    pages = _crashing()
+    _stories(monkeypatch, pages)
+    for attempt in range(1, pipeline.CRASH_RETRIES + 1):
+        result = _run(min_refetch_minutes=0)
+        assert result.status == "ok" and result.text_statuses == {"error": 3}
+        assert _crash_counts(result) == (3, 3, 0)
+        assert _rows() == [] and _crashes() == dict.fromkeys(pages, attempt)
+        assert [kind for kind, _ in run_notices(result)] == ["Error"]
+
+    last = _run(min_refetch_minutes=0)
+    assert _crash_counts(last) == (3, 0, 3) and _crashes() == {}
+    assert [(r["headline"], r["full_text"], r["summary"], r["body_fetched"]) for r in _rows()] == [
+        (f"Story {n}", None, None, 0) for n in "abc"
+    ]
+    [(kind, text)] = run_notices(last)
+    assert kind == "Error" and "0 are left for a later run" in text
+
+    after = _run(min_refetch_minutes=0)
+    assert after.text_statuses == {} and _crash_counts(after) == (0, 0, 0) and run_notices(after) == []
+
+
+def test_a_held_article_is_stored_with_its_text_once_the_fault_is_gone(monkeypatch):
+    _stories(monkeypatch, _crashing())
+    assert _crash_counts(_run()) == (3, 3, 0)
+    _stories(monkeypatch, {_site(n): _page([f"Report {n}. " + line for line in BODY]) for n in "abc"})
+    result = _run(min_refetch_minutes=0)
+    assert _crash_counts(result) == (0, 0, 3) and run_notices(result) == []
+    assert [r["body_fetched"] for r in _rows()] == [1, 1, 1] and _rows()[0]["full_text"].startswith("Report a.")
+    assert _crashes() == {}
+
+
+def test_fewer_crashes_than_the_alarm_are_stored_headline_only_without_a_notice(monkeypatch):
+    _stories(monkeypatch, _crashing("ab"))
+    result = _run()
+    assert _crash_counts(result) == (0, 0, 2) and _crashes() == {} and run_notices(result) == []
+    assert [r["body_fetched"] for r in _rows()] == [0, 0]
+
+
+def test_a_held_article_is_held_again_below_the_alarm_and_stored_on_its_fourth_crash(monkeypatch):
+    _stories(monkeypatch, _crashing())
+    _run()
+    _stories(monkeypatch, _crashing("a"))
+    for attempt in range(2, pipeline.CRASH_RETRIES + 1):
+        result = _run(min_refetch_minutes=0)
+        assert result.text_statuses == {"error": 1}
+        assert _crash_counts(result) == (0, 0, 0) and run_notices(result) == [] and _rows() == []
+        assert _crashes() == {_site("a"): attempt, _site("b"): 1, _site("c"): 1}
+    last = _run(min_refetch_minutes=0)
+    assert _crash_counts(last) == (0, 0, 1) and run_notices(last) == []
+    assert [(r["headline"], r["body_fetched"]) for r in _rows()] == [("Story a", 0)]
+    assert _crashes() == {_site("b"): 1, _site("c"): 1}
+
+
+def test_a_first_crash_below_the_alarm_is_stored_while_a_held_article_waits(monkeypatch):
+    _stories(monkeypatch, _crashing())
+    _run()
+    _stories(monkeypatch, {**_crashing("ad"), _site("c"): http_error(404)})
+    result = _run(min_refetch_minutes=0)
+    assert _crash_counts(result) == (0, 0, 2) and run_notices(result) == []
+    assert [r["headline"] for r in _rows()] == ["Story c", "Story d"]
+    assert _crashes() == {_site("a"): 2, _site("b"): 1}
+
+
+def test_a_run_with_text_stores_a_held_article_and_clears_its_counter(monkeypatch):
+    _stories(monkeypatch, _crashing())
+    _run()
+    _stories(monkeypatch, {**_crashing("a"), _site("d"): _page(BODY)})
+    result = _run(min_refetch_minutes=0)
+    assert _crash_counts(result) == (0, 0, 2) and run_notices(result) == []
+    assert [(r["headline"], r["body_fetched"]) for r in _rows()] == [("Story a", 0), ("Story d", 1)]
+    assert _crashes() == {_site("b"): 1, _site("c"): 1}
+
+
+def test_a_held_url_that_would_store_no_row_is_not_counted_as_left_for_later(monkeypatch):
+    _lists(monkeypatch, {"AAPL": "portfolio"})
+    cards = [card(_site("a"), "A"), card(_site("b"), "B"), card(_site("c"), "C", age="")]
+    monkeypatch.setattr(client, "fetch_body", FakeGoogle({"AAPL:NASDAQ": quote_page(cards=cards)}))
+    _publishers(monkeypatch, RuntimeError("boom"))
+    result = _run()
+    assert _crash_counts(result) == (3, 2, 0) and set(_crashes()) == set(_crashing())
+
+
+@pytest.mark.parametrize("body,status", [(BODY, "full"), (BODY[:1], "short")])
+def test_one_download_with_text_stops_crashed_articles_being_held(monkeypatch, body, status):
+    _stories(monkeypatch, {**_crashing(), _site("d"): _page(body)})
+    result = _run()
+    assert result.text_statuses == {"error": 3, status: 1}
+    assert _crash_counts(result) == (0, 0, 4) and _crashes() == {} and run_notices(result) == []
+    assert [r["body_fetched"] for r in _rows()] == [0, 0, 0, 1]
+
+
+def test_a_download_without_text_does_not_stop_the_holding(monkeypatch):
+    _stories(monkeypatch, {**_crashing(), _site("d"): http_error(404)})
+    result = _run()
+    assert _crash_counts(result) == (3, 3, 1)
+    assert [r["headline"] for r in _rows()] == ["Story d"] and set(_crashes()) == set(_crashing())
+
+
+@pytest.mark.parametrize("error", [
+    http_error(404), http_error(500), http_error(403), requests.ConnectionError(), requests.Timeout(),
+])
+def test_ordinary_download_errors_never_count_as_crashes(monkeypatch, error):
+    _stories(monkeypatch, {_site(n): error for n in "abc"})
+    result = _run()
+    assert _crash_counts(result) == (0, 0, 3) and _crashes() == {} and run_notices(result) == []
+
+
+def test_crashes_while_cleaning_count_too(monkeypatch):
+    _stories(monkeypatch, {_site(n): _page(BODY) for n in "abc"})
+
+    def clean(*args):
+        raise ValueError("bad")
+    monkeypatch.setattr(boilerplate, "clean", clean)
+    assert _crash_counts(_run()) == (3, 3, 0)
+
+
+def test_each_article_is_held_by_its_own_count(monkeypatch):
+    _stories(monkeypatch, _crashing("abc"))
+    _run()
+    _run(min_refetch_minutes=0)
+    _stories(monkeypatch, _crashing("abcd"))
+    _run(min_refetch_minutes=0)
+    result = _run(min_refetch_minutes=0)
+    assert _crash_counts(result) == (4, 1, 3)
+    assert [r["headline"] for r in _rows()] == ["Story a", "Story b", "Story c"]
+    assert _crashes() == {_site("d"): 2}
+    alone = _run(min_refetch_minutes=0)
+    assert _crash_counts(alone) == (0, 0, 0) and _crashes() == {_site("d"): 3}
+    assert _crash_counts(_run(min_refetch_minutes=0)) == (0, 0, 1) and _crashes() == {}
+
+
+def test_a_crash_counter_older_than_the_retention_starts_again(monkeypatch):
+    now = datetime.now(timezone.utc)
+    old, recent = now - pipeline.CRASH_RETENTION - timedelta(hours=1), now - pipeline.CRASH_RETENTION + timedelta(hours=1)
+    for _ in range(pipeline.CRASH_RETRIES):
+        store.count_crashes([_site("a")], old)
+        store.count_crashes([_site("b")], recent)
+    _stories(monkeypatch, _crashing())
+    assert _crash_counts(_run()) == (3, 2, 1)
+    assert [r["headline"] for r in _rows()] == ["Story b"]
+    assert _crashes() == {_site("a"): 1, _site("c"): 1}
+
+
+def test_a_run_prunes_old_crash_counters_even_while_cooling_down(monkeypatch):
+    _lists(monkeypatch, {"AAPL": "portfolio"})
+    now = datetime.now(timezone.utc)
+    store.set_cooldown("ipv4", now + timedelta(hours=1), "HTTP 429", 1)
+    store.count_crashes([_site("old")], now - pipeline.CRASH_RETENTION - timedelta(hours=1))
+    store.count_crashes([_site("new")], now - pipeline.CRASH_RETENTION + timedelta(hours=1))
+    assert _run().status == "cooling_down"
+    assert _crashes() == {_site("new"): 1}
+
+
+def test_a_wall_is_dated_by_the_card_not_by_its_page(monkeypatch):
+    now = datetime.now(timezone.utc)
+    page_day = (now - timedelta(days=30)).date()
+    wall = _page(["Verifying your device, please wait"] + BODY[:2]).replace(
+        "<head>", f'<head><meta property="article:published_time" content="{page_day.isoformat()}T08:00:00Z">')
+    url = "https://thetimes.com/a"
+    _lists(monkeypatch, {"AAPL": "portfolio"})
+    monkeypatch.setattr(client, "fetch_body", FakeGoogle({"AAPL:NASDAQ": quote_page(cards=[card(url, "A", age="3 days ago")])}))
+    _publishers(monkeypatch, wall)
+    assert article_text.fetch_article(url).page_date == page_day
+    result = _run()
+    assert result.text_statuses == {"blocked": 1} and result.articles_new == 1
+    row = _rows()[0]
+    assert row["published_precision"] == "day" and row["full_text"] is None
+    assert datetime.fromtimestamp(row["published_at"], tz=timezone.utc).date() == (now - timedelta(days=3)).date()

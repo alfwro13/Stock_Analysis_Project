@@ -23,7 +23,7 @@ It is off by default. Settings → **News & RSS** → **Google News Fetcher** tu
 
 `POST /api/settings` refuses any other value with `422`; the limits are the `GFETCHER_*` constants in `constants.py`. The panel's health table (`GET /api/gfetcher/status`) shows the last run, each route's state (available, or paused until when and why), the requests and refusals of the last 24 hours, the stored articles and the publisher rules; **Run Now** queues a run (`409` while one runs).
 
-The job runner (`scheduler_jobs.run_gfetcher_job()`) records every run in the scheduler run history like any job and sends notifications only for events, each once, through the job's own row in Settings → Notification Settings (`news.gfetcher.run_notices()`):
+The job runner (`scheduler_jobs.run_gfetcher_job()`) records every run in the scheduler run history like any job and sends notifications only for events, each once unless the table says otherwise, through the job's own row in Settings → Notification Settings (`news.gfetcher.run_notices()`):
 
 | Event | Type |
 |---|---|
@@ -32,6 +32,7 @@ The job runner (`scheduler_jobs.run_gfetcher_job()`) records every run in the sc
 | No route could connect | Error |
 | The daily budget was spent during the run | Warning |
 | A valid page showed no news three runs in a row (fired on the third run only) | Warning |
+| Article downloads failed unexpectedly: 3 or more in the run raised an exception and no download returned text (**One run**, step 8). Sent by every such run; it gives the number of failures and of articles left for a later run | Error |
 | A route that had been refused answered again | Info |
 | The run failed with an exception | Error |
 
@@ -69,8 +70,8 @@ A normal run, a run inside a cooldown and a run with nothing due send nothing. A
 5. **Merge.** One entry per article URL with every ticker it was listed under. Articles older than `max_age_days` and headlines mostly in non-Latin script are dropped.
 6. **Market-wide news.** Google shows the same generic headlines for instruments with no news of their own (LSE-listed ETFs). Two tickers whose lists of at least 5 articles overlap by 80% or more are treated as showing that fallback list, and an article seen only in such lists is stored under the pseudo ticker `MARKET` with `source_list = 'market'` (shown as **General** on the News page). One such ticker on its own cannot be detected.
 7. **Already stored.** Articles whose `article_id` exists are skipped before any publisher request.
-8. **Publisher policy** (below), then the text download for the articles that pass, at most one per `publisher_delay_seconds`, and **Text cleaning** of each text (below). An exception while one article is downloaded or cleaned is logged with its traceback and costs that article's text only (`text_status` `error`, headline kept); the run carries on.
-9. **Store** with `INSERT OR IGNORE`, one row per (ticker, article). The first-seen `published_at` is kept.
+8. **Publisher policy** (below), then the text download for the articles that pass, at most one per `publisher_delay_seconds`, and **Text cleaning** of each text (below). An unexpected exception while one article is downloaded or cleaned (a crash) is logged with its traceback and costs that article's text only (`text_status` `error`, headline kept); the run carries on. When 3 or more downloads of a run crash (`CRASH_ALARM`) and no download returns text (`full` or `short`), the fault is taken to be common to all of them rather than to the articles: the run sends the Error notification and leaves each crashed article unstored, so that a later run retries it if Google still lists it. `gfetcher_crashes` counts these held runs per article URL. A run with no article text and fewer than 3 crashes sends no notification; it holds and counts again an article that already has a counter, and stores a first-time crash headline-only. An article is retried at most 3 times in total (`CRASH_RETRIES`), and the next run that would hold it stores it headline-only. Any run with article text stores its crashed articles headline-only without a notification. Storing an article clears its counter. An HTTP error answer (404, 500, a refusal), a connection failure or a timeout is a download outcome, never a crash; an exception inside trafilatura's extraction is recorded as `no_text` and is not a crash either, so it raises no notification.
+9. **Store** with `INSERT OR IGNORE`, one row per (ticker, article), except the articles step 8 leaves for a later run. The first-seen `published_at` is kept.
 10. **Prune** Google rows older than `max_age_days` (Yahoo rows are pruned by the News Feed), then score new rows with the News Feed's FinBERT scorer (`news.news_feed_engine._score_unscoredrows()`, headline plus summary).
 
 ## Stored article
@@ -82,7 +83,7 @@ A normal run, a run inside a cooldown and a run with nothing due send nothing. A
 | `headline`, `url`, `publisher` | from the news card |
 | `full_text` | the trafilatura text after **Text cleaning**, `NULL` when there is none |
 | `summary` | the first 300 characters of `full_text`, `NULL` without text |
-| `published_at` | estimated from Google's relative age ("3 hours ago"), or noon UTC of the page's own date when the age is in days or coarser and the page states a date |
+| `published_at` | estimated from Google's relative age ("3 hours ago"), or noon UTC of the page's own date when the age is in days or coarser and the page states a date; the date on a wall page (**Text cleaning**) is ignored |
 | `published_precision` | the unit of the estimate (`minute` … `year`), or `day` when the page date was used |
 | `feed_source` | `google` |
 
@@ -136,7 +137,7 @@ An IPv6 hard fault latched by the Yahoo connection (`GLOBAL_IPV6_STATUS`) takes 
 
 ## Tables
 
-`gfetcher_request_log` (every google.com request with its route, kept 30 days and pruned at the start of each run), `gfetcher_state` (one row per route: cooldown and last success), `gfetcher_symbol_map`, `gfetcher_publishers`, `gfetcher_ticker_state` (last fetch, last card count and the empty streak per ticker), `gfetcher_leads` (the opening of each downloaded article text, compared by **Text cleaning**; rows older than 30 days or beyond the newest 50 of their publisher host are pruned at the start of each run). Columns: `assets/db_schema_and_architecture.md`.
+`gfetcher_request_log` (every google.com request with its route, kept 30 days and pruned at the start of each run), `gfetcher_state` (one row per route: cooldown and last success), `gfetcher_symbol_map`, `gfetcher_publishers`, `gfetcher_ticker_state` (last fetch, last card count and the empty streak per ticker), `gfetcher_leads` (the opening of each downloaded article text, compared by **Text cleaning**; rows older than 30 days or beyond the newest 50 of their publisher host are pruned at the start of each run), `gfetcher_crashes` (the retry counter of each article left for a later run after a crash; counters older than 30 days are pruned at the start of each run). Columns: `assets/db_schema_and_architecture.md`.
 
 ## Layout change
 
@@ -144,7 +145,7 @@ The quote page's class names are obfuscated and can change. A ticker whose valid
 
 ## Removal
 
-Turn it off in Settings. Delete `news/gfetcher/`, `tests/news/gfetcher/` and `api/routes_gfetcher.py`, the `gfetcher_probe_source` entry and `run_gfetcher_probe` runner, the `GFETCHER_DOMAIN_MAX_CHARS` constant, the Google badge, filters and estimate marker in `news.js`/`news.html` (the `feed_source` and `published_precision` columns of `GET /api/news-feed` and MCP `get_news`/`get_article` keep working with only Yahoo rows) (and its `include_router` line in `api/routes.py`), the `gfetcher_job` runner in `scheduler_jobs.py` and its `add_job` block in `scheduler_engine.py`, the `gfetcher_job` and `google_finance_source` entries and the `GFETCHER` key in `scheduler_manifest.py`, the `GFETCHER` block of `config.py` `DEFAULT_CONFIG`, `GfetcherScheduleConfig` in `api/routes_system.py`, the `GFETCHER_*` constants, the panel in `templates/settings/_data.html` with its `settings_data.js` functions and `settings_shared.js` block (bump `CSS_VERSION`), the `gfetcher_limits` context of `pages.page_routes.settings_page`, the README bullet, the glossary term-box and its Learning card; drop the six `gfetcher_*` tables and delete the `feed_source = 'google'` rows of `news_articles` through a `db/schema.py:migrate_db()` step, and delete this file. The `feed_source` and `published_precision` columns of `news_articles` can stay. Other seams: `FetchRedirected` and the `family`/`source_address` arguments of `fetch_body()` in `outbound_fetch_helpers.py`, and `network_routing()` in `tools/network_engine.py` (all harmless to keep; the last is shared with Yahoo) and the `news` entries in the folder lists of `tests/test_architecture_yfinance.py` and `tests/test_notification_engine.py`.
+Turn it off in Settings. Delete `news/gfetcher/`, `tests/news/gfetcher/` and `api/routes_gfetcher.py`, the `gfetcher_probe_source` entry and `run_gfetcher_probe` runner, the `GFETCHER_DOMAIN_MAX_CHARS` constant, the Google badge, filters and estimate marker in `news.js`/`news.html` (the `feed_source` and `published_precision` columns of `GET /api/news-feed` and MCP `get_news`/`get_article` keep working with only Yahoo rows) (and its `include_router` line in `api/routes.py`), the `gfetcher_job` runner in `scheduler_jobs.py` and its `add_job` block in `scheduler_engine.py`, the `gfetcher_job` and `google_finance_source` entries and the `GFETCHER` key in `scheduler_manifest.py`, the `GFETCHER` block of `config.py` `DEFAULT_CONFIG`, `GfetcherScheduleConfig` in `api/routes_system.py`, the `GFETCHER_*` constants, the panel in `templates/settings/_data.html` with its `settings_data.js` functions and `settings_shared.js` block (bump `CSS_VERSION`), the `gfetcher_limits` context of `pages.page_routes.settings_page`, the README bullet, the glossary term-box and its Learning card; drop the seven `gfetcher_*` tables and delete the `feed_source = 'google'` rows of `news_articles` through a `db/schema.py:migrate_db()` step, and delete this file. The `feed_source` and `published_precision` columns of `news_articles` can stay. Other seams: `FetchRedirected` and the `family`/`source_address` arguments of `fetch_body()` in `outbound_fetch_helpers.py`, and `network_routing()` in `tools/network_engine.py` (all harmless to keep; the last is shared with Yahoo) and the `news` entries in the folder lists of `tests/test_architecture_yfinance.py` and `tests/test_notification_engine.py`.
 
 ## Tests
 

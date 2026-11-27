@@ -14,7 +14,7 @@ from . import boilerplate, store, symbols
 from .article_text import ArticleText, fetch_article, text_status
 from .client import BudgetSpent, GoogleClient, GoogleRefused, NoRoute
 from .parse import Card, looks_english_title
-from .publishers import DROP, FETCH, PublisherPolicy
+from .publishers import DROP, FETCH, SUCCESS, PublisherPolicy
 
 logger = logging.getLogger(__name__)
 
@@ -36,6 +36,9 @@ EMPTY_STREAK_ALARM = 3
 REQUEST_LOG_RETENTION = timedelta(days=30)
 LEAD_RETENTION = timedelta(days=30)
 LEADS_PER_PUBLISHER = 50
+CRASH_ALARM = 3
+CRASH_RETRIES = 3
+CRASH_RETENTION = timedelta(days=30)
 _PAGE_DATE_UNITS = ("day", "week", "month", "year")
 
 
@@ -82,6 +85,8 @@ class RunResult:
     unreachable_routes: list = field(default_factory=list)
     recovered_routes: list = field(default_factory=list)
     text_statuses: dict = field(default_factory=dict)
+    crashed_downloads: int = 0
+    articles_held: int = 0
 
 
 @dataclass
@@ -170,11 +175,24 @@ def _download(card: Card, now: datetime) -> ArticleText:
             return got
         text = boilerplate.clean(card.url, card.title, got.text, now)
         if not text:
-            return replace(got, text=None, status="blocked")
+            return replace(got, text=None, status="blocked", page_date=None)
         return replace(got, text=text, status=text_status(text))
     except Exception:
         logger.exception("Google News Fetcher: an article from %s failed.", publisher_from_url(card.url))
-        return ArticleText(None, "error")
+        return ArticleText(None, "error", crashed=True)
+
+
+def _hold_crashed(rows: list, crashed: set, result: RunResult, now: datetime) -> list:
+    """The rows to store: in a run with no article text, CRASH_ALARM crashes (or an earlier hold) leave a crashed article for a later run until it has had its retries."""
+    if not crashed or result.text_statuses.keys() & SUCCESS:
+        return rows
+    widespread = len(crashed) >= CRASH_ALARM
+    counted = crashed if widespread else store.with_crashes(crashed)
+    held = {url for url, count in store.count_crashes(counted, now).items() if count <= CRASH_RETRIES}
+    if widespread:
+        result.crashed_downloads = len(crashed)
+        result.articles_held = len({row["url"] for row in rows} & held)
+    return [row for row in rows if row["url"] not in held]
 
 
 def run_fetch(settings: FetchSettings, *, sleep: Callable[[float], None] = time.sleep) -> RunResult:
@@ -184,6 +202,7 @@ def run_fetch(settings: FetchSettings, *, sleep: Callable[[float], None] = time.
     now = _now()
     store.prune_request_log(now - REQUEST_LOG_RETENTION)
     store.prune_leads(now - LEAD_RETENTION, LEADS_PER_PUBLISHER)
+    store.prune_crashes(now - CRASH_RETENTION)
     client = GoogleClient(settings.google_delay_seconds, settings.max_requests_per_day, sleep=sleep)
     if not client.active:
         refused = client.refusal()
@@ -226,6 +245,7 @@ def run_fetch(settings: FetchSettings, *, sleep: Callable[[float], None] = time.
     fresh = [f for f in found if any(article_id(t, f.card.url) not in stored for t in f.tickers)]
     policy = PublisherPolicy(now)
     rows = []
+    crashed: set = set()
     for item in fresh:
         decision = policy.decide(item.card.url)
         if decision == DROP:
@@ -236,6 +256,8 @@ def run_fetch(settings: FetchSettings, *, sleep: Callable[[float], None] = time.
             got = _download(item.card, now)
             policy.record(item.card.url, got.status)
             text, status, page_date = got.text, got.status, got.page_date
+            if got.crashed:
+                crashed.add(item.card.url)
             sleep(settings.publisher_delay_seconds)
         elif not settings.fetch_full_text:
             status = "not_requested"
@@ -265,7 +287,9 @@ def run_fetch(settings: FetchSettings, *, sleep: Callable[[float], None] = time.
                 "published_precision": precision,
             })
     policy.save()
+    rows = _hold_crashed(rows, crashed, result, now)
     result.articles_new = store.insert_articles(rows)
+    store.clear_crashes({row["url"] for row in rows})
     result.articles_pruned = store.prune_articles(int(cutoff.timestamp()))
     if result.articles_new:
         store.score_unscored_articles()

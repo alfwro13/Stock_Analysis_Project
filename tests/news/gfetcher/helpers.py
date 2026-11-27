@@ -5,7 +5,7 @@ import requests
 
 TABLES = (
     "news_articles", "gfetcher_request_log", "gfetcher_state", "gfetcher_symbol_map",
-    "gfetcher_publishers", "gfetcher_ticker_state", "gfetcher_leads",
+    "gfetcher_publishers", "gfetcher_ticker_state", "gfetcher_leads", "gfetcher_crashes",
 )
 
 
