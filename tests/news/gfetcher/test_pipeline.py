@@ -3,15 +3,17 @@
 Covers ticker selection (scopes, fair rotation, refetch floor, unfetchable tickers), the cooldown gate,
 stopping at the first refusal, merging, market-wide articles, the publisher policy, stored rows and pruning.
 """
+import logging
 import socket
 from datetime import datetime, timedelta, timezone
 
 import pytest
 
 from db.database import get_connection
-from news.gfetcher import article_text, client, pipeline, store
+from news.gfetcher import article_text, boilerplate, client, pipeline, store
 from news.gfetcher.client import IPV4, IPV6, Route
 from news.gfetcher.pipeline import FetchSettings, run_fetch
+from news.gfetcher.publishers import ALLOW, AUTO, BLOCK_BOTS, MANUAL
 
 from .helpers import NOT_FOUND_PAGE, TABLES, FakeGoogle, article_html, card, http_error, quote_page
 
@@ -259,3 +261,132 @@ def test_the_probe_stops_at_a_refusal(monkeypatch):
     monkeypatch.setattr(client, "fetch_body", FakeGoogle({"": http_error(429)}))
     summary = pipeline.probe_symbols(FetchSettings(), sleep=lambda s: None)
     assert summary["status"] == "refused" and summary["reason"] == "ipv4: HTTP 429" and summary["checked"] == 0
+
+
+NOTICE = [f"Standing publisher notice number {i}, repeated at the top of every page we serve to our readers." for i in range(3)]
+BODY = [f"Shares of company {i} rose after it reported results well ahead of what analysts had expected." for i in range(6)]
+ZACKS_BANNER = [
+    "We use cookies to understand how you use our site and to improve your experience.",
+    "This includes personalizing content and advertising.",
+    "If you wish to go to ZacksTrade, click OK. If you do not, click Cancel.",
+]
+CNBC_WALL = ["Skip Navigation", "Markets and pre-market data from around the world", "Business, investing and technology"]
+
+
+def _page(lines):
+    paragraphs = "".join(f"<p>{line}</p>" for line in lines)
+    return f'<html lang="en"><head><title>T</title></head><body><article>{paragraphs}</article></body></html>'
+
+
+def _stories(monkeypatch, pages):
+    """One AAPL quote page listing `pages` (url -> HTML or exception), newest first, headlines named after the path."""
+    _lists(monkeypatch, {"AAPL": "portfolio"})
+    cards = [card(url, f"Story {url.rsplit('/', 1)[1]}", age=f"{i + 1} hours ago") for i, url in enumerate(pages)]
+    monkeypatch.setattr(client, "fetch_body", FakeGoogle({"AAPL:NASDAQ": quote_page(cards=cards)}))
+
+    def fetch(url, headers, **kwargs):
+        if isinstance(pages[url], BaseException):
+            raise pages[url]
+        return pages[url]
+    monkeypatch.setattr(article_text, "fetch_body", fetch)
+
+
+def test_a_banner_is_removed_before_the_text_and_summary_are_stored(monkeypatch):
+    _stories(monkeypatch, {"https://zacks.com/a": _page(ZACKS_BANNER + BODY)})
+    result = _run()
+    row = _rows()[0]
+    assert row["full_text"].startswith(BODY[0]) and "cookies" not in row["full_text"]
+    assert row["summary"] == row["full_text"][:pipeline.SUMMARY_CHARS] and row["body_fetched"] == 1
+    assert result.text_statuses == {"full": 1}
+
+
+def test_the_full_or_short_status_is_judged_on_the_cleaned_text(monkeypatch):
+    long_banner = ZACKS_BANNER[:2] + [f"Cookie category {i}: partners may use this data for measurement." for i in range(8)]
+    page = _page(long_banner + ZACKS_BANNER[2:] + BODY[:1])
+    _stories(monkeypatch, {"https://zacks.com/a": page})
+    assert article_text.fetch_article("https://zacks.com/a").status == "full"
+    result = _run()
+    assert result.text_statuses == {"short": 1} and _rows()[0]["full_text"] == BODY[0]
+    publisher = store.load_publishers()["zacks.com"]
+    assert (publisher["short_count"], publisher["full_count"]) == (1, 0)
+
+
+def test_walls_are_stored_headline_only_and_teach_the_publisher(monkeypatch):
+    wall = ["Verifying your device, please wait"] + BODY[:2]
+    _stories(monkeypatch, {"https://thetimes.com/a": _page(wall), "https://thetimes.com/b": _page(wall)})
+    result = _run()
+    rows = _rows()
+    assert [r["headline"] for r in rows] == ["Story a", "Story b"]
+    assert all((r["full_text"], r["summary"], r["body_fetched"]) == (None, None, 0) for r in rows)
+    assert result.text_statuses == {"blocked": 2}
+    publisher = store.load_publishers()["thetimes.com"]
+    assert (publisher["blocked_count"], publisher["policy"], publisher["source"]) == (2, BLOCK_BOTS, AUTO)
+
+
+def test_one_wall_does_not_block_a_new_publisher(monkeypatch):
+    _stories(monkeypatch, {"https://thetimes.com/a": _page(["Verifying your device, please wait"] + BODY[:2])})
+    _run()
+    assert store.load_publishers()["thetimes.com"]["policy"] == ALLOW
+
+
+def test_walls_never_change_a_manual_publisher_rule(monkeypatch):
+    _stories(monkeypatch, {"https://cnbc.com/a": _page(CNBC_WALL), "https://cnbc.com/b": _page(CNBC_WALL)})
+    assert _run().text_statuses == {"blocked": 2}
+    publisher = store.load_publishers()["cnbc.com"]
+    assert (publisher["blocked_count"], publisher["policy"], publisher["source"]) == (2, ALLOW, MANUAL)
+
+
+def test_a_block_shared_across_headlines_is_removed_from_the_third_article(monkeypatch):
+    pages = {f"https://new.example/{n}": _page(NOTICE + [f"Report {n}. " + line for line in BODY]) for n in "abc"}
+    _stories(monkeypatch, pages)
+    _run()
+    first, second, third = (r["full_text"] for r in _rows())
+    assert first.startswith(NOTICE[0]) and second.startswith(NOTICE[0])
+    assert third.startswith("Report c. " + BODY[0]) and "Standing publisher notice" not in third
+    assert _rows()[2]["summary"] == third[:pipeline.SUMMARY_CHARS]
+
+
+@pytest.mark.parametrize("error", [RuntimeError("boom"), LookupError("unknown encoding")])
+def test_one_failing_article_does_not_cost_the_others(monkeypatch, caplog, error):
+    _stories(monkeypatch, {
+        "https://one.example/a": _page(BODY),
+        "https://www.two.example/secret-path/b": error,
+        "https://three.example/c": _page(BODY),
+    })
+    with caplog.at_level(logging.ERROR, logger=pipeline.logger.name):
+        result = _run()
+    assert result.status == "ok" and result.articles_new == 3
+    assert result.text_statuses == {"full": 2, "error": 1}
+    stored = {r["headline"]: r for r in _rows()}
+    assert stored["Story a"]["body_fetched"] == 1 and stored["Story c"]["body_fetched"] == 1
+    assert (stored["Story b"]["full_text"], stored["Story b"]["summary"], stored["Story b"]["body_fetched"]) == (None, None, 0)
+    assert store.load_publishers()["two.example"]["error_count"] == 1
+    [record] = [r for r in caplog.records if r.name == pipeline.logger.name]
+    assert record.exc_info[1] is error
+    assert "two.example" in record.getMessage() and "secret-path" not in record.getMessage()
+
+
+def test_a_failure_while_cleaning_is_isolated_too(monkeypatch):
+    _stories(monkeypatch, {"https://one.example/a": _page(BODY), "https://two.example/b": _page(BODY)})
+    real = boilerplate.clean
+
+    def clean(url, *args):
+        if "two.example" in url:
+            raise ValueError("bad")
+        return real(url, *args)
+    monkeypatch.setattr(boilerplate, "clean", clean)
+    assert _run().text_statuses == {"full": 1, "error": 1}
+    assert [r["body_fetched"] for r in _rows()] == [1, 0]
+
+
+def test_a_run_prunes_old_and_surplus_leads_even_while_cooling_down(monkeypatch):
+    _lists(monkeypatch, {"AAPL": "portfolio"})
+    now = datetime.now(timezone.utc)
+    store.set_cooldown("ipv4", now + timedelta(hours=1), "HTTP 429", 1)
+    store.save_lead("https://old.example/a", "old.example", "A", "lead", now - pipeline.LEAD_RETENTION - timedelta(hours=1))
+    for i in range(pipeline.LEADS_PER_PUBLISHER + 2):
+        store.save_lead(f"https://busy.example/{i:02d}", "busy.example", f"H{i}", "lead", now - timedelta(minutes=i))
+    assert _run().status == "cooling_down"
+    assert store.peer_leads("old.example", "") == []
+    kept = {headline for headline, _ in store.peer_leads("busy.example", "")}
+    assert kept == {f"H{i}" for i in range(pipeline.LEADS_PER_PUBLISHER)}

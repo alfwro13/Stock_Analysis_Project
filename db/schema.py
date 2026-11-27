@@ -1007,6 +1007,16 @@ def init_db() -> None:
                 empty_streak       INTEGER NOT NULL DEFAULT 0
             )
         ''')
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS gfetcher_leads (
+                url        TEXT PRIMARY KEY,
+                domain     TEXT NOT NULL,
+                headline   TEXT NOT NULL,
+                lead       TEXT NOT NULL,
+                fetched_at TEXT NOT NULL
+            )
+        ''')
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_gfetcher_leads_domain ON gfetcher_leads(domain)")
 
         # --- INTRADAY DIP RADAR ---
         # Tracks which tickers are armed for today's session (one row per ticker).

@@ -3129,8 +3129,10 @@ Stores and retrieves news articles for portfolio and watchlist tickers. Articles
 - The host name is resolved first, and any loopback, private, link-local, CGNAT or multicast answer refuses the fetch. There is no allow-list for news.
 - The connection is pinned to the vetted IP with the certificate and SNI checked against the host name. A TLS error fails the fetch; it is never retried without verification.
 - Up to 2 redirects are followed, and every hop is re-vetted (https, public address, pinned) like the first request.
-- The body is cut off at 2 MB (it was 20 MB). Any refusal or failure leaves `full_text` empty and is logged at debug level.
+- The body is cut off at 2 MB. Any refusal or failure leaves `full_text` empty and is logged at debug level.
 - An empty or whitespace-only body is never handed to trafilatura, which logged three ERROR lines per article for it; `full_text` stays empty and the skip is logged at debug level.
+- A page declaring a charset Python cannot decode as text (such as `utf-8mb4`) is decoded as UTF-8; this holds for every `fetch_body()` caller.
+- Importing trafilatura silences urllib3's `InsecureRequestWarning`, so its first import (here and in the Google News Fetcher) runs inside `outbound_fetch_helpers.preserved_warning_filters()`, which restores the warning filters.
 
 ### `GET /api/news-feed`
 

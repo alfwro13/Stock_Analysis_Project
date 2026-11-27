@@ -3,6 +3,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Iterable, Optional
 
+from db.connection import write_or_defer
 from db.database import get_connection
 from time_engine import parse_stored_utc
 
@@ -214,6 +215,55 @@ def save_publishers(rows: Iterable[dict]) -> None:
             values,
         )
         conn.commit()
+    finally:
+        if conn:
+            conn.close()
+
+
+def save_lead(url: str, domain: str, headline: str, lead: str, now: datetime) -> None:
+    def write() -> None:
+        conn = None
+        try:
+            conn = get_connection()
+            conn.execute(
+                "INSERT INTO gfetcher_leads (url, domain, headline, lead, fetched_at) VALUES (?, ?, ?, ?, ?) "
+                "ON CONFLICT(url) DO UPDATE SET domain = excluded.domain, headline = excluded.headline, "
+                "lead = excluded.lead, fetched_at = excluded.fetched_at WHERE excluded.fetched_at >= gfetcher_leads.fetched_at",
+                (url, domain, headline, lead, stamp(now)),
+            )
+            conn.commit()
+        finally:
+            if conn:
+                conn.close()
+
+    write_or_defer("Google News Fetcher article opening", write)
+
+
+def peer_leads(domain: str, exclude_url: str) -> list[tuple[str, str]]:
+    """(headline, lead) of every stored opening of the publisher's other articles."""
+    conn = None
+    try:
+        conn = get_connection()
+        rows = conn.execute(
+            "SELECT headline, lead FROM gfetcher_leads WHERE domain = ? AND url != ?", (domain, exclude_url),
+        ).fetchall()
+    finally:
+        if conn:
+            conn.close()
+    return [(r["headline"], r["lead"]) for r in rows]
+
+
+def prune_leads(before: datetime, keep_per_domain: int) -> int:
+    conn = None
+    try:
+        conn = get_connection()
+        cur = conn.execute(
+            "DELETE FROM gfetcher_leads WHERE fetched_at < ? OR url IN (SELECT url FROM (SELECT url, ROW_NUMBER() OVER "
+            "(PARTITION BY domain ORDER BY fetched_at DESC, url) AS position FROM gfetcher_leads) WHERE position > ?)",
+            (stamp(before), keep_per_domain),
+        )
+        conn.commit()
+        return cur.rowcount
     finally:
         if conn:
             conn.close()

@@ -6,12 +6,15 @@ Covers:
   _build_ticker_source_map()— portfolio/watchlist union, 'both' label, ignored filter
   _fetch_full_text()        — vetted fetch only: https, public address, 2 redirects, 2 MB, no TLS-off retry
   _score_unscoredrows()     — sentiment is computed before the write transaction opens
+  outbound_fetch_helpers.fetch_body() — an unusable declared charset falls back to UTF-8
 """
+import io
 import logging
 import time
 from unittest.mock import patch, MagicMock
 
 import pytest
+import requests
 
 pytestmark = pytest.mark.restore_tables("data_migrations", "news_articles")
 
@@ -137,6 +140,33 @@ class TestFetchFullText:
     def test_fetch_failure_returns_none(self):
         with patch("news.news_feed_engine.fetch_body", side_effect=Exception("TLS handshake failed")):
             assert _fetch_full_text("https://publisher.example/a") is None
+
+
+class TestFetchBodyCharset:
+    TEXT = "<p>Café shares rose 3%</p>"
+
+    def _fetch(self, content_type, body):
+        response = requests.Response()
+        response.status_code = 200
+        response.headers["Content-Type"] = content_type
+        response.encoding = requests.utils.get_encoding_from_headers(response.headers)
+        response.raw = io.BytesIO(body)
+        with patch.object(outbound_fetch_helpers, "_resolve", return_value=["93.184.216.34"]), \
+             patch("requests.Session.get", return_value=response):
+            return outbound_fetch_helpers.fetch_body("https://publisher.example/a", {})
+
+    @pytest.mark.parametrize("charset", ["utf-8mb4", "x-unknown", "base64", "rot13", "idna", "undefined"])
+    def test_a_charset_that_is_no_text_codec_is_read_as_utf8(self, charset):
+        assert self._fetch(f"text/html; charset={charset}", self.TEXT.encode("utf-8")) == self.TEXT
+
+    def test_undecodable_bytes_are_replaced_in_the_fallback(self):
+        assert self._fetch("text/html; charset=utf-8mb4", b"a\xffb") == "a\ufffdb"
+
+    def test_a_declared_text_codec_is_honoured(self):
+        assert self._fetch("text/html; charset=windows-1252", self.TEXT.encode("windows-1252")) == self.TEXT
+
+    def test_without_a_declared_charset_the_page_is_utf8(self):
+        assert self._fetch("text/html", self.TEXT.encode("utf-8")) == self.TEXT
 
 
 # ── _score_unscoredrows ───────────────────────────────────────────────────────

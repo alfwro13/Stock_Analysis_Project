@@ -40,12 +40,14 @@ def test_a_quiet_run_sends_no_notification():
     notify.assert_not_called()
 
 
-def test_a_crash_is_an_error_status_naming_the_fetcher():
+def test_a_crash_is_an_error_status_naming_the_fetcher(caplog):
     with patch("scheduler_jobs.load_config", return_value=ENABLED), \
          patch("news.gfetcher.run_fetch", side_effect=RuntimeError("boom")), \
          patch("scheduler_jobs.log_sched_notification") as notify, patch("scheduler_jobs.record_job_run"):
         scheduler_jobs.run_gfetcher_job()
     notify.assert_called_once_with("Error", "Google News Fetcher failed: boom")
+    [record] = [r for r in caplog.records if "Google News Fetcher failed" in r.getMessage()]
+    assert record.levelname == "ERROR" and record.exc_info[0] is RuntimeError
 
 
 def test_the_job_is_registered_only_when_enabled():

@@ -35,7 +35,7 @@ The job runner (`scheduler_jobs.run_gfetcher_job()`) records every run in the sc
 | A route that had been refused answered again | Info |
 | The run failed with an exception | Error |
 
-A normal run, a run inside a cooldown and a run with nothing due send nothing.
+A normal run, a run inside a cooldown and a run with nothing due send nothing. A failed run also logs its traceback.
 
 **Symbol mappings** (a collapsible section of the panel, `GET /api/gfetcher/symbols`) list each ticker's Google symbol and exchange, whether Google has a page for it, the page title that confirmed it and when. **Probe Symbols** (`POST /api/gfetcher/probe`, the on-demand `gfetcher_probe_source`, Workflow Monitor label "Google News Fetcher (Symbol Probe)") requests the page of every index in scope and every ticker without a found mapping once, skipping the week a not-found ticker is otherwise left alone, under the same pacing, budget and route pauses as a run; it stores mappings and no news, and its summary arrives as a notification. It refuses (`409`) while the fetcher is off, while a run or another probe is running.
 
@@ -51,12 +51,13 @@ A normal run, a run inside a cooldown and a run with nothing due send nothing.
 
 | Module | Role |
 |---|---|
-| `pipeline.py` | One run: gate, ticker selection, fetch, merge, publisher policy, store, prune, sentiment. `FetchSettings` holds the knobs, `RunResult` reports the outcome. |
+| `pipeline.py` | One run: gate, ticker selection, fetch, merge, publisher policy, text cleaning, store, prune, sentiment. `FetchSettings` holds the knobs, `RunResult` reports the outcome. |
 | `client.py` | Every request to google.com: through `outbound_fetch_helpers.fetch_body()` over the IPv4/IPv6 routes of Settings → Advanced Network, spaced at random, budgeted, logged in `gfetcher_request_log`, and turned into a per-route cooldown on refusal. |
 | `parse.py` | The quote page's news cards (`lxml.html` + `cssselect`). The four CSS class names Google uses are constants at the top of the file. |
 | `symbols.py` | App ticker → Google `symbol:exchange`, remembered in `gfetcher_symbol_map`. |
 | `publishers.py` | Per-domain policy: fetch the text, keep the headline only, or drop the article. |
 | `article_text.py` | The publisher download through `fetch_body()` (2 redirects) and `trafilatura.bare_extraction()`, with a `text_status` and the page's own publication date. |
+| `boilerplate.py` | Removes what a publisher puts in front of an article (cookie banner, menu, wall) from the downloaded text (**Text cleaning**). |
 | `store.py` | All SQL of the package. |
 
 ## One run
@@ -68,7 +69,7 @@ A normal run, a run inside a cooldown and a run with nothing due send nothing.
 5. **Merge.** One entry per article URL with every ticker it was listed under. Articles older than `max_age_days` and headlines mostly in non-Latin script are dropped.
 6. **Market-wide news.** Google shows the same generic headlines for instruments with no news of their own (LSE-listed ETFs). Two tickers whose lists of at least 5 articles overlap by 80% or more are treated as showing that fallback list, and an article seen only in such lists is stored under the pseudo ticker `MARKET` with `source_list = 'market'` (shown as **General** on the News page). One such ticker on its own cannot be detected.
 7. **Already stored.** Articles whose `article_id` exists are skipped before any publisher request.
-8. **Publisher policy** (below), then the text download for the articles that pass, at most one per `publisher_delay_seconds`.
+8. **Publisher policy** (below), then the text download for the articles that pass, at most one per `publisher_delay_seconds`, and **Text cleaning** of each text (below). An exception while one article is downloaded or cleaned is logged with its traceback and costs that article's text only (`text_status` `error`, headline kept); the run carries on.
 9. **Store** with `INSERT OR IGNORE`, one row per (ticker, article). The first-seen `published_at` is kept.
 10. **Prune** Google rows older than `max_age_days` (Yahoo rows are pruned by the News Feed), then score new rows with the News Feed's FinBERT scorer (`news.news_feed_engine._score_unscoredrows()`, headline plus summary).
 
@@ -79,11 +80,29 @@ A normal run, a run inside a cooldown and a run with nothing due send nothing.
 | `article_id` | `sha256("google|" + ticker + "|" + url)` |
 | `source_list` | `portfolio`, `watchlist`, `both`, `index` or `market` |
 | `headline`, `url`, `publisher` | from the news card |
-| `full_text` | the trafilatura text, `NULL` when there is none |
-| `summary` | the first 300 characters of the text, `NULL` without text |
+| `full_text` | the trafilatura text after **Text cleaning**, `NULL` when there is none |
+| `summary` | the first 300 characters of `full_text`, `NULL` without text |
 | `published_at` | estimated from Google's relative age ("3 hours ago"), or noon UTC of the page's own date when the age is in days or coarser and the page states a date |
 | `published_precision` | the unit of the estimate (`minute` … `year`), or `day` when the page date was used |
 | `feed_source` | `google` |
+
+## Text cleaning
+
+`boilerplate.clean()` removes what a publisher puts in front of an article before `full_text` and `summary` are written, so that the News page, FinBERT sentiment and the MCP Server read the article rather than a cookie banner, a menu or a wall. It works in two steps:
+
+1. **Known preambles** (the `RULES` table). A rule covers its domains and their subdomains and, when it has a `first` pattern, only a text whose first line matches it. It cuts everything up to and including the first line that matches `until`, looked for in the first `within` lines (20 unless the rule says otherwise); without such a line the text stays whole. A rule with no `until` is a **wall**: the page holds no article. Rules apply in order, each to what the rules before it left.
+2. **Shared openings.** The first 6,000 characters (`LEAD_CHARS`) of what the rules leave are saved in `gfetcher_leads`. A leading block of whole lines, at least 3 lines and 200 characters long, that the same publisher host (without `www.`) put on the article and on stored articles under at least two other headlines (3 different headlines in all, compared without case) is cut. Nobody has to know the block in advance.
+
+When nothing is left (a wall, known or learned), the article is stored headline-only with `text_status` `blocked` and counted as `blocked` for its publisher, so **Publisher policy** learning applies. Otherwise `full` or `short` is judged on the cleaned text. A fix for one publisher's preamble is one `RULES` entry; a new technique is a function that `clean()` calls.
+
+Known limits:
+
+- The first one or two articles that carry a block with no rule keep it, and stored rows are not rewritten; they leave with the age prune (`max_age_days`).
+- A wall with no rule that stays below the shared-block thresholds is stored as article text.
+- A block whose lines differ from article to article is cut only by a rule.
+- Junk in the middle or at the end of an article stays.
+- A publisher series that opens with the same long introduction under 3 or more headlines loses that introduction.
+- Yahoo News Feed rows are not cleaned.
 
 ## Publisher policy
 
@@ -95,7 +114,7 @@ A normal run, a run inside a cooldown and a run with nothing due send nothing.
 | `block_bots` | kept with the headline only, no download | benzinga.com, bloomberg.com, ft.com, investing.com, seekingalpha.com |
 | `allow` | text downloaded | zacks.com, cnbc.com, fool.com, tradingview.com |
 
-Seeded rows are `manual` and never change policy. A domain the fetcher meets for the first time is learned (`auto`): two refused downloads (HTTP 401/402 paywall, 403/429 blocked, connection reset) with no success block it, as `block_paywall` when paywall answers dominate, otherwise `block_bots`; one success allows it again. A learned block is retried with one download after 14 days. An article whose download answers with a paywall is not stored; a page whose `<html lang>` is not English is dropped.
+Seeded rows are `manual` and never change policy. A domain the fetcher meets for the first time is learned (`auto`): two refused downloads (HTTP 401/402 paywall, 403/429 blocked, connection reset, or a page that holds only a wall, counted as blocked) with no success block it, as `block_paywall` when paywall answers dominate, otherwise `block_bots`; one success allows it again. A learned block is retried with one download after 14 days. An article whose download answers with a paywall is not stored; a page whose `<html lang>` is not English is dropped.
 
 ## Symbols
 
@@ -117,7 +136,7 @@ An IPv6 hard fault latched by the Yahoo connection (`GLOBAL_IPV6_STATUS`) takes 
 
 ## Tables
 
-`gfetcher_request_log` (every google.com request with its route, kept 30 days and pruned at the start of each run), `gfetcher_state` (one row per route: cooldown and last success), `gfetcher_symbol_map`, `gfetcher_publishers`, `gfetcher_ticker_state` (last fetch, last card count and the empty streak per ticker). Columns: `assets/db_schema_and_architecture.md`.
+`gfetcher_request_log` (every google.com request with its route, kept 30 days and pruned at the start of each run), `gfetcher_state` (one row per route: cooldown and last success), `gfetcher_symbol_map`, `gfetcher_publishers`, `gfetcher_ticker_state` (last fetch, last card count and the empty streak per ticker), `gfetcher_leads` (the opening of each downloaded article text, compared by **Text cleaning**; rows older than 30 days or beyond the newest 50 of their publisher host are pruned at the start of each run). Columns: `assets/db_schema_and_architecture.md`.
 
 ## Layout change
 
@@ -125,8 +144,8 @@ The quote page's class names are obfuscated and can change. A ticker whose valid
 
 ## Removal
 
-Turn it off in Settings. Delete `news/gfetcher/`, `tests/news/gfetcher/` and `api/routes_gfetcher.py`, the `gfetcher_probe_source` entry and `run_gfetcher_probe` runner, the `GFETCHER_DOMAIN_MAX_CHARS` constant, the Google badge, filters and estimate marker in `news.js`/`news.html` (the `feed_source` and `published_precision` columns of `GET /api/news-feed` and MCP `get_news`/`get_article` keep working with only Yahoo rows) (and its `include_router` line in `api/routes.py`), the `gfetcher_job` runner in `scheduler_jobs.py` and its `add_job` block in `scheduler_engine.py`, the `gfetcher_job` and `google_finance_source` entries and the `GFETCHER` key in `scheduler_manifest.py`, the `GFETCHER` block of `config.py` `DEFAULT_CONFIG`, `GfetcherScheduleConfig` in `api/routes_system.py`, the `GFETCHER_*` constants, the panel in `templates/settings/_data.html` with its `settings_data.js` functions and `settings_shared.js` block (bump `CSS_VERSION`), the `gfetcher_limits` context of `pages.page_routes.settings_page`, the README bullet, the glossary term-box and its Learning card; drop the five `gfetcher_*` tables and delete the `feed_source = 'google'` rows of `news_articles` through a `db/schema.py:migrate_db()` step, and delete this file. The `feed_source` and `published_precision` columns of `news_articles` can stay. Other seams: `FetchRedirected` and the `family`/`source_address` arguments of `fetch_body()` in `outbound_fetch_helpers.py`, and `network_routing()` in `tools/network_engine.py` (all harmless to keep; the last is shared with Yahoo) and the `news` entries in the folder lists of `tests/test_architecture_yfinance.py` and `tests/test_notification_engine.py`.
+Turn it off in Settings. Delete `news/gfetcher/`, `tests/news/gfetcher/` and `api/routes_gfetcher.py`, the `gfetcher_probe_source` entry and `run_gfetcher_probe` runner, the `GFETCHER_DOMAIN_MAX_CHARS` constant, the Google badge, filters and estimate marker in `news.js`/`news.html` (the `feed_source` and `published_precision` columns of `GET /api/news-feed` and MCP `get_news`/`get_article` keep working with only Yahoo rows) (and its `include_router` line in `api/routes.py`), the `gfetcher_job` runner in `scheduler_jobs.py` and its `add_job` block in `scheduler_engine.py`, the `gfetcher_job` and `google_finance_source` entries and the `GFETCHER` key in `scheduler_manifest.py`, the `GFETCHER` block of `config.py` `DEFAULT_CONFIG`, `GfetcherScheduleConfig` in `api/routes_system.py`, the `GFETCHER_*` constants, the panel in `templates/settings/_data.html` with its `settings_data.js` functions and `settings_shared.js` block (bump `CSS_VERSION`), the `gfetcher_limits` context of `pages.page_routes.settings_page`, the README bullet, the glossary term-box and its Learning card; drop the six `gfetcher_*` tables and delete the `feed_source = 'google'` rows of `news_articles` through a `db/schema.py:migrate_db()` step, and delete this file. The `feed_source` and `published_precision` columns of `news_articles` can stay. Other seams: `FetchRedirected` and the `family`/`source_address` arguments of `fetch_body()` in `outbound_fetch_helpers.py`, and `network_routing()` in `tools/network_engine.py` (all harmless to keep; the last is shared with Yahoo) and the `news` entries in the folder lists of `tests/test_architecture_yfinance.py` and `tests/test_notification_engine.py`.
 
 ## Tests
 
-`tests/news/gfetcher/`: one file per module plus `test_pipeline.py` for whole runs. The package conftest replaces `fetch_body` in both fetching modules with a function that fails the test, so no test can reach Google or a publisher, and stubs the FinBERT scorer. Quote pages are built from the four selectors (`helpers.quote_page()`). `test_imports.py` keeps trafilatura out of every module-level import under `news/`: importing it (its `downloads` module) calls `urllib3.disable_warnings(InsecureRequestWarning)` for the whole process, so `article_text.fetch_article()` imports it when it runs, as the News Feed does.
+`tests/news/gfetcher/`: one file per module (`test_boilerplate.py` covers text cleaning) plus `test_pipeline.py` for whole runs. The package conftest replaces `fetch_body` in both fetching modules with a function that fails the test, so no test can reach Google or a publisher, and stubs the FinBERT scorer. Quote pages are built from the four selectors (`helpers.quote_page()`). `test_imports.py` keeps trafilatura out of every module-level import under `news/`: importing it (its `downloads` module) calls `urllib3.disable_warnings(InsecureRequestWarning)` for the whole process. `article_text.fetch_article()` and the News Feed therefore import it only when they run, inside `outbound_fetch_helpers.preserved_warning_filters()`, which restores the warning filters after the first import; a module-level import would bypass it.
