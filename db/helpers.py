@@ -89,9 +89,10 @@ def resolve_live_price(
     showing came from the fallback instead, so they can drop those now-inconsistent figures rather
     than inferring the switch by comparing the returned value back against the live price (which
     would silently miss the case where both sources happen to agree on the exact same number).
-    `live_floor_epoch` (a display caller's per-ticker quote_session_floor()) also drops a live price taken
+    `live_floor_epoch` (a display caller's per-ticker quote_session_floor() close) also drops a live price taken
     before it once the fallback was written after it: a quote from before its session's close, with a
-    post-close price available, is not the session's final price, however small the gap between the two."""
+    post-close price available, is not the session's final price, however small the gap between the two.
+    The floor carries no close grace, so even the intraday scan's last pre-close quote yields to the nightly close."""
     if fallback_price is None:
         return live_price, False
     if live_price is None or not live_last_updated_epoch:

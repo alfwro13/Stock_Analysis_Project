@@ -10,6 +10,7 @@ import pandas as pd
 from config import HISTORICAL_DIR
 from market_pulse_write import upsert_live_price
 from market_session_helpers import is_quote_settled
+from time_engine import session_close_utc
 from utils import safe_ticker_filename
 from yahoo_engine import yahoo_engine
 
@@ -108,7 +109,7 @@ class AIContagionEngine:
     def _evaluate_ticker(self, ticker: str, ticker_dfs: dict, is_etf: bool) -> Optional[dict]:
         """
         Extracts per-ticker data from the engine result dict, calculates drawdown vs the
-        previous day's close, and returns a hit dict if the threshold is breached.
+        previous day's regular-session close, and returns a hit dict if the threshold is breached.
         Returns None when below threshold or data is insufficient.
         """
         try:
@@ -136,7 +137,8 @@ class AIContagionEngine:
                 return None
 
             current_price = float(df["Close"].iloc[-1])
-            prev_df = df[df["_date"] == unique_dates[-2]]
+            # The frame is fetched with prepost=True, so the previous day's last bar is a post-market tick, not its close.
+            prev_df = df[(df["_date"] == unique_dates[-2]) & (df.index < session_close_utc("NYSE", unique_dates[-2]))]
             if prev_df.empty:
                 return None
             prev_close = float(prev_df["Close"].iloc[-1])

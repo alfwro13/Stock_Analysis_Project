@@ -3,7 +3,7 @@ import math
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 
-from constants import QUOTE_CHANGE_TOLERANCE_PCT, QUOTE_CLOSE_GRACE_SECONDS
+from constants import QUOTE_CHANGE_TOLERANCE_PCT
 from db.database import get_connection, get_instrument_sessions, get_ticker_registry
 from time_engine import (
     EXCHANGE_HOURS, is_exchange_holiday, is_trading_session, last_reported_session_end_utc,
@@ -312,7 +312,7 @@ def quote_session_floor(
     registry_exchange_map: Optional[Dict[str, str]] = None,
     session_memo: Optional[Dict[Any, tuple]] = None,
 ) -> tuple:
-    """(session open now, earliest epoch a cached quote may carry to count as taken at the end of the last session) judged on `ticker`'s own session: the window Yahoo reports for FX/futures/rates, else its exchange's calendar, never the operator's HOME_EXCHANGE. The floor is the last real close (the quote-feed delay taken back off) less QUOTE_CLOSE_GRACE_SECONDS. A caller looping over many tickers passes one `session_memo` so each exchange is judged once."""
+    """(session open now, epoch of the last session's close) judged on `ticker`'s own session: the window Yahoo reports for FX/futures/rates, else its exchange's calendar, never the operator's HOME_EXCHANGE. The close is the last real close with the quote-feed delay taken back off. A caller looping over many tickers passes one `session_memo` so each exchange is judged once."""
     session = reported_session(ticker)
     if session is not None:
         key: Any = session
@@ -327,7 +327,7 @@ def quote_session_floor(
         open_now = is_trading_session(key)
         delay = timedelta(minutes=EXCHANGE_HOURS.get(key, {}).get("quote_delay_minutes", 0))
         last_close = last_settled_session_close_utc(key) - delay
-    result = (open_now, last_close.timestamp() - QUOTE_CLOSE_GRACE_SECONDS)
+    result = (open_now, last_close.timestamp())
     if session_memo is not None:
         session_memo[key] = result
     return result

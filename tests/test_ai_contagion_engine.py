@@ -47,19 +47,25 @@ def _make_intraday_df(prev_close: float, curr_close: float, volume: float = 500_
     """Minimal 2-day 15-min DataFrame suitable for _evaluate_ticker. Defaults the "current" day
     to real UTC today, since _evaluate_ticker now requires the frame's last date to actually be
     today (see the stale-data-reuse fix, 2026-07-16) — pass an explicit `today` to build a
-    deliberately-stale frame for that regression test."""
+    deliberately-stale frame for that regression test. The index is tz-aware America/New_York,
+    as yfinance returns it."""
     today = today or datetime.now(timezone.utc)
     yesterday = today - timedelta(days=1)
     idx = pd.DatetimeIndex([
-        yesterday.replace(hour=15, minute=0, second=0, microsecond=0),
-        yesterday.replace(hour=15, minute=15, second=0, microsecond=0),
-        today.replace(hour=15, minute=0, second=0, microsecond=0),
-        today.replace(hour=15, minute=15, second=0, microsecond=0),
+        _et(yesterday, 11, 0),
+        _et(yesterday, 11, 15),
+        _et(today, 11, 0),
+        _et(today, 11, 15),
     ])
     return pd.DataFrame(
         {"Close": [prev_close, prev_close, curr_close - 0.5, curr_close], "Volume": [volume] * 4},
         index=idx,
     )
+
+
+def _et(day: datetime, hour: int, minute: int) -> pd.Timestamp:
+    """America/New_York bar timestamp on `day`'s calendar date, like a yfinance intraday index."""
+    return pd.Timestamp(day.year, day.month, day.day, hour, minute, tz="America/New_York")
 
 
 def _get_conn():
@@ -506,3 +512,55 @@ class TestRunAiContagionJobDailyGate:
             scheduler_jobs.run_ai_contagion_job()
 
         assert mock_notify.call_count == 2
+
+
+# ── _evaluate_ticker() — previous regular-session close ──────────────────────
+
+class TestPrevCloseIgnoresPostMarket:
+    """The frame is fetched with prepost=True, so the previous day's last bar is a post-market tick."""
+
+    @staticmethod
+    def _frame(prev_bars: list, today_price: float) -> pd.DataFrame:
+        today = datetime.now(timezone.utc)
+        yesterday = today - timedelta(days=1)
+        rows = [(_et(yesterday, h, m), px) for h, m, px in prev_bars]
+        rows += [(_et(today, 11, 0), today_price), (_et(today, 11, 15), today_price)]
+        return pd.DataFrame(
+            {"Close": [px for _, px in rows], "Volume": [500_000.0] * len(rows)},
+            index=pd.DatetimeIndex([ts for ts, _ in rows]),
+        )
+
+    def test_prev_close_is_the_last_regular_bar_not_the_post_market_tick(self):
+        df = self._frame([(11, 45, 100.0), (16, 30, 95.5), (19, 45, 95.0)], 95.5)
+        engine = AIContagionEngine(_CFG)
+        with (
+            patch("ai_contagion_engine.is_quote_settled", return_value=True),
+            patch("ai_contagion_engine.upsert_live_price") as upsert,
+            patch.object(engine, "_check_volume_spike", return_value=False),
+        ):
+            hit = engine._evaluate_ticker("NVDA", {"NVDA": df}, is_etf=False)
+        upsert.assert_called_once_with("NVDA", "NVDA", 95.5, 100.0)
+        assert hit is not None
+        assert hit["intraday_pct"] == -4.5
+
+    def test_no_hit_when_only_the_post_market_price_would_breach(self):
+        df = self._frame([(11, 45, 100.0), (19, 45, 90.0)], 99.0)
+        engine = AIContagionEngine(_CFG)
+        with (
+            patch("ai_contagion_engine.is_quote_settled", return_value=True),
+            patch("ai_contagion_engine.upsert_live_price") as upsert,
+        ):
+            hit = engine._evaluate_ticker("NVDA", {"NVDA": df}, is_etf=False)
+        upsert.assert_called_once_with("NVDA", "NVDA", 99.0, 100.0)
+        assert hit is None
+
+    def test_previous_day_with_only_post_market_bars_returns_none(self):
+        df = self._frame([(16, 30, 100.0), (19, 45, 99.0)], 90.0)
+        engine = AIContagionEngine(_CFG)
+        with (
+            patch("ai_contagion_engine.is_quote_settled", return_value=True),
+            patch("ai_contagion_engine.upsert_live_price") as upsert,
+        ):
+            hit = engine._evaluate_ticker("NVDA", {"NVDA": df}, is_etf=False)
+        assert hit is None
+        upsert.assert_not_called()
