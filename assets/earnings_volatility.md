@@ -47,6 +47,8 @@ The engine also still checks each tracked asset's `next_earnings_date` in `stock
 
 This engine **only** scans assets present in your **Portfolio** and **Watchlist** (plus any other ticker already in the app's shared nightly fetch universe, e.g. an Account Transactions ticker or a Markets page index — see `AGENTS.md`'s priority-arbitration rule). It does not scan the massive 4,000+ Market Screener universe.
 
+The Earnings Volatility page lists a stored row only while its `next_earnings_date` equals the ticker's `stock_signals.next_earnings_date` and is today (local date) or later (`db.helpers.CURRENT_EARNINGS_VOL_SQL`, bound with `earnings_vol_cutoff()`). Rows are kept, not deleted, when the report has passed or `stock_signals` moved the date, so they stay available to the Stock Detail historical drift section. The Portfolio/Watchlist `earnings_edge_score` / `earnings_implied_move` columns apply the same condition.
+
 The Earnings Volatility page's **Scope** selector (Portfolio / Watchlist / All, defaulting to Portfolio) filters the rendered table client-side by each row's `data-portfolio`/`data-watchlist` attributes — set server-side in `pages/page_routes.py` from `accounts.accounts_engine.get_combined_holdings()` and `db.database.get_watchlist_tickers()` — so a row already scanned into `earnings_volatility` that isn't in either set (e.g. a Markets page ticker) only shows up under "All". The selector is rendered next to the table and relocated into DataTables' own "Show N entries" control (`.dataTables_length`) once the table initializes, so it reads as part of the table's toolbar rather than a separate control floating elsewhere on the page.
 
 **Why?**

@@ -6,7 +6,7 @@ from typing import List, Optional
 from config import load_config
 from constants import ML_FEATURE_MAX_AGE_TRADING_DAYS, NEWS_REPEATED_SUMMARY_MIN_HEADLINES, NLP_NEWS_MAX_AGE_DAYS, SCHEDULER_RUN_HISTORY_LIMIT
 from db.database import get_connection, replaying_deferred_write, write_or_defer
-from time_engine import parse_stored_utc, trading_days_since
+from time_engine import now_local, parse_stored_utc, trading_days_since
 from utils import is_valid_ticker
 
 logger = logging.getLogger(__name__)
@@ -348,6 +348,15 @@ def get_next_earnings_dates(tickers: List[str]) -> dict:
     finally:
         if conn:
             conn.close()
+
+
+# The scan never revisits a row, so its figures belong to no upcoming report once the date passes or stock_signals moves it.
+CURRENT_EARNINGS_VOL_SQL = "ev.next_earnings_date = s.next_earnings_date AND ev.next_earnings_date >= ?"
+
+
+def earnings_vol_cutoff() -> str:
+    """Local date (YYYY-MM-DD) that CURRENT_EARNINGS_VOL_SQL binds as its parameter."""
+    return now_local().strftime('%Y-%m-%d')
 
 
 def get_ex_dividend_dates(tickers: List[str]) -> dict:

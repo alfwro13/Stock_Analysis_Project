@@ -155,7 +155,7 @@ OPTIONAL_COLUMNS = [
     {"key": "xray_annualized_vol", "label": "Annualised Vol (X-ray)", "category": "Risk (X-ray)", "pages": _BOTH, "fmt": "pct_from_fraction"},
     {"key": "xray_dividend_yield", "label": "Dividend Yield (Ghostfolio)", "category": "Risk (X-ray)", "pages": _BOTH, "fmt": "pct_raw"},
 
-    # Earnings Volatility — from earnings_volatility, only populated within ~14 days of earnings
+    # Earnings Volatility — from earnings_volatility, shown from a scan ~14 days before earnings until the report date while it matches stock_signals
     {"key": "earnings_edge_score", "label": "Earnings Edge Score (pp)", "category": "Earnings Volatility", "pages": _BOTH, "fmt": "ratio2"},
     {"key": "earnings_implied_move", "label": "Implied Move %", "category": "Earnings Volatility", "pages": _BOTH, "fmt": "pct_raw"},
 
