@@ -14,7 +14,7 @@ def _when(dt) -> str:
 
 
 def run_notices(result: RunResult) -> list[tuple[str, str]]:
-    """(message_type, text) pairs worth a notification after a run; a normal run gives none, and each event is reported once."""
+    """(message_type, text) pairs worth a notification after a run; a normal run gives none, and each event is reported once, except crashed downloads, which every affected run reports."""
     notices = []
     if result.status == "refused":
         notices.append(("Warning", f"Google News Fetcher: Google refused every route ({result.refused_reason}); "
@@ -31,6 +31,9 @@ def run_notices(result: RunResult) -> list[tuple[str, str]]:
     if result.layout_suspects:
         notices.append(("Warning", f"Google News Fetcher: a valid page showed no news three runs in a row for "
                                    f"{', '.join(result.layout_suspects)}. {LAYOUT_HINT}"))
+    if result.crashed_downloads:
+        notices.append(("Error", f"Google News Fetcher: {result.crashed_downloads} article downloads failed unexpectedly and "
+                                 f"none returned text; {result.articles_held} are left for a later run. See app.log."))
     for route in result.recovered_routes:
         notices.append(("Info", f"Google News Fetcher: {route} answered Google requests again after its pause."))
     return notices

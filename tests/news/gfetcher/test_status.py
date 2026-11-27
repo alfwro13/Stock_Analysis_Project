@@ -60,6 +60,13 @@ def test_other_events(result, kind, text):
     assert len(notices) == 1 and notices[0][0] == kind and text in notices[0][1]
 
 
+def test_crashed_downloads_are_one_error_giving_both_counts():
+    [(kind, text)] = status.run_notices(RunResult("ok", crashed_downloads=5, articles_held=4))
+    assert kind == "Error"
+    assert text == ("Google News Fetcher: 5 article downloads failed unexpectedly and none returned text; "
+                    "4 are left for a later run. See app.log.")
+
+
 def test_status_reports_routes_requests_and_articles(monkeypatch):
     monkeypatch.setattr("news.gfetcher.status.configured_routes",
                         lambda: [Route(IPV4, socket.AF_INET), Route(IPV6, socket.AF_INET6, "2001:db8::10")])

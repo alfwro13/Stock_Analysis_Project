@@ -83,6 +83,7 @@ EXPECTED_TABLES = [
     "gfetcher_publishers",
     "gfetcher_ticker_state",
     "gfetcher_leads",
+    "gfetcher_crashes",
     "model_training_log",
     "trap_monitor_results",
     "price_hmm_states",

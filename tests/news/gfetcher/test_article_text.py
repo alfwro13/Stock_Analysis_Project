@@ -35,7 +35,7 @@ def test_failures_map_to_a_status(monkeypatch, error, status):
         raise error
     monkeypatch.setattr(article_text, "fetch_body", raise_it)
     got = article_text.fetch_article("https://x.test/a")
-    assert (got.text, got.status) == (None, status)
+    assert (got.text, got.status, got.crashed) == (None, status, False)
 
 
 def test_a_page_in_another_language_is_marked_non_english(monkeypatch):

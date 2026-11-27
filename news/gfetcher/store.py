@@ -269,6 +269,66 @@ def prune_leads(before: datetime, keep_per_domain: int) -> int:
             conn.close()
 
 
+def count_crashes(urls: Iterable[str], now: datetime) -> dict:
+    """Adds one crash to each URL and returns {url: crashes so far}."""
+    wanted = list(urls)
+    conn = None
+    try:
+        conn = get_connection()
+        conn.executemany(
+            "INSERT INTO gfetcher_crashes (url, crashes, last_crash_at) VALUES (?, 1, ?) "
+            "ON CONFLICT(url) DO UPDATE SET crashes = crashes + 1, last_crash_at = excluded.last_crash_at",
+            [(url, stamp(now)) for url in wanted],
+        )
+        counts = {
+            url: conn.execute("SELECT crashes FROM gfetcher_crashes WHERE url = ?", (url,)).fetchone()[0] for url in wanted
+        }
+        conn.commit()
+        return counts
+    finally:
+        if conn:
+            conn.close()
+
+
+def with_crashes(urls: Iterable[str]) -> set:
+    """The URLs that already have a crash count."""
+    wanted = list(urls)
+    conn = None
+    try:
+        conn = get_connection()
+        placeholders = ", ".join("?" for _ in wanted)
+        return {r[0] for r in conn.execute(f"SELECT url FROM gfetcher_crashes WHERE url IN ({placeholders})", wanted)}
+    finally:
+        if conn:
+            conn.close()
+
+
+def clear_crashes(urls: Iterable[str]) -> None:
+    values = [(url,) for url in urls]
+    if not values:
+        return
+    conn = None
+    try:
+        conn = get_connection()
+        conn.executemany("DELETE FROM gfetcher_crashes WHERE url = ?", values)
+        conn.commit()
+    finally:
+        if conn:
+            conn.close()
+
+
+def prune_crashes(before: datetime) -> int:
+    conn = None
+    try:
+        conn = get_connection()
+        cur = conn.execute("DELETE FROM gfetcher_crashes WHERE last_crash_at < ?", (stamp(before),))
+        conn.commit()
+        return cur.rowcount
+    finally:
+        if conn:
+            conn.close()
+
+
 def existing_article_ids(article_ids: Iterable[str]) -> set:
     wanted = list(article_ids)
     found: set = set()

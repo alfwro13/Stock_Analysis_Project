@@ -1058,6 +1058,35 @@ class TestManualRunGuard:
         assert not is_job_running("guard_fail")
         assert run_manual_job("guard_fail", lambda: "again") == "again"
 
+    def test_guard_is_released_when_the_memory_reading_raises(self, monkeypatch):
+        def unreadable():
+            raise OSError("no /proc")
+
+        log_memory = MagicMock()
+        monkeypatch.setattr(_sched_module.memory_helpers, "log_job_memory", log_memory)
+        ran = []
+        with monkeypatch.context() as broken:
+            broken.setattr(_sched_module.memory_helpers, "rss_mib", unreadable)
+            with pytest.raises(OSError):
+                _sched_module._run_tracked_job("guard_rss", "scheduled", lambda: ran.append("scheduled"))
+        assert ran == []
+        assert not is_job_running("guard_rss")
+        assert _sched_module.current_job_source() is None
+        [record] = get_job_run_history("guard_rss")
+        assert (record["status"], record["trigger_source"], record["error_detail"]) == ("error", "scheduled", "no /proc")
+        log_memory.assert_not_called()
+        assert run_manual_job("guard_rss", lambda: "again") == "again"
+        log_memory.assert_called_once()
+
+    def test_an_exception_without_a_message_is_recorded_as_an_error(self):
+        def silent():
+            raise MemoryError()
+
+        with pytest.raises(MemoryError):
+            _sched_module._run_tracked_job("guard_silent", "scheduled", silent)
+        [record] = get_job_run_history("guard_silent")
+        assert (record["status"], record["error_detail"]) == ("error", "MemoryError")
+
     def test_other_jobs_are_unaffected(self):
         thread, release, _ = self._hold("guard_a", lambda jid, fn: run_manual_job(jid, fn))
         try:

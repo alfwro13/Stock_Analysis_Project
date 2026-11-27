@@ -1214,7 +1214,7 @@ def run_stable_shortlist_job():
 
 
 def run_gfetcher_job():
-    """Google News Fetcher: one run over Google Finance quote pages; only refusals, outages, a spent budget, a possible layout change and recoveries are notified."""
+    """Google News Fetcher: one run over Google Finance quote pages; only refusals, outages, a spent budget, a possible layout change, unexpected download failures, recoveries and a failed run are notified."""
     from news.gfetcher import run_fetch, run_notices, settings_from_config
     _mark_job_started(job_label("gfetcher_job"))
     try:
