@@ -319,6 +319,15 @@ def run_market_stress_if() -> dict:
                    market_stress_features = excluded.market_stress_features""",
             (today_date, round(today_score, 4), json.dumps(today_features)),
         )
+        cursor.executemany(
+            "INSERT OR IGNORE INTO market_stress_states (date, score) VALUES (?, ?)",
+            [(d.strftime("%Y-%m-%d"), round(float(v), 4)) for d, v in zip(feature_df.index, norm_scores)],
+        )
+        cursor.execute(
+            """INSERT INTO market_stress_states (date, score) VALUES (?, ?)
+               ON CONFLICT(date) DO UPDATE SET score = excluded.score""",
+            (today_date, round(today_score, 4)),
+        )
 
         cursor.execute(
             "SELECT market_stress_score FROM market_regimes "
@@ -407,10 +416,18 @@ def calculate_market_regime() -> Optional[dict]:
             conn = get_connection()
             cursor = conn.cursor()
             cursor.execute('''
-                INSERT OR REPLACE INTO market_regimes
+                INSERT INTO market_regimes
                 (date, vix_close, spy_volatility, us_turbulence, us_regime_label,
                  ftse_volatility, uk_turbulence, uk_regime_label)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(date) DO UPDATE SET
+                    vix_close = excluded.vix_close,
+                    spy_volatility = excluded.spy_volatility,
+                    us_turbulence = excluded.us_turbulence,
+                    us_regime_label = excluded.us_regime_label,
+                    ftse_volatility = excluded.ftse_volatility,
+                    uk_turbulence = excluded.uk_turbulence,
+                    uk_regime_label = excluded.uk_regime_label
             ''', (
                 latest_date,
                 round(latest_vix, 2),

@@ -22,7 +22,7 @@ from regime_engine import (
 )
 from constants import REGIME_CRASH_VOL, REGIME_VOLATILE_VOL, IF_STRESS_MIN_ROWS
 
-pytestmark = [pytest.mark.regime, pytest.mark.restore_tables("macro_regimes", "market_regimes", "price_hmm_states", "system_notifications", "data_migrations")]
+pytestmark = [pytest.mark.regime, pytest.mark.restore_tables("macro_regimes", "market_regimes", "price_hmm_states", "market_stress_states", "system_notifications", "data_migrations")]
 
 
 def _make_spy_vix_ftse(spy_daily_std, ftse_daily_std=None, n=252):
@@ -131,6 +131,36 @@ class TestCalculateMarketRegime:
         with patch("regime_engine.yahoo_engine.get_price_history",
                    return_value={"SPY": empty, "^VIX": empty, "^FTSE": empty}):
             calculate_market_regime()  # must not raise
+
+
+class TestCalculateMarketRegimeRerun:
+
+    def test_rerun_keeps_hmm_and_stress_columns_on_the_same_date(self):
+        spy_df, vix_df, ftse_df = _make_spy_vix_ftse(spy_daily_std=0.01)
+        dfs = {"SPY": spy_df, "^VIX": vix_df, "^FTSE": ftse_df}
+        latest = spy_df.index[-1].strftime("%Y-%m-%d")
+        conn = database.get_connection()
+        try:
+            conn.execute("DELETE FROM market_regimes WHERE date = ?", (latest,))
+            conn.execute(
+                "INSERT INTO market_regimes (date, price_hmm_label, market_stress_score) VALUES (?, 'Bull', 0.42)",
+                (latest,),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+        with patch("regime_engine.yahoo_engine.get_price_history", return_value=dfs), \
+             patch("regime_engine.run_price_regime_hmm", return_value={}), \
+             patch("regime_engine.run_market_stress_if", return_value={}):
+            calculate_market_regime()
+        conn = database.get_connection()
+        try:
+            row = conn.execute("SELECT * FROM market_regimes WHERE date = ?", (latest,)).fetchone()
+        finally:
+            conn.close()
+        assert row["vix_close"] == 15.0
+        assert row["us_regime_label"] is not None
+        assert (row["price_hmm_label"], row["market_stress_score"]) == ("Bull", 0.42)
 
 
 class TestGetLatestRegime:
@@ -822,6 +852,51 @@ class TestRunMarketStressIf:
              patch("regime_engine._IF_MODEL_PATH", new=tmp_dir / "if.joblib"):
             result = run_market_stress_if()
         assert isinstance(result["alert"], bool)
+
+    def _run_stress(self, tmp_dir):
+        with patch("regime_engine.yahoo_engine.get_price_history", return_value=_make_if_ticker_dfs(n=300)), \
+             patch("regime_engine._IF_CACHE_PATH", new=tmp_dir / "if.parquet"), \
+             patch("regime_engine._IF_MODEL_PATH", new=tmp_dir / "if.joblib"):
+            return run_market_stress_if()
+
+    def test_writes_the_whole_score_series_to_market_stress_states(self):
+        conn = database.get_connection()
+        try:
+            conn.execute("DELETE FROM market_stress_states")
+            conn.commit()
+        finally:
+            conn.close()
+        result = self._run_stress(Path(tempfile.mkdtemp()))
+        conn = database.get_connection()
+        try:
+            rows = conn.execute("SELECT date, score FROM market_stress_states ORDER BY date").fetchall()
+        finally:
+            conn.close()
+        assert len(rows) > 100
+        assert all(0.0 <= r["score"] <= 1.0 for r in rows)
+        assert rows[-1]["date"] == result["date"]
+        assert rows[-1]["score"] == pytest.approx(result["score"], abs=1e-4)
+
+    def test_rerun_keeps_an_existing_past_date_and_updates_the_latest(self):
+        tmp_dir = Path(tempfile.mkdtemp())
+        result = self._run_stress(tmp_dir)
+        conn = database.get_connection()
+        try:
+            past = conn.execute("SELECT date FROM market_stress_states ORDER BY date LIMIT 1").fetchone()[0]
+            conn.execute("UPDATE market_stress_states SET score = 0.777 WHERE date = ?", (past,))
+            conn.execute("UPDATE market_stress_states SET score = 0.888 WHERE date = ?", (result["date"],))
+            conn.commit()
+        finally:
+            conn.close()
+        self._run_stress(tmp_dir)
+        conn = database.get_connection()
+        try:
+            kept = conn.execute("SELECT score FROM market_stress_states WHERE date = ?", (past,)).fetchone()[0]
+            latest = conn.execute("SELECT score FROM market_stress_states WHERE date = ?", (result["date"],)).fetchone()[0]
+        finally:
+            conn.close()
+        assert kept == 0.777
+        assert latest == pytest.approx(result["score"], abs=1e-4)
 
 
 @pytest.fixture

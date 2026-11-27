@@ -430,18 +430,22 @@ def _composite_to_100(composite_score: float) -> float:
 
 
 def _regime_as_of(as_of: str) -> Optional[dict]:
-    """Most recent market_regimes row on or before as_of ('YYYY-MM-DD') — the historical
-    equivalent of regime_engine.get_latest_regime() for the Cross-Engine Alert Referee's
-    historical backfill. META_SCORING.REGIME_WEIGHTS itself is not versioned historically —
-    the backfill uses today's config as an approximation, same as every other config value in
-    this app has no point-in-time history."""
+    """Regime on or before as_of ('YYYY-MM-DD') from the full-history HMM and stress tables, since market_regimes holds only the nights each job ran; META_SCORING.REGIME_WEIGHTS has no history, so today's weights apply."""
     conn = None
     try:
         conn = get_connection()
-        row = conn.execute(
-            "SELECT * FROM market_regimes WHERE date <= ? ORDER BY date DESC LIMIT 1", (as_of,)
+        label_row = conn.execute(
+            "SELECT label FROM price_hmm_states WHERE date <= ? ORDER BY date DESC LIMIT 1", (as_of,)
         ).fetchone()
-        return dict(row) if row else None
+        stress_row = conn.execute(
+            "SELECT score FROM market_stress_states WHERE date <= ? ORDER BY date DESC LIMIT 1", (as_of,)
+        ).fetchone()
+        if label_row is None and stress_row is None:
+            return None
+        return {
+            "price_hmm_label": label_row["label"] if label_row else None,
+            "market_stress_score": stress_row["score"] if stress_row else None,
+        }
     except Exception as e:
         logger.error("_regime_as_of failed for %s: %s", as_of, e)
         return None
@@ -464,7 +468,7 @@ def compute_regime_weighted_score_batch(tickers: list[str], as_of: Optional[str]
     more honest than fabricating a number the underlying inputs were never validated to support.
 
     as_of ('YYYY-MM-DD'), when given, reconstructs the score as of that historical date instead
-    of today — regime and composite_score/ml_confidence are sourced from market_regimes/
+    of today — regime and composite_score/ml_confidence are sourced from price_hmm_states/market_stress_states/
     quant_signals' own per-date history rather than the latest-only regime_engine/stock_signals
     lookups. Used by the Cross-Engine Alert Referee's historical backfill."""
     from config import load_config

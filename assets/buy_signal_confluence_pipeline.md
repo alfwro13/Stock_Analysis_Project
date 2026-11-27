@@ -135,7 +135,7 @@ Regime is read from `regime_engine.get_latest_regime()`'s `price_hmm_label`
 
 **Crash veto.** Suppressed entirely — `None`, never a reweighted number — whenever:
 - `price_hmm_label == "Crash"`, or
-- `market_regimes.market_stress_score` (the Isolation Forest market-wide stress score) is at
+- `market_regimes.market_stress_score` (the Isolation Forest market-wide stress score; `market_stress_states.score` for an as-of date) is at
   or above `META_SCORING.CRASH_VETO.MARKET_STRESS_THRESHOLD` (default 0.75), or
 - no regime has been computed yet (`get_latest_regime()` returns `None`).
 
@@ -199,12 +199,16 @@ run's recompute), using `score_analysis.evaluate_pillar_confluence_as_of(ticker,
 scan_date)` / `compute_regime_weighted_score_as_of(ticker, scan_date)` — as-of variants of Part
 A/B's own batch functions (an optional `as_of` cutoff threaded through `_trading_windows_batch()`/
 `_pattern_signals_batch()`/`_trap_signals_batch()`/`_statistical_signals_batch()`/
-`_ml_signals_batch()`, plus a `market_regimes`/`quant_signals`-history read in place of
-`regime_engine.get_latest_regime()`/`stock_signals` for the regime score) — so an already-resolved
+`_ml_signals_batch()`, plus a read of the HMM label from `price_hmm_states` and of the market stress score from
+`market_stress_states` (each the newest row on or before the date) and of the `quant_signals`
+history in place of `regime_engine.get_latest_regime()`/`stock_signals` for the regime score) — so an already-resolved
 historical trap/pattern row gets scored with the pillar votes/regime that genuinely existed on
 its own `scan_date`, not today's. Unlike `backfill_historical_features()` (Trap Monitor's own
 RSI/EMA backfill, which re-runs `TrapEngine._analyse_ticker()` against parquet), this needs no
 engine re-run — pillar votes and regime are themselves just windowed reads over other tables.
+A row whose `scan_date` is after the newest `market_stress_states` date (or while that table is empty)
+stays queued, so a row is never stamped without the stress score that could veto it; the
+function's result carries a `deferred` count of such rows.
 `train_referee_model(CONFLUENCE_ENGINE)` runs this backfill first, same as the Trap Monitor
 trainer runs its own equivalent first.
 

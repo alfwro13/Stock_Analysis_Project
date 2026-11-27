@@ -217,6 +217,7 @@ def backfill_historical_confluence_features() -> dict:
                    WHERE confluence_features_ts IS NULL AND phase = 'CONFIRMED'"""
             ).fetchall()
         ]
+        stress_through = conn.execute("SELECT MAX(date) FROM market_stress_states").fetchone()[0]
     except Exception as e:
         logger.error("backfill_historical_confluence_features: failed to load candidate rows: %s", e)
         return {"status": "error", "message": str(e)}
@@ -224,8 +225,14 @@ def backfill_historical_confluence_features() -> dict:
         if conn:
             conn.close()
 
+    # A row stamped before the nightly stress run reaches its date would keep no crash veto for good, so it waits.
+    total_candidates = len(trap_rows) + len(pattern_rows)
+    trap_rows = [r for r in trap_rows if stress_through is not None and r["scan_date"] <= stress_through]
+    pattern_rows = [r for r in pattern_rows if stress_through is not None and r["scan_date"] <= stress_through]
+    deferred = total_candidates - len(trap_rows) - len(pattern_rows)
+
     if not trap_rows and not pattern_rows:
-        return {"status": "done", "updated": 0, "total_candidates": 0}
+        return {"status": "done", "updated": 0, "deferred": deferred, "total_candidates": total_candidates}
 
     def _reconstruct(row: dict) -> tuple:
         confluence = evaluate_pillar_confluence_as_of(row["ticker"], row["scan_date"])
@@ -275,10 +282,10 @@ def backfill_historical_confluence_features() -> dict:
     total_updated = len(trap_updates) + len(pattern_updates)
     logger.info(
         "Alert Confidence Referee: backfilled Confluence features for %d historical row(s) "
-        "(%d trap_phase_history, %d pattern_detection_history).",
-        total_updated, len(trap_updates), len(pattern_updates),
+        "(%d trap_phase_history, %d pattern_detection_history); %d row(s) wait for the market stress history to reach their date.",
+        total_updated, len(trap_updates), len(pattern_updates), deferred,
     )
-    return {"status": "done", "updated": total_updated, "total_candidates": len(trap_rows) + len(pattern_rows)}
+    return {"status": "done", "updated": total_updated, "deferred": deferred, "total_candidates": total_candidates}
 
 
 def _trap_readiness_counts(conn) -> dict:
