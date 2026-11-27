@@ -1095,14 +1095,14 @@ def _exchange_sessions(open_exchanges=(), last_close_ago=3600):
 
 
 class TestQuoteSessionFloor:
-    def test_floor_is_the_real_close_less_the_feed_delay_and_the_grace(self):
+    def test_floor_is_the_real_close_less_the_feed_delay(self):
         now = datetime.now(timezone.utc)
         with _exchange_sessions(last_close_ago=0):
             nyse_open, nyse_floor = _ms.quote_session_floor("ZZ_US", "USD")
             lse_open, lse_floor = _ms.quote_session_floor("ZZ_UK.L", "GBp")
         assert nyse_open is False and lse_open is False
-        assert nyse_floor == pytest.approx(now.timestamp() - 900, abs=5)
-        assert lse_floor == pytest.approx(now.timestamp() - 15 * 60 - 900, abs=5)
+        assert nyse_floor == pytest.approx(now.timestamp(), abs=5)
+        assert lse_floor == pytest.approx(now.timestamp() - 15 * 60, abs=5)
 
     def test_open_state_is_the_tickers_own_exchange_not_the_home_exchange(self):
         with _exchange_sessions(open_exchanges=("NYSE",)):
@@ -1118,10 +1118,11 @@ class TestQuoteSessionFloor:
 
 
 class TestIsPriceFreshSessionFloor:
-    def test_closed_market_needs_a_quote_at_or_after_the_floor(self):
+    def test_closed_market_needs_a_quote_within_the_close_grace_of_the_floor(self):
         floor = time.time() - 3600
         assert _mp.is_price_fresh(floor + 1, 100.0, 60, market_open=False, session_floor=floor) is True
-        assert _mp.is_price_fresh(floor - 1, 100.0, 60, market_open=False, session_floor=floor) is False
+        assert _mp.is_price_fresh(floor - 900, 100.0, 60, market_open=False, session_floor=floor) is True
+        assert _mp.is_price_fresh(floor - 901, 100.0, 60, market_open=False, session_floor=floor) is False
 
     def test_open_market_ignores_the_floor(self):
         assert _mp.is_price_fresh(time.time() - 30, 100.0, 60, market_open=True, session_floor=time.time() + 3600) is True

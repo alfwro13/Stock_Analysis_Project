@@ -3,6 +3,7 @@ import logging
 from typing import List, Dict, Any, Optional
 
 from config import load_config
+from constants import QUOTE_CLOSE_GRACE_SECONDS
 from db.database import get_connection, get_ticker_registry
 from db.helpers import get_mutual_fund_tickers, parse_utc_epoch, resolve_live_price, sentiment_fresh_since
 from market_session_helpers import (
@@ -74,19 +75,19 @@ _DISPLAY_STALE_FLOOR_SECONDS = 300
 
 
 def is_price_fresh(last_updated: float, price: float, refresh_rate: int, market_open: Optional[bool] = None, session_floor: Optional[float] = None) -> bool:
-    """Display-only staleness (not data selection): an open market needs a quote within max(2x refresh_rate, 5 min), a floor wider than scan-to-scan gaps; a closed one needs a quote at or after `session_floor` (quote_session_floor()) when given, else any populated row. A loop passes market_open from one judgement per exchange."""
+    """Display-only staleness (not data selection): an open market needs a quote within max(2x refresh_rate, 5 min), a floor wider than scan-to-scan gaps; a closed one needs a quote taken no more than QUOTE_CLOSE_GRACE_SECONDS before `session_floor` (quote_session_floor()'s last close) when given, else any populated row. A loop passes market_open from one judgement per exchange."""
     has_data = last_updated > 0 and price != 0.0
     if not has_data:
         return False
     if market_open is None:
         market_open = is_trading_session()
     if not market_open:
-        return session_floor is None or last_updated >= session_floor
+        return session_floor is None or last_updated >= session_floor - QUOTE_CLOSE_GRACE_SECONDS
     return (time.time() - last_updated) <= max(refresh_rate * 2, _DISPLAY_STALE_FLOOR_SECONDS)
 
 
 class QuoteSessionJudge:
-    """Judges cached quotes on each ticker's own session for one batch of tickers: (session open now, last-close floor) from quote_session_floor(), memoised per exchange. The floor is None for registry tiles, which are refreshed only while their exchange is open or in an extended session, and for mutual funds, which have one NAV a day refreshed on demand: for both the last cached quote is the best available, so a closed market never greys it."""
+    """Judges cached quotes on each ticker's own session for one batch of tickers: (session open now, last close) from quote_session_floor(), memoised per exchange. The floor is None for registry tiles, which are refreshed only while their exchange is open or in an extended session, and for mutual funds, which have one NAV a day refreshed on demand: for both the last cached quote is the best available, so a closed market never greys it."""
 
     def __init__(self, tickers: List[str], registry_exchange_map: Optional[Dict[str, str]] = None):
         self._exchange_map = cached_registry_exchange_map() if registry_exchange_map is None else registry_exchange_map

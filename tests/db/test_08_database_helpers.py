@@ -9,6 +9,7 @@ Exercises the business logic in the db/helpers.py functions and the lock-retry c
   - get_connection: retries past a transient write lock
 """
 
+import time
 from unittest.mock import patch
 
 import pytest
@@ -610,6 +611,25 @@ def test_resolve_live_price_falls_back_when_live_stuck_beyond_gap():
 def test_resolve_live_price_missing_live_returns_fallback():
     assert db_helpers.resolve_live_price(None, None, 219.05, "1970-01-01 00:16:40") == (219.05, True)
     assert db_helpers.resolve_live_price(297.11, 0, 219.05, "1970-01-01 00:16:40") == (219.05, True)
+
+
+def test_resolve_live_price_quote_just_before_the_close_yields_to_the_later_nightly_price():
+    """A live quote taken 14 minutes before the close, with the nightly price written after the close,
+    is not the session's final price: the floor is the bare close, with no grace subtracted."""
+    close = 1_800_000_000.0
+    fallback_epoch_str = time.strftime("%Y-%m-%d %H:%M:%S", time.gmtime(close + 25 * 3600))
+    result = db_helpers.resolve_live_price(
+        297.54, close - 14 * 60, 300.86, fallback_epoch_str, live_floor_epoch=close
+    )
+    assert result == (300.86, True)
+
+
+def test_resolve_live_price_quote_just_before_the_close_is_kept_without_a_nightly_price():
+    close = 1_800_000_000.0
+    result = db_helpers.resolve_live_price(
+        297.54, close - 14 * 60, None, None, live_floor_epoch=close
+    )
+    assert result == (297.54, False)
 
 
 def test_resolve_live_price_missing_fallback_timestamp_keeps_live():
