@@ -33,7 +33,7 @@ def run_earnings_alert():
                 name = data['company_name']
                 earnings_date_str = data['next_earnings_date']
 
-                if not earnings_date_str or earnings_date_str == 'Unknown':
+                if not earnings_date_str:
                     continue
 
                 try:

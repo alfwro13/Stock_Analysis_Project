@@ -299,7 +299,7 @@ def _upsert_fundamentals(ticker: str, info: dict) -> None:
     fifty_two_week_low    = info.get('fiftyTwoWeekLow')
     fifty_two_week_high   = info.get('fiftyTwoWeekHigh')
 
-    next_earnings_date = next_earnings_iso_date(info) or 'Unknown'
+    next_earnings_date = next_earnings_iso_date(info)
 
     peter_lynch_peg = calculate_peter_lynch_peg(
         forward_pe=forward_pe,

@@ -15,7 +15,7 @@ from db.helpers import get_upcoming_macro_events, macro_event_value, ml_fresh_si
 from portfolio_service import get_rate_to_base
 from time_engine import now_local, parse_stored_utc
 from regime_engine import get_latest_regime
-from utils import contained_ticker_path
+from utils import contained_ticker_path, is_iso_date, upcoming_iso_date
 
 logger = logging.getLogger(__name__)
 
@@ -417,8 +417,15 @@ class AIPromptEngine:
                 if age_days > 7:
                     staleness_note = f"\n[WARNING: This data is {age_days} days old — treat as stale.]"
 
+            report_date = r.get('next_earnings_date')
+            upcoming = upcoming_iso_date(report_date)
+            passed_note = ""
+            if upcoming is None and is_iso_date(report_date):
+                passed_note = f"[These figures were computed ahead of the report on {report_date}, which has passed.]\n"
+
             return (
-                f"Next Earnings: {r.get('next_earnings_date', 'N/A')}\n"
+                f"Next Earnings: {upcoming or 'N/A'}\n"
+                f"{passed_note}"
                 f"Isolated Implied Move (ATM straddle): {self._fmt_float(r.get('implied_move_pct'))}%\n"
                 f"Historical Avg Earnings Move: {self._fmt_float(r.get('historical_avg_move_pct'))}%\n"
                 f"Edge Score (Hist - Implied): {self._fmt_float(r.get('edge_score'))}% — {verdict}\n"
@@ -716,7 +723,7 @@ Trailing P/E: {trailing_pe_str}
 Peter Lynch Fair Value PEG: {pl_peg_str}
 Debt-to-Equity: {debt_str}
 Revenue Growth (YoY): {rev_growth_str}
-Next Earnings Date: {stock_data.get('next_earnings_date', 'N/A')}
+Next Earnings Date: {upcoming_iso_date(stock_data.get('next_earnings_date')) or 'N/A'}
 
 --- MOMENTUM FACTOR STACK ---
 1-Month Momentum: {factors['mom_1m']}

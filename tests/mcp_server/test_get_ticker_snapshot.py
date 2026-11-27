@@ -381,7 +381,7 @@ class TestStaleAndMissingData:
     def test_an_unparseable_earnings_date_is_null_not_a_placeholder(self, mcp_client, book):
         conn = get_connection()
         try:
-            conn.execute("UPDATE stock_signals SET next_earnings_date = 'Unknown' WHERE ticker = ?", (HELD,))
+            conn.execute("UPDATE stock_signals SET next_earnings_date = 'not-a-date' WHERE ticker = ?", (HELD,))
             conn.commit()
         finally:
             conn.close()

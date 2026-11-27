@@ -1,5 +1,5 @@
 from config import BASE_CURRENCY
-from utils import normalize_ticker, measure_request_stage
+from utils import normalize_ticker, measure_request_stage, upcoming_iso_date
 from fundamentals_helpers import compute_quality_grade
 from portfolio_service import get_rate_to_base
 from price_history_helpers import pct_from_anchor
@@ -66,6 +66,7 @@ def enrich_signal_row(row_dict, enrichments):
         or row_dict.get('company_name')
         or ticker
     )
+    row_dict['next_earnings_date'] = upcoming_iso_date(row_dict.get('next_earnings_date'))
     row_dict['pattern_detections'] = enrichments["pattern_tags"].get(ticker, [])
     row_dict.update(compute_badge_tags(row_dict))
     row_dict['pillar_confluence_result'] = enrichments["confluence"].get(ticker)

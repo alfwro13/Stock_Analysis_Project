@@ -169,7 +169,7 @@ def log_near_earnings_predictions(ticker_list: Optional[List[str]] = None, days_
     for ticker in ticker_list:
         try:
             e_date_str = cached_earnings_dates.get(ticker, {}).get('next_earnings_date')
-            if not e_date_str or e_date_str == 'Unknown':
+            if not e_date_str:
                 continue
             try:
                 earnings_date = datetime.strptime(e_date_str, '%Y-%m-%d').replace(tzinfo=timezone.utc)
@@ -341,7 +341,7 @@ def run_earnings_vol_scan(ticker_list: List[str]) -> Dict[str, str]:
         for i, ticker in enumerate(ticker_list):
             try:
                 e_date_str = cached_earnings_dates.get(ticker, {}).get('next_earnings_date')
-                if not e_date_str or e_date_str == 'Unknown':
+                if not e_date_str:
                     continue
 
                 try:

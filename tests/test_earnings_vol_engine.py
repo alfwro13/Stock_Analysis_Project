@@ -233,8 +233,8 @@ class TestCachedEarningsDateFilter:
         _run(db_path, ["GOOG"])
         assert len(_read_all(db_path, "SELECT * FROM earnings_volatility")) == 0
 
-    def test_unknown_date_skipped(self, db_path):
-        _seed(db_path, "TSLA", "Unknown")
+    def test_null_date_skipped(self, db_path):
+        _seed(db_path, "TSLA", None)
         with patch("earnings_vol_engine.yahoo_engine.get_ticker_info") as mock_info:
             _run(db_path, ["TSLA"])
         mock_info.assert_not_called()

@@ -1,3 +1,5 @@
+from datetime import datetime, timedelta, timezone
+
 import pytest
 
 from accounts import accounts_engine
@@ -61,6 +63,7 @@ def test_holdings_with_metrics_all_accounts_zero_trading_accounts_returns_empty_
 
 @pytest.mark.db
 def test_holdings_with_metrics_all_accounts_includes_technicals_and_limits():
+    next_report = (datetime.now(timezone.utc) + timedelta(days=20)).strftime("%Y-%m-%d")
     conn = None
     try:
         conn = get_connection()
@@ -68,7 +71,7 @@ def test_holdings_with_metrics_all_accounts_includes_technicals_and_limits():
             """INSERT OR REPLACE INTO stock_signals
                (ticker, current_price, currency, quote_type, rsi_14, trend_50d, trend_200d, next_earnings_date)
                VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-            ("ZZTECH", 100.0, "GBP", "EQUITY", 55.5, "up", "down", "2026-08-01"),
+            ("ZZTECH", 100.0, "GBP", "EQUITY", 55.5, "up", "down", next_report),
         )
         conn.commit()
     finally:
@@ -85,12 +88,30 @@ def test_holdings_with_metrics_all_accounts_includes_technicals_and_limits():
     assert row["rsi"] == 55.5
     assert row["trend_50d"] == "up"
     assert row["trend_200d"] == "down"
-    assert row["next_earnings_date"] == "2026-08-01"
+    assert row["next_earnings_date"] == next_report
     assert row["low_limit"] == 50.0
     assert row["low_limit_set"] is True
     assert row["high_limit_set"] is False
     assert row["gain_value"] == row["market_value"] - row["total_investment"]
     assert row["profit_and_loss"] == row["gain_value"]
+
+
+@pytest.mark.parametrize("days, served", [(-1, False), (0, True), (20, True), (None, False)])
+def test_holdings_with_metrics_serves_an_earnings_date_only_from_today_on(days, served):
+    report = None if days is None else (datetime.now(timezone.utc) + timedelta(days=days)).strftime("%Y-%m-%d")
+    _seed_stock_signal("ZZERNHOLD", 100.0, "GBP")
+    conn = get_connection()
+    try:
+        conn.execute("UPDATE stock_signals SET next_earnings_date = ? WHERE ticker = 'ZZERNHOLD'", (report,))
+        conn.commit()
+    finally:
+        conn.close()
+    aid = create_account(f"EarnAcc{days}", "GBP")
+    add_transaction(aid, "Buy", "2026-01-05", ticker="ZZERNHOLD", currency="GBP",
+                    quantity=1, unit_price=80, exchange_rate=1.0)
+
+    row = next(r for r in portfolio_metrics_engine.holdings_with_metrics_all_accounts()["holdings"] if r["account_id"] == aid)
+    assert row["next_earnings_date"] == (report if served else None)
 
 
 def _seed_market_pulse_cache(ticker: str, price: float, change_pts: float, change_pct: float,

@@ -170,9 +170,9 @@ class TestDailyAlertType:
         rows = _read_all(db_path, "SELECT * FROM system_notifications")
         assert len(rows) == 0
 
-    def test_unknown_earnings_date_skipped(self, db_path):
-        _seed_signal(db_path, "XYZ", "Unknown Corp", "Unknown")
-        ok, msg = self._run(db_path, ["XYZ"], "Unknown")
+    def test_missing_earnings_date_skipped(self, db_path):
+        _seed_signal(db_path, "XYZ", "No Date Corp", None)
+        ok, msg = self._run(db_path, ["XYZ"], None)
         rows = _read_all(db_path, "SELECT * FROM system_notifications")
         assert len(rows) == 0
 

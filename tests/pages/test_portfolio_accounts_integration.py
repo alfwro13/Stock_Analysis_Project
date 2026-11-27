@@ -3,11 +3,12 @@
 import json
 import re
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from unittest.mock import patch
 
 import pytest
 
+from db.account_store import add_watchlist_item, get_watchlist_account
 from db.database import get_connection, create_account, add_transaction
 
 pytestmark = pytest.mark.restore_tables("account_transactions", "market_pulse_cache", "stock_signals", "system_notifications")
@@ -635,3 +636,47 @@ def test_stock_detail_pnl_uses_quote_units_across_accounts(
     breakdown = " ".join(breakdown.split())
     assert "-10.00 GBP (-10.0%)" in breakdown
     assert "-5.00 GBP (-10.0%)" in breakdown
+
+
+@pytest.mark.pages
+@pytest.mark.parametrize("page", ["portfolio", "watchlist"])
+def test_earnings_column_shows_only_a_date_from_today_on(client, page):
+    today = datetime.now(timezone.utc).date()
+    dates = {"ZZERNPAST": today - timedelta(days=10), "ZZERNTODAY": today, "ZZERNNEXT": today + timedelta(days=20)}
+    book = get_watchlist_account()["id"]
+    account = create_account("Integ Earnings", "GBP") if page == "portfolio" else None
+    try:
+        for ticker, day in dates.items():
+            _seed_stock_signal(ticker, 100.0, "GBP")
+            conn = get_connection()
+            try:
+                conn.execute("UPDATE stock_signals SET next_earnings_date = ? WHERE ticker = ?", (day.isoformat(), ticker))
+                conn.commit()
+            finally:
+                conn.close()
+            if account:
+                add_transaction(account, "Buy", "2026-01-05", ticker=ticker, currency="GBP",
+                                quantity=1, unit_price=100, exchange_rate=1.0)
+            else:
+                add_watchlist_item(book, ticker, currency="GBP", quote_type="EQUITY")
+
+        resp = client.get(f"/{page}")
+        assert resp.status_code == 200
+        rows = {ticker: re.search(rf'data-ticker="{ticker}".*?</tr>', resp.text, re.DOTALL).group(0) for ticker in dates}
+
+        past = rows["ZZERNPAST"]
+        assert dates["ZZERNPAST"].isoformat() not in past
+        assert re.search(r'<td data-sort="9999-12-31" class="num-cell">-</td>', past)
+        for ticker in ("ZZERNTODAY", "ZZERNNEXT"):
+            day = dates[ticker].isoformat()
+            assert f'<td data-sort="{day}" class="num-cell">{day}</td>' in rows[ticker]
+    finally:
+        conn = get_connection()
+        try:
+            conn.execute("DELETE FROM watchlist_items WHERE account_id = ? AND ticker LIKE 'ZZERN%'", (book,))
+            if account:
+                conn.execute("DELETE FROM account_transactions WHERE account_id = ?", (account,))
+                conn.execute("DELETE FROM accounts WHERE id = ?", (account,))
+            conn.commit()
+        finally:
+            conn.close()

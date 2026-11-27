@@ -358,6 +358,28 @@ class TestUpsertFundamentalsDoesNotWipeOtherEnginesColumns:
         conn.close()
         assert row["company_name"] == "Test Co"
 
+    @pytest.mark.parametrize("days_ahead", [None, 20])
+    def test_stores_the_earnings_date_yahoo_gives_or_null(self, days_ahead):
+        report = None if days_ahead is None else datetime.now(timezone.utc) + timedelta(days=days_ahead)
+        info = {"shortName": "Test Co", "sector": "Technology", "country": "United States"}
+        if report:
+            info["earningsTimestamp"] = int(report.timestamp())
+        conn = _db.get_connection()
+        try:
+            conn.execute("INSERT INTO stock_signals (ticker, next_earnings_date) VALUES (?, 'stale')", (self.TICKER,))
+            conn.commit()
+        finally:
+            conn.close()
+
+        _upsert_fundamentals(self.TICKER, info)
+
+        conn = _db.get_connection()
+        try:
+            row = conn.execute("SELECT next_earnings_date FROM stock_signals WHERE ticker=?", (self.TICKER,)).fetchone()
+        finally:
+            conn.close()
+        assert row["next_earnings_date"] == (report.strftime("%Y-%m-%d") if report else None)
+
 
 class TestUpsertFundamentalsStoresYahooUnits:
     """Yahoo sends dividendYield as a percent and, for a listing whose financialCurrency differs from its

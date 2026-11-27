@@ -287,7 +287,7 @@ window.WATCHLIST_CHANGE_PERIOD = "{{ change_period }}";
                 {% endif %}
             </td>
 
-            <td data-sort="{{ item.next_earnings_date or '9999-12-31' }}" class="num-cell">{% if item.next_earnings_date and item.next_earnings_date != 'Unknown' %}{{ item.next_earnings_date }}{% else %}-{% endif %}</td>
+            <td data-sort="{{ item.next_earnings_date or '9999-12-31' }}" class="num-cell">{% if item.next_earnings_date %}{{ item.next_earnings_date }}{% else %}-{% endif %}</td>
             <td data-sort="{{ item.composite_score }}" class="num-cell">{{ item.composite_score }}</td>
             <td data-sort="{{ item.piotroski_f_score if item.piotroski_f_score is not none else -999 }}" class="num-cell">
                 {% if item.piotroski_f_score is not none %}

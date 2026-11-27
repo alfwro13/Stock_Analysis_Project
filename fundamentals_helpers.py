@@ -338,7 +338,7 @@ def compute_quality_grade(row: dict) -> str:
 def get_earnings_days(row: dict, target_date: str) -> Optional[int]:
     """Returns days until next earnings, or None if unknown or already passed."""
     raw = row.get('next_earnings_date')
-    if not raw or raw == 'Unknown':
+    if not raw:
         return None
     try:
         earnings_dt = datetime.strptime(raw[:10], '%Y-%m-%d').date()

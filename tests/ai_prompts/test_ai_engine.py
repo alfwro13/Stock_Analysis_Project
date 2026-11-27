@@ -15,7 +15,7 @@ Covers:
 import sys
 import sqlite3
 import tempfile
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -74,8 +74,12 @@ def _seed_sector_peers(num_peers: int):
     return tickers
 
 
-def _seed_options_row(ticker: str, last_updated: str):
-    """Insert one row into earnings_volatility with a controllable last_updated."""
+def _day(days_from_now: int) -> str:
+    return (datetime.now(timezone.utc) + timedelta(days=days_from_now)).strftime("%Y-%m-%d")
+
+
+def _seed_options_row(ticker: str, last_updated: str, next_earnings_date: str | None = _day(30)):
+    """Insert one row into earnings_volatility with a controllable last_updated and report date."""
     from db import database as db
     conn = db.get_connection()
     conn.execute(
@@ -83,7 +87,7 @@ def _seed_options_row(ticker: str, last_updated: str):
            (ticker, next_earnings_date, implied_move_pct, historical_avg_move_pct,
             edge_score, options_volume, last_updated)
            VALUES (?, ?, ?, ?, ?, ?, ?)""",
-        (ticker, "2026-09-01", 5.0, 7.5, 2.5, 1000, last_updated),
+        (ticker, next_earnings_date, 5.0, 7.5, 2.5, 1000, last_updated),
     )
     conn.commit()
     conn.close()
@@ -407,8 +411,8 @@ class TestOptionsStaleness:
         conn = db.get_connection()
         try:
             conn.execute(
-                "INSERT OR REPLACE INTO earnings_volatility (ticker, next_earnings_date, last_updated) VALUES (?, '2026-09-01', ?)",
-                (OPT_TICKER + "_NOEDGE", ts),
+                "INSERT OR REPLACE INTO earnings_volatility (ticker, next_earnings_date, last_updated) VALUES (?, ?, ?)",
+                (OPT_TICKER + "_NOEDGE", _day(30), ts),
             )
             conn.commit()
         finally:
@@ -430,6 +434,49 @@ class TestOptionsStaleness:
         _seed_options_row(OPT_TICKER + "_TS", ts)
         result = ENGINE._get_options_volatility(OPT_TICKER + "_TS")
         assert "Data as of" in result or "last updated" in result.lower() or ts[:10] in result
+
+
+class TestPastEarningsDate:
+    def _block(self, days):
+        ts = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+        _seed_options_row(OPT_TICKER + "_DATE", ts, None if days is None else _day(days))
+        return ENGINE._get_options_volatility(OPT_TICKER + "_DATE")
+
+    @pytest.mark.parametrize("days", [0, 20])
+    def test_options_block_names_a_report_from_today_on(self, days):
+        result = self._block(days)
+        assert f"Next Earnings: {_day(days)}\n" in result
+        assert "which has passed" not in result
+
+    def test_options_block_says_the_figures_predate_a_past_report(self):
+        result = self._block(-10)
+        assert "Next Earnings: N/A\n" in result
+        assert f"[These figures were computed ahead of the report on {_day(-10)}, which has passed.]\n" in result
+        assert "Isolated Implied Move (ATM straddle): 5.00%" in result
+
+    def test_options_block_without_a_date_has_no_passed_note(self):
+        result = self._block(None)
+        assert "Next Earnings: N/A\n" in result
+        assert "which has passed" not in result
+
+    @pytest.mark.parametrize("days, shown", [(-10, False), (0, True), (20, True), (None, False)])
+    def test_prompt_shows_a_next_earnings_date_only_from_today_on(self, days, shown):
+        from db import database as db
+        report = None if days is None else _day(days)
+        _seed_core_stock(CORE_TICKER)
+        conn = db.get_connection()
+        try:
+            conn.execute("UPDATE stock_signals SET next_earnings_date = ? WHERE ticker = ?", (report, CORE_TICKER))
+            conn.commit()
+        finally:
+            conn.close()
+        with (
+            patch("ai_prompts.ai_engine.get_rate_to_base", return_value=1.0),
+            patch("ai_prompts.ai_engine.get_latest_regime", return_value=None),
+            patch("accounts.accounts_engine.get_combined_holdings", return_value={}),
+        ):
+            result = AIPromptEngine().generate_prompt(CORE_TICKER, "Quantamental Deep-Dive")
+        assert f"Next Earnings Date: {report if shown else 'N/A'}\n" in result
 
 
 # ─────────────────────────────────────────────────────────────────────────────

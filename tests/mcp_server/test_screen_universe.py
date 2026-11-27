@@ -1,15 +1,17 @@
 """screen_universe tool: every filter, missing values never matching a filter, sort order, held/watchlist/new flags and scope, the Freetrade universe rule for new rows, limits and argument refusals, third-party text cleaning, the screener route returning the same rows, read-only."""
 import json
+from datetime import datetime, timezone
 
 import pytest
 
 from constants import MCP_DISCOVERY_DEFAULT_ROWS, MCP_DISCOVERY_MAX_ROWS
+from db.database import get_connection
 from reports_engine import get_screener_rows
 
 from . import discovery_seed as seed
 from .helpers import call, error_text, rpc, table_counts, tool_data
 
-pytestmark = pytest.mark.restore_tables(*seed.TABLES)
+pytestmark = pytest.mark.restore_tables(*seed.TABLES, "earnings_volatility")
 
 
 @pytest.fixture(autouse=True)
@@ -153,6 +155,35 @@ def test_as_of_is_the_newest_quant_date_and_the_data_is_fresh(mcp_client):
 def test_the_screener_route_returns_the_rows_the_tool_reads(client, monkeypatch):
     monkeypatch.setattr("api.routes.load_config", lambda: {"UI_PREFERENCES": {"FREETRADE_ONLY_MODE": False}})
     assert client.get("/api/screener-data").json()["data"] == json.loads(json.dumps(get_screener_rows(False)))
+
+
+def _screener_row_with_earnings_date(monkeypatch, value):
+    monkeypatch.setattr("reports_engine.time_engine.now_local", lambda: datetime.now(timezone.utc))
+    conn = get_connection()
+    try:
+        conn.execute("UPDATE stock_signals SET next_earnings_date = ? WHERE ticker = ?", (value, seed.HELD))
+        conn.commit()
+    finally:
+        conn.close()
+    return {row["ticker"]: row for row in get_screener_rows(False)}[seed.HELD]
+
+
+@pytest.mark.parametrize("days, expected_days", [(-30, None), (-1, None), (0, 0), (20, 20)])
+def test_the_screener_serves_an_earnings_date_only_from_today_on(monkeypatch, days, expected_days):
+    row = _screener_row_with_earnings_date(monkeypatch, seed.today(days))
+    assert row["next_earnings_date"] == (seed.today(days) if expected_days is not None else None)
+    assert row["earnings_days"] == expected_days
+
+
+def test_the_screener_does_not_fill_a_missing_earnings_date_from_the_volatility_scan(monkeypatch):
+    conn = get_connection()
+    try:
+        conn.execute("INSERT OR REPLACE INTO earnings_volatility (ticker, next_earnings_date) VALUES (?, ?)", (seed.HELD, seed.today(10)))
+        conn.commit()
+    finally:
+        conn.close()
+    row = _screener_row_with_earnings_date(monkeypatch, None)
+    assert (row["next_earnings_date"], row["earnings_days"]) == (None, None)
 
 
 def test_tool_does_not_write(mcp_client):
