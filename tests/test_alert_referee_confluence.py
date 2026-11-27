@@ -23,7 +23,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from db import database as db
 import alert_referee_engine as are
 
-pytestmark = pytest.mark.restore_tables("scheduler_run_log", "system_notifications")
+pytestmark = pytest.mark.restore_tables("scheduler_run_log", "system_notifications", "market_stress_states")
 
 _ENGINE = are.CONFLUENCE_ENGINE
 _CFG_KEY = "ALERT_REFEREE_TRAINING_CONFLUENCE"
@@ -140,10 +140,71 @@ class TestConfluenceReadinessStatus:
         assert status["ready_for_active"] is True
 
 
+def _seed_stress_dates(*dates):
+    conn = db.get_connection()
+    try:
+        conn.execute("DELETE FROM market_stress_states")
+        for d in dates:
+            conn.execute("INSERT INTO market_stress_states (date, score) VALUES (?, 0.2)", (d,))
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def _backfill_with_stubs():
+    with patch("score_analysis.evaluate_pillar_confluence_as_of",
+               return_value={"bullish_pillars": [], "bearish_pillars": [], "confluence": False, "direction": None}), \
+         patch("score_analysis.compute_regime_weighted_score_as_of", return_value=None):
+        return are.backfill_historical_confluence_features()
+
+
+def _feature_ts(ticker):
+    conn = db.get_connection()
+    try:
+        return conn.execute("SELECT confluence_features_ts FROM trap_phase_history WHERE ticker=?", (ticker,)).fetchone()[0]
+    finally:
+        conn.close()
+
+
 class TestBackfillHistoricalConfluenceFeatures:
+    @pytest.fixture(autouse=True)
+    def _stress_history_covers_scan_dates(self):
+        _seed_stress_dates("2026-01-01", "2030-01-01")
+
     def test_no_candidates_is_a_cheap_noop(self):
         result = are.backfill_historical_confluence_features()
-        assert result == {"status": "done", "updated": 0, "total_candidates": 0}
+        assert result == {"status": "done", "updated": 0, "deferred": 0, "total_candidates": 0}
+
+    def test_row_after_latest_stress_date_stays_queued_and_counts_as_deferred(self):
+        _seed_stress_dates("2026-01-05")
+        _seed_trap_row("BFD1", 1, confluence_features_ts=None, scan_date="2026-01-06")
+        result = _backfill_with_stubs()
+        assert (result["updated"], result["deferred"], result["total_candidates"]) == (0, 1, 1)
+        assert _feature_ts("BFD1") is None
+
+    def test_row_on_latest_stress_date_is_stamped(self):
+        _seed_stress_dates("2026-01-05")
+        _seed_trap_row("BFD2", 1, confluence_features_ts=None, scan_date="2026-01-05")
+        _seed_trap_row("BFD3", 1, confluence_features_ts=None, scan_date="2026-01-06")
+        result = _backfill_with_stubs()
+        assert (result["updated"], result["deferred"], result["total_candidates"]) == (1, 1, 2)
+        assert _feature_ts("BFD2") is not None
+        assert _feature_ts("BFD3") is None
+
+    def test_row_before_first_stress_date_is_still_stamped(self):
+        _seed_stress_dates("2026-03-01")
+        _seed_trap_row("BFD4", 1, confluence_features_ts=None, scan_date="2025-06-01")
+        result = _backfill_with_stubs()
+        assert (result["updated"], result["deferred"]) == (1, 0)
+        assert _feature_ts("BFD4") is not None
+
+    def test_empty_stress_table_defers_every_candidate(self):
+        _seed_stress_dates()
+        _seed_trap_row("BFD5", 1, confluence_features_ts=None)
+        _seed_pattern_row("BFD6", direction_correct_14d=1, confluence_features_ts=None)
+        result = _backfill_with_stubs()
+        assert (result["updated"], result["deferred"], result["total_candidates"]) == (0, 2, 2)
+        assert _feature_ts("BFD5") is None
 
     def test_reconstructs_features_for_unbackfilled_rows(self):
         _seed_trap_row("BF1", 1, confluence_features_ts=None, pillar_technical=None,

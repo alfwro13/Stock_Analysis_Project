@@ -1449,6 +1449,13 @@ def init_db() -> None:
         ''')
 
         cursor.execute('''
+            CREATE TABLE IF NOT EXISTS market_stress_states (
+                date  TEXT PRIMARY KEY,
+                score REAL NOT NULL
+            )
+        ''')
+
+        cursor.execute('''
             CREATE TABLE IF NOT EXISTS bubble_radar_metrics (
                 ticker          TEXT NOT NULL,
                 scan_date       TEXT NOT NULL,
@@ -2408,6 +2415,16 @@ def migrate_db(conn, cursor) -> None:
     except Exception as e:
         logger.error("[MIGRATION ERROR] Failed to create price_hmm_states: %s", e)
 
+    try:
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS market_stress_states (
+                date  TEXT PRIMARY KEY,
+                score REAL NOT NULL
+            )
+        ''')
+    except Exception as e:
+        logger.error("[MIGRATION ERROR] Failed to create market_stress_states: %s", e)
+
     # ai_contagion_snapshots (guard for pre-feature DBs)
     try:
         cursor.execute('''
@@ -3185,6 +3202,25 @@ def migrate_db(conn, cursor) -> None:
     except Exception as e:
         conn.rollback()
         logger.error("[MIGRATION ERROR] Failed to queue the Regime-Weighted Conviction Score recompute: %s", e)
+
+    try:
+        cursor.execute("SELECT 1 FROM data_migrations WHERE name = 'regime_weighted_score_hmm_history_requeue'")
+        if cursor.fetchone() is None:
+            conn.commit()
+            reset = 0
+            for table, training_scope in (("trap_phase_history", "phase != 'NEUTRAL'"), ("pattern_detection_history", "phase = 'CONFIRMED'")):
+                cursor.execute(
+                    f"UPDATE {table} SET confluence_features_ts = NULL "
+                    f"WHERE regime_weighted_score IS NULL AND confluence_features_ts IS NOT NULL AND {training_scope}"
+                )
+                reset += cursor.rowcount
+            cursor.execute("INSERT INTO data_migrations (name) VALUES ('regime_weighted_score_hmm_history_requeue')")
+            conn.commit()
+            if reset:
+                logger.info("[MIGRATION] Queued %d trap/pattern history row(s) with no Regime-Weighted Conviction Score for a recompute from the Price-Action HMM and market stress histories; the next Cross-Engine Alert Referee training run backfills them.", reset)
+    except Exception as e:
+        conn.rollback()
+        logger.error("[MIGRATION ERROR] Failed to queue the Regime-Weighted Conviction Score history recompute: %s", e)
 
     try:
         cursor.execute("SELECT 1 FROM data_migrations WHERE name = 'news_articles_feed_text_repaired'")

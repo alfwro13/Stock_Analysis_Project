@@ -5,6 +5,7 @@ from unittest.mock import patch
 import pytest
 from db import database as _db_module, schema as _db_schema
 from score_analysis import (
+    _regime_as_of,
     _available_from,
     _compute_return,
     _pillar_vote,
@@ -21,7 +22,7 @@ from score_analysis import (
     pillar_confluence_label,
 )
 
-pytestmark = pytest.mark.restore_tables("data_migrations", "pattern_detection_history", "quant_signals", "trap_phase_history")
+pytestmark = pytest.mark.restore_tables("data_migrations", "market_regimes", "market_stress_states", "pattern_detection_history", "price_hmm_states", "quant_signals", "trap_phase_history")
 
 _DEFAULT_META_SCORING = {
     "REGIME_WEIGHTS": {
@@ -82,17 +83,24 @@ def clean_tables():
     conn.execute("DELETE FROM earnings_volatility_history")
     conn.execute("DELETE FROM stock_signals WHERE ticker LIKE 'RW%'")
     conn.execute("DELETE FROM market_regimes WHERE date = ?", (_AS_OF_DATE,))
+    conn.execute("DELETE FROM price_hmm_states WHERE date <= ?", (_AS_OF_DATE,))
+    conn.execute("DELETE FROM market_stress_states WHERE date <= ?", (_AS_OF_DATE,))
     conn.commit()
     conn.close()
 
 
 def _seed_market_regime_as_of(date_, price_hmm_label, market_stress_score=0.1):
     conn = _db_module.get_connection()
-    conn.execute(
-        """INSERT OR REPLACE INTO market_regimes (date, price_hmm_label, market_stress_score)
-           VALUES (?, ?, ?)""",
-        (date_, price_hmm_label, market_stress_score),
-    )
+    if price_hmm_label is not None:
+        conn.execute(
+            "INSERT OR REPLACE INTO price_hmm_states (date, state, label, probability) VALUES (?, 0, ?, 1.0)",
+            (date_, price_hmm_label),
+        )
+    if market_stress_score is not None:
+        conn.execute(
+            "INSERT OR REPLACE INTO market_stress_states (date, score) VALUES (?, ?)",
+            (date_, market_stress_score),
+        )
     conn.commit()
     conn.close()
 
@@ -646,7 +654,7 @@ class TestEvaluatePillarConfluenceAsOf:
 
 
 class TestComputeRegimeWeightedScoreAsOf:
-    def test_reads_market_regimes_and_quant_signals_historically(self):
+    def test_reads_hmm_and_stress_histories_and_quant_signals(self):
         _seed_market_regime_as_of(_AS_OF_DATE, "Bull")
         _seed_quant_signal_as_of("ASOF4", _AS_OF_DATE, composite_score=80, ml_confidence_score=60)
         with patch("config.load_config", return_value={"META_SCORING": _DEFAULT_META_SCORING}):
@@ -672,15 +680,20 @@ class TestComputeRegimeWeightedScoreAsOf:
             result = compute_regime_weighted_score_as_of("ASOF5", _AS_OF_DATE)
         assert result["regime"] == "Bull"
         conn = _db_module.get_connection()
-        conn.execute("DELETE FROM market_regimes WHERE date = '2020-01-10'")
-        conn.commit()
-        conn.close()
 
     def test_crash_regime_as_of_returns_none(self):
         _seed_market_regime_as_of(_AS_OF_DATE, "Crash")
         _seed_quant_signal_as_of("ASOF6", _AS_OF_DATE, composite_score=80, ml_confidence_score=60)
         with patch("config.load_config", return_value={"META_SCORING": _DEFAULT_META_SCORING}):
             result = compute_regime_weighted_score_as_of("ASOF6", _AS_OF_DATE)
+        assert result is None
+
+    def test_stress_score_at_crash_veto_threshold_returns_none(self):
+        from regime_engine import crash_veto_stress_threshold
+        _seed_market_regime_as_of(_AS_OF_DATE, "Bull", market_stress_score=crash_veto_stress_threshold())
+        _seed_quant_signal_as_of("ASOF9", _AS_OF_DATE, composite_score=80, ml_confidence_score=60)
+        with patch("config.load_config", return_value={"META_SCORING": _DEFAULT_META_SCORING}):
+            result = compute_regime_weighted_score_as_of("ASOF9", _AS_OF_DATE)
         assert result is None
 
     def test_no_regime_row_on_or_before_as_of_returns_none(self):
@@ -938,5 +951,84 @@ class TestRescaledCompositeMigration:
             conn.commit()
             _db_schema.migrate_db(conn, conn.cursor())
             assert state("trap_phase_history", "MIGA") == (55.0, "2031-02-01 00:00:00")
+        finally:
+            conn.close()
+
+
+class TestRegimeAsOf:
+    def test_label_and_stress_come_from_their_own_tables_independently(self):
+        _seed_market_regime_as_of("2020-01-10", "Chop", market_stress_score=None)
+        _seed_market_regime_as_of("2020-01-12", None, market_stress_score=0.3)
+        _seed_market_regime_as_of("2020-01-20", "Crash", market_stress_score=0.9)
+        assert _regime_as_of(_AS_OF_DATE) == {"price_hmm_label": "Chop", "market_stress_score": 0.3}
+
+    def test_only_one_table_populated_leaves_the_other_none(self):
+        _seed_market_regime_as_of("2020-01-10", "Bull", market_stress_score=None)
+        assert _regime_as_of(_AS_OF_DATE) == {"price_hmm_label": "Bull", "market_stress_score": None}
+
+    def test_nothing_on_or_before_returns_none(self):
+        _seed_market_regime_as_of("2020-01-20", "Bull")
+        assert _regime_as_of(_AS_OF_DATE) is None
+
+    def test_market_regimes_rows_are_ignored(self):
+        conn = _db_module.get_connection()
+        conn.execute(
+            "INSERT OR REPLACE INTO market_regimes (date, price_hmm_label, market_stress_score) VALUES (?, 'Crash', 0.99)",
+            (_AS_OF_DATE,),
+        )
+        conn.commit()
+        conn.close()
+        assert _regime_as_of(_AS_OF_DATE) is None
+
+
+class TestHmmHistoryRequeueMigration:
+    _NAME = "regime_weighted_score_hmm_history_requeue"
+    _TS = "2031-01-02 00:00:00"
+
+    def _trap(self, conn, ticker, phase, score, ts):
+        conn.execute(
+            """INSERT INTO trap_phase_history (ticker, phase, scan_date, scan_ts, regime_weighted_score, confluence_features_ts)
+               VALUES (?, ?, '2031-01-02', ?, ?, ?)""",
+            (ticker, phase, self._TS, score, ts),
+        )
+
+    def _pattern(self, conn, ticker, phase, score, ts):
+        conn.execute(
+            """INSERT INTO pattern_detection_history
+               (ticker, pattern_family, pattern_type, phase, scan_date, scan_ts, regime_weighted_score, confluence_features_ts)
+               VALUES (?, 'flag', 'bull_flag', ?, '2031-01-02', ?, ?, ?)""",
+            (ticker, phase, self._TS, score, ts),
+        )
+
+    def test_resets_only_stamped_null_score_in_scope_rows_once(self):
+        conn = _db_module.get_connection()
+        try:
+            conn.execute("DELETE FROM data_migrations WHERE name = ?", (self._NAME,))
+            self._trap(conn, "HQA", "BULL_TRAP", None, self._TS)
+            self._trap(conn, "HQB", "BULL_TRAP", 55.0, self._TS)
+            self._trap(conn, "HQC", "NEUTRAL", None, self._TS)
+            self._trap(conn, "HQD", "BULL_TRAP", None, None)
+            self._pattern(conn, "HQE", "CONFIRMED", None, self._TS)
+            self._pattern(conn, "HQF", "CONFIRMED", 55.0, self._TS)
+            self._pattern(conn, "HQG", "FORMING", None, self._TS)
+            conn.commit()
+            _db_schema.migrate_db(conn, conn.cursor())
+
+            def ts(table, ticker):
+                return conn.execute(f"SELECT confluence_features_ts FROM {table} WHERE ticker = ?", (ticker,)).fetchone()[0]
+
+            assert ts("trap_phase_history", "HQA") is None
+            assert ts("trap_phase_history", "HQB") == self._TS
+            assert ts("trap_phase_history", "HQC") == self._TS
+            assert ts("trap_phase_history", "HQD") is None
+            assert ts("pattern_detection_history", "HQE") is None
+            assert ts("pattern_detection_history", "HQF") == self._TS
+            assert ts("pattern_detection_history", "HQG") == self._TS
+            assert conn.execute("SELECT COUNT(*) FROM data_migrations WHERE name = ?", (self._NAME,)).fetchone()[0] == 1
+
+            conn.execute("UPDATE trap_phase_history SET confluence_features_ts = '2031-02-01 00:00:00' WHERE ticker = 'HQA'")
+            conn.commit()
+            _db_schema.migrate_db(conn, conn.cursor())
+            assert ts("trap_phase_history", "HQA") == "2031-02-01 00:00:00"
         finally:
             conn.close()
