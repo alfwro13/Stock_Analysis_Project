@@ -85,6 +85,9 @@ Five columns that need their own JOIN:
   a plain `ticker`-keyed JOIN. Both are **sparse by design**: the weekly scan
   (`earnings_vol_engine.py`, Saturday 10:00) only writes a row for tickers with
   earnings within ~14 days, so most rows are NULL most of the time.
+  A stored row only counts while its `next_earnings_date` equals `stock_signals.next_earnings_date`
+  and is today (local date) or later (`db.helpers.CURRENT_EARNINGS_VOL_SQL`); otherwise both
+  columns are NULL.
 
 ### Sector-Relative Momentum columns
 

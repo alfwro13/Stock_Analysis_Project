@@ -20,6 +20,7 @@ from starlette.concurrency import run_in_threadpool
 from config import load_config
 import time_engine
 from db.database import get_connection, get_watchlist_tickers
+from db.helpers import CURRENT_EARNINGS_VOL_SQL, earnings_vol_cutoff
 from market_pulse import get_all_cached_pulse
 from auth import STEP_UP_COOKIE_NAME, STEP_UP_COOKIE_PATH
 from utils import normalize_ticker, safe_local_path
@@ -223,18 +224,17 @@ def news_page(request: Request):
 
 @page_router.get("/earnings-volatility", response_class=HTMLResponse)
 def earnings_volatility_page(request: Request):
-    today_str = time_engine.now_local().strftime('%Y-%m-%d')
-
     conn = None
     try:
         conn = get_connection()
         cursor = conn.cursor()
-        query = """
-            SELECT * FROM earnings_volatility
-            WHERE next_earnings_date >= ?
-            ORDER BY next_earnings_date ASC, edge_score DESC
+        query = f"""
+            SELECT ev.* FROM earnings_volatility ev
+            JOIN stock_signals s ON s.ticker = ev.ticker
+            WHERE {CURRENT_EARNINGS_VOL_SQL}
+            ORDER BY ev.next_earnings_date ASC, ev.edge_score DESC
         """
-        cursor.execute(query, (today_str,))
+        cursor.execute(query, (earnings_vol_cutoff(),))
         rows = cursor.fetchall()
         earnings_data = [dict(row) for row in rows]
     finally:

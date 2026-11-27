@@ -16,7 +16,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-pytestmark = [pytest.mark.restore_tables("account_benchmark_tickers", "account_performance_cache", "account_price_history", "account_transactions", "etf_predictor_configs", "stock_signals", "system_notifications", "yahoo_api_call_log", "yahoo_api_stats"), pytest.mark.usefixtures("offline_yahoo")]
+pytestmark = [pytest.mark.restore_tables("account_benchmark_tickers", "account_performance_cache", "account_price_history", "account_transactions", "earnings_volatility", "etf_predictor_configs", "stock_signals", "system_notifications", "yahoo_api_call_log", "yahoo_api_stats"), pytest.mark.usefixtures("offline_yahoo")]
 
 
 
@@ -401,6 +401,7 @@ def test_earnings_volatility_page_renders_row_without_historical_move(client):
             "VALUES ('ZZNOHIST', ?, 0, datetime('now'))",
             (next_earnings,),
         )
+        conn.execute("INSERT OR REPLACE INTO stock_signals (ticker, next_earnings_date) VALUES ('ZZNOHIST', ?)", (next_earnings,))
         conn.commit()
     finally:
         conn.close()
@@ -415,6 +416,83 @@ def test_earnings_volatility_page_renders_row_without_historical_move(client):
             conn.commit()
         finally:
             conn.close()
+
+
+_EV_CUTOFF = "2026-07-19"
+
+
+def _seed_earnings_vol_cases():
+    """ZZEVOK matches stock_signals and is upcoming; ZZEVPAST matches but is before the cutoff; ZZEVMOVED is upcoming but stock_signals carries another date."""
+    from db import database as _db
+
+    cases = {
+        "ZZEVOK": ("2026-07-25", "2026-07-25", 1.5, 4.0),
+        "ZZEVPAST": ("2026-07-10", "2026-07-10", 2.5, 5.0),
+        "ZZEVMOVED": ("2026-07-25", "2026-08-05", 3.5, 6.0),
+    }
+    conn = _db.get_connection()
+    try:
+        for ticker, (ev_date, sig_date, edge, implied) in cases.items():
+            conn.execute(
+                "INSERT OR REPLACE INTO stock_signals (ticker, current_price, currency, quote_type, next_earnings_date) VALUES (?, 10.0, 'USD', 'EQUITY', ?)",
+                (ticker, sig_date),
+            )
+            conn.execute(
+                "INSERT OR REPLACE INTO earnings_volatility (ticker, next_earnings_date, implied_move_pct, historical_avg_move_pct, edge_score, options_volume, last_updated) "
+                "VALUES (?, ?, ?, 3.0, ?, 100, '2026-07-19')",
+                (ticker, ev_date, implied, edge),
+            )
+        conn.commit()
+    finally:
+        conn.close()
+    return list(cases)
+
+
+def _delete_earnings_vol_cases(tickers):
+    from db import database as _db
+
+    conn = _db.get_connection()
+    try:
+        for ticker in tickers:
+            conn.execute("DELETE FROM earnings_volatility WHERE ticker = ?", (ticker,))
+            conn.execute("DELETE FROM stock_signals WHERE ticker = ?", (ticker,))
+        conn.commit()
+    finally:
+        conn.close()
+
+
+@pytest.mark.pages
+def test_signal_rows_blank_earnings_vol_when_past_or_date_moved():
+    """Earnings Edge Score / Implied Move % stay populated only for a future date matching stock_signals; the row itself is always returned."""
+    from pages.page_data_signal_rows import fetch_watchlist_signal_rows
+
+    tickers = _seed_earnings_vol_cases()
+    try:
+        with patch("pages.page_data_signal_rows.earnings_vol_cutoff", return_value=_EV_CUTOFF):
+            rows, _ = fetch_watchlist_signal_rows("SPY", tickers)
+        by_ticker = {r["ticker"]: r for r in rows}
+        assert set(by_ticker) == set(tickers)
+        assert (by_ticker["ZZEVOK"]["earnings_edge_score"], by_ticker["ZZEVOK"]["earnings_implied_move"]) == (1.5, 4.0)
+        for ticker in ("ZZEVPAST", "ZZEVMOVED"):
+            assert by_ticker[ticker]["earnings_edge_score"] is None
+            assert by_ticker[ticker]["earnings_implied_move"] is None
+    finally:
+        _delete_earnings_vol_cases(tickers)
+
+
+@pytest.mark.pages
+def test_earnings_volatility_page_lists_only_current_rows(client):
+    """The scanner page lists a future row matching stock_signals and hides past and date-mismatched rows."""
+    tickers = _seed_earnings_vol_cases()
+    try:
+        with patch("pages.page_routes.earnings_vol_cutoff", return_value=_EV_CUTOFF):
+            resp = client.get("/earnings-volatility")
+        assert resp.status_code == 200
+        assert "/stock/ZZEVOK" in resp.text
+        assert "/stock/ZZEVPAST" not in resp.text
+        assert "/stock/ZZEVMOVED" not in resp.text
+    finally:
+        _delete_earnings_vol_cases(tickers)
 
 
 @pytest.mark.pages
@@ -436,6 +514,7 @@ def test_earnings_volatility_page_scope_filter(client):
             "VALUES ('ZZSCOPEVOL', ?, 5.0, datetime('now'))",
             (next_earnings,),
         )
+        conn.execute("INSERT OR REPLACE INTO stock_signals (ticker, next_earnings_date) VALUES ('ZZSCOPEVOL', ?)", (next_earnings,))
         conn.commit()
     finally:
         conn.close()
@@ -1493,8 +1572,8 @@ def test_watchlist_page_renders_xray_and_earnings_vol_columns_for_seeded_ticker(
     conn = _db.get_connection()
     try:
         conn.execute("""
-            INSERT OR REPLACE INTO stock_signals (ticker, current_price, currency, quote_type, composite_score)
-            VALUES ('ZZXRAYVOL', 100.0, 'USD', 'EQUITY', 55)
+            INSERT OR REPLACE INTO stock_signals (ticker, current_price, currency, quote_type, composite_score, next_earnings_date)
+            VALUES ('ZZXRAYVOL', 100.0, 'USD', 'EQUITY', 55, '2026-07-25')
         """)
         conn.execute(
             "INSERT OR REPLACE INTO xray_risk_cache (ticker, benchmark, last_updated, beta, annualized_vol) "
@@ -1517,7 +1596,8 @@ def test_watchlist_page_renders_xray_and_earnings_vol_columns_for_seeded_ticker(
     add_watchlist_item(wl["id"], "ZZXRAYVOL", currency="USD", quote_type="EQUITY")
 
     try:
-        resp = client.get("/watchlist")
+        with patch("pages.page_data_signal_rows.earnings_vol_cutoff", return_value="2026-07-19"):
+            resp = client.get("/watchlist")
         assert resp.status_code == 200
         body = resp.text
         for key in ("xray_beta", "xray_annualized_vol", "xray_dividend_yield", "earnings_edge_score", "earnings_implied_move"):

@@ -1,5 +1,5 @@
 from db.database import get_connection
-from db.helpers import ml_fresh_since, sentiment_fresh_since
+from db.helpers import CURRENT_EARNINGS_VOL_SQL, earnings_vol_cutoff, ml_fresh_since, sentiment_fresh_since
 
 _SIGNAL_COLUMNS = """
                    (SELECT ml_confidence_score FROM quant_signals
@@ -42,7 +42,7 @@ _SIGNAL_COLUMNS = """
                        s.ticker
                    ) as resolved_company_name"""
 
-_SIGNAL_JOINS = """
+_SIGNAL_JOINS = f"""
             FROM stock_signals s
             LEFT JOIN asset_profiles ap ON s.ticker = ap.ticker
             LEFT JOIN market_universe mu ON s.ticker = mu.ticker
@@ -51,14 +51,14 @@ _SIGNAL_JOINS = """
             LEFT JOIN quant_signals q ON s.ticker = q.ticker
             AND q.date = (SELECT MAX(date) FROM quant_signals WHERE ticker = s.ticker)
             LEFT JOIN xray_risk_cache xrisk ON s.ticker = xrisk.ticker AND xrisk.benchmark = ?
-            LEFT JOIN earnings_volatility ev ON s.ticker = ev.ticker
+            LEFT JOIN earnings_volatility ev ON s.ticker = ev.ticker AND {CURRENT_EARNINGS_VOL_SQL}
             LEFT JOIN trap_monitor_results trap ON s.ticker = trap.ticker"""
 
 
 def _select_signal_rows(cursor, benchmark_symbol: str, tickers: list[str], extra_columns: str, extra_joins: str = ""):
     rows = []
     fresh_since = ml_fresh_since()
-    # Leave room for the benchmark parameter under SQLite's older 999-variable limit.
+    # Leave room for the benchmark and earnings-date parameters under SQLite's older 999-variable limit.
     for start in range(0, len(tickers), 900):
         batch = tickers[start:start + 900]
         placeholders = ",".join("?" for _ in batch)
@@ -68,7 +68,7 @@ def _select_signal_rows(cursor, benchmark_symbol: str, tickers: list[str], extra
             {_SIGNAL_JOINS}
             {extra_joins}
             WHERE s.ticker IN ({placeholders})
-        """, (fresh_since, sentiment_fresh_since(), fresh_since, fresh_since, benchmark_symbol, *batch))
+        """, (fresh_since, sentiment_fresh_since(), fresh_since, fresh_since, benchmark_symbol, earnings_vol_cutoff(), *batch))
         rows.extend(cursor.fetchall())
     return rows
 
