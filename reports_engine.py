@@ -3,7 +3,7 @@ from typing import List, Dict, Any
 from db.database import get_connection
 import time_engine
 from db.helpers import ml_fresh_since, sentiment_fresh_since
-from utils import is_iso_date
+from utils import is_iso_date, upcoming_iso_date
 from fundamentals_helpers import (
     compute_quality_grade, get_earnings_days,
     QUALITY_COMPOUNDER_MIN_ROE, QUALITY_COMPOUNDER_MAX_DEBT_TO_EQUITY, QUALITY_COMPOUNDER_MIN_MARGIN,
@@ -55,7 +55,7 @@ def get_screener_rows(freetrade_only: bool = False) -> List[Dict[str, Any]]:
             qs_sent.sentiment_score,
             s.composite_score, s.overall_signal,
             s.roe, s.peg_ratio, s.trailing_pe, s.debt_to_equity, s.expense_ratio,
-            COALESCE(s.next_earnings_date, ev.next_earnings_date) AS next_earnings_date,
+            s.next_earnings_date,
             m.is_freetrade, m.freetrade_subtitle, m.freetrade_url,
             COALESCE(p.quote_type, s.quote_type, m.quote_type, 'EQUITY') as quote_type
         FROM quant_signals q
@@ -68,7 +68,6 @@ def get_screener_rows(freetrade_only: bool = False) -> List[Dict[str, Any]]:
             ON qs_sent.ticker = ls.ticker
             AND qs_sent.date = ls.max_date
             AND qs_sent.sentiment_score IS NOT NULL
-        LEFT JOIN earnings_volatility ev ON q.ticker = ev.ticker
         """
         if freetrade_only:
             query += " WHERE m.is_freetrade = 1"
@@ -79,6 +78,7 @@ def get_screener_rows(freetrade_only: bool = False) -> List[Dict[str, Any]]:
         for row in rows:
             r = dict(row)
             r['quality_grade'] = compute_quality_grade(r)
+            r['next_earnings_date'] = upcoming_iso_date(r['next_earnings_date'])
             r['earnings_days'] = get_earnings_days(r, today_str)
             data.append(r)
         return data

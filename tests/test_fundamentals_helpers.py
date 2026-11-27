@@ -421,8 +421,11 @@ class TestGetEarningsDays:
     def test_missing_returns_none(self):
         assert get_earnings_days({}, '2026-06-03') is None
 
-    def test_unknown_string(self):
-        assert get_earnings_days({'next_earnings_date': 'Unknown'}, '2026-06-03') is None
+    def test_null_date(self):
+        assert get_earnings_days(self._row(None), '2026-06-03') is None
+
+    def test_unparseable_string(self):
+        assert get_earnings_days(self._row('not-a-date'), '2026-06-03') is None
 
 
 # ── compute_quality_grade ────────────────────────────────────────────────────

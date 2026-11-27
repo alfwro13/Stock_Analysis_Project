@@ -37,6 +37,7 @@ _UNITS = {
     "ml_confidence_score": ML_CONFIDENCE_UNITS,
     "sentiment_score": "-1 to 1 (FinBERT mean over recent headlines); null when there are no recent headlines",
     "volume_surge": "1 when the latest volume exceeds 1.5 times its 20-day average, else 0",
+    "next_earnings_date": "YYYY-MM-DD; null when unknown or when Yahoo has not published a date from today on",
     "earnings_days": "days until the next earnings date, null when unknown or already passed",
     "excluded_by_freetrade_switch": "new tickers of the scope left out, before the other filters, because the Settings Freetrade switch limits suggestions to Freetrade-listed tickers; 0 when none",
     "as_of": "date of the newest price/technical row behind the screen (the nightly Quant Scan); the fundamentals are refreshed weekly",

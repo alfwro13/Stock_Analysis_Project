@@ -358,7 +358,7 @@
                 </details>
                 {% endif %}
 
-                {% if stock.next_earnings_date and stock.next_earnings_date != 'Unknown' %}
+                {% if stock.next_earnings_date %}
                     {% if days_to_earnings is not none %}
                         {% if days_to_earnings >= 0 %}
                             {% if days_to_earnings <= 14 %}

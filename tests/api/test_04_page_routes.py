@@ -1209,6 +1209,29 @@ def test_stock_detail_shows_drift_stats_with_thumbs_icon(client):
 
 
 @pytest.mark.pages
+def test_stock_detail_shows_the_post_earnings_notice_for_a_recently_past_report(client):
+    from datetime import datetime, timedelta, timezone
+    from db import database as _db
+
+    reported = (datetime.now(timezone.utc) - timedelta(days=5)).strftime("%Y-%m-%d")
+    conn = _db.get_connection()
+    try:
+        conn.execute(
+            "INSERT OR REPLACE INTO stock_signals (ticker, current_price, currency, quote_type, next_earnings_date) "
+            "VALUES ('ZZPOSTERN', 50.0, 'USD', 'EQUITY', ?)",
+            (reported,),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    resp = client.get("/stock/ZZPOSTERN")
+    assert resp.status_code == 200
+    assert f"Post-Earnings: The report was recently released on {reported}." in resp.text
+    assert "Next Earnings Report is scheduled" not in resp.text
+
+
+@pytest.mark.pages
 def test_watchlist_page_stale_pulse_fallback_price_does_not_crash(client):
     """Same fallback scenario as test_stock_detail_stale_pulse_fallback_price_does_not_crash,
     but on the /watchlist table row itself, which reads the same cached_pulse dict."""
@@ -1306,7 +1329,7 @@ def test_watchlist_page_renders_new_analytics_and_removed_sections(client):
                 'ZZANALYTICS', 100.0, 'USD', 'EQUITY', 70, 'Technology',
                 2, 1.2, -1.0,
                 0.20, 30, 0.15, 0.10, 2.0, 20,
-                'Unknown'
+                NULL
             )
         """)
         conn.execute(
@@ -1341,11 +1364,8 @@ def test_watchlist_page_renders_new_analytics_and_removed_sections(client):
         assert '<option value="Quality Compounder">Quality Compounder</option>' in body
         assert '<option value="Bubble Risk">Bubble Risk</option>' in body
         assert 'data-sector="Technology"' in body
-        # 'Unknown' is the literal sentinel written when Yahoo has no earnings date — the visible
-        # cell text must render as "-", not the raw string (it may still appear in data-sort).
         row_html = body[body.index('data-ticker="ZZANALYTICS"'):].split('</tr>')[0]
-        assert '>-</td>' in row_html
-        assert '>Unknown</td>' not in row_html
+        assert '<td data-sort="9999-12-31" class="num-cell">-</td>' in row_html
     finally:
         conn = _db.get_connection()
         try:

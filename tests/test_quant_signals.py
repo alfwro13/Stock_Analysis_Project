@@ -9,6 +9,7 @@ import logging
 import os
 import sys
 import time
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest.mock import patch
 
@@ -150,7 +151,7 @@ _SAVE_TO_DB_DEFAULTS = dict(
     operating_cash_flow=None,
     ytd_return=None, total_assets=None, nav_price=None, expense_ratio=None,
     dividend_yield=None, ex_dividend_date=None, target_price=None, analyst_rating="none",
-    next_earnings_date="Unknown",
+    next_earnings_date=None,
     short_interest=None, institutional_ownership=None, beta=None, yield_correlation=None,
     score=50, signal="NEUTRAL", notes="", tags_json="[]",
 )
@@ -340,6 +341,36 @@ class TestOverAgeFundamentalsDump:
         finally:
             conn.close()
         assert tuple(row) == ("Test Co", "GBp", None, None)
+
+
+@pytest.mark.parametrize("days_ahead", [None, 20])
+def test_the_scan_stores_the_earnings_date_yahoo_gives_or_null(tmp_path, days_ahead):
+    ticker = "TST_QS_EARNINGS"
+    report = None if days_ahead is None else datetime.now(timezone.utc) + timedelta(days=days_ahead)
+    info = {"shortName": "Test Co", "currency": "USD", "quoteType": "EQUITY"}
+    if report:
+        info["earningsTimestamp"] = int(report.timestamp())
+    (tmp_path / f"{ticker}.json").write_text(json.dumps(info))
+    conn = _db.get_connection()
+    try:
+        conn.execute("INSERT INTO stock_signals (ticker, next_earnings_date) VALUES (?, 'stale')", (ticker,))
+        conn.commit()
+    finally:
+        conn.close()
+    index = pd.date_range("2024-01-01", periods=260, freq="B")
+    close = pd.Series(range(260), index=index) * 0.1 + 100.0
+    frame = pd.DataFrame({"Open": close, "High": close + 1, "Low": close - 1, "Close": close, "Volume": 1_000_000.0})
+
+    engine = QuantEngine()
+    with patch("quant_signals.FUNDAMENTALS_DIR", tmp_path), patch.object(engine, "load_parquet", return_value=frame):
+        engine.analyze_ticker(ticker)
+
+    conn = _db.get_connection()
+    try:
+        row = conn.execute("SELECT next_earnings_date FROM stock_signals WHERE ticker=?", (ticker,)).fetchone()
+    finally:
+        conn.close()
+    assert row["next_earnings_date"] == (report.strftime("%Y-%m-%d") if report else None)
 
 
 def test_quant_cache_readers_reject_symlinks_outside_cache_roots(tmp_path):

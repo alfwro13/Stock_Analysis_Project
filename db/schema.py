@@ -2523,6 +2523,13 @@ def migrate_db(conn, cursor) -> None:
     except Exception as e:
         logger.error("[MIGRATION ERROR] Failed to normalise stock_signals.ex_dividend_date: %s", e)
 
+    try:
+        cursor.execute("UPDATE stock_signals SET next_earnings_date = NULL WHERE next_earnings_date = 'Unknown'")
+        if cursor.rowcount:
+            logger.info("[MIGRATION] Set %d 'Unknown' stock_signals.next_earnings_date values to NULL.", cursor.rowcount)
+    except Exception as e:
+        logger.error("[MIGRATION ERROR] Failed to clear stock_signals.next_earnings_date placeholders: %s", e)
+
     # smgb_predictions: add prediction_type column + composite unique (target_date, prediction_type)
     try:
         cursor.execute("PRAGMA table_info(smgb_predictions)")

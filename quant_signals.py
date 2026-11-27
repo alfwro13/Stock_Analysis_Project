@@ -582,7 +582,7 @@ class QuantEngine:
             target_price = info.get('targetMeanPrice', None)
             analyst_rating = (info.get('recommendationKey') or 'None').upper()
             
-            next_earnings_date = next_earnings_iso_date(info) or "Unknown"
+            next_earnings_date = next_earnings_iso_date(info)
 
             short_interest = info.get('shortPercentOfFloat', None)
             institutional_ownership = info.get('heldPercentInstitutions', None)
@@ -779,7 +779,7 @@ class QuantEngine:
                    ytd_return: Optional[float], total_assets: Optional[float], nav_price: Optional[float],
                    expense_ratio: Optional[float],
                    dividend_yield: Optional[float], ex_dividend_date: Optional[str], target_price: Optional[float],
-                   analyst_rating: str, next_earnings_date: str, short_interest: Optional[float],
+                   analyst_rating: str, next_earnings_date: Optional[str], short_interest: Optional[float],
                    institutional_ownership: Optional[float], beta: Optional[float], yield_correlation: Optional[float],
                    score: int, signal: str, notes: str, tags_json: str) -> None:
         

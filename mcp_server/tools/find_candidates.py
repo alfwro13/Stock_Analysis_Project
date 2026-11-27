@@ -38,6 +38,7 @@ _UNITS = {
     "close_price": "in the row's currency, the instrument's own quote unit; GBp means pence, not pounds",
     "composite_score": "-100 to +100 (negative is bearish)", "ml_confidence_score": ML_CONFIDENCE_UNITS,
     "quality_grade": "A (high-quality compounder) to D (loss-making or over-leveraged)",
+    "next_earnings_date": "YYYY-MM-DD; null when unknown or when Yahoo has not published a date from today on",
     "heat_index_effect": "not computed here: run pretrade_check on the two or three finalists to see the Heat Index after adding an amount",
     "as_of": "the older of the newest price/technicals date and the X-ray risk-cache date behind the correlations and sector weights",
 }

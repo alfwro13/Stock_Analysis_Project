@@ -25,7 +25,7 @@ logger = logging.getLogger(__name__)
 
 
 def earnings_timing(stock_data, ticker):
-    if not stock_data.get('next_earnings_date') or stock_data['next_earnings_date'] == 'Unknown':
+    if not stock_data.get('next_earnings_date'):
         return None, None
     try:
         e_date = datetime.strptime(stock_data['next_earnings_date'], '%Y-%m-%d').date()

@@ -13,6 +13,7 @@ No network access required.
 
 import json
 import sqlite3
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest.mock import patch
 
@@ -886,6 +887,26 @@ def test_migrate_db_copies_head_shoulders_results_into_pattern_detection_results
     finally:
         conn.execute("DELETE FROM head_shoulders_results WHERE ticker = 'MIGTST1'")
         conn.execute("DELETE FROM pattern_detection_results WHERE ticker = 'MIGTST1'")
+        conn.commit()
+        conn.close()
+
+
+@pytest.mark.db
+def test_migrate_db_clears_unknown_earnings_dates_and_keeps_real_ones():
+    today = datetime.now(timezone.utc).date()
+    past, upcoming = (today - timedelta(days=90)).isoformat(), (today + timedelta(days=20)).isoformat()
+    conn = _conn()
+    try:
+        for ticker, value in (("ZZERNM1", "Unknown"), ("ZZERNM2", past), ("ZZERNM3", upcoming), ("ZZERNM4", None)):
+            conn.execute("INSERT OR REPLACE INTO stock_signals (ticker, next_earnings_date) VALUES (?, ?)", (ticker, value))
+        conn.commit()
+        cursor = conn.cursor()
+        db_schema.migrate_db(conn, cursor)
+        db_schema.migrate_db(conn, cursor)
+        stored = {r["ticker"]: r["next_earnings_date"] for r in conn.execute("SELECT ticker, next_earnings_date FROM stock_signals WHERE ticker LIKE 'ZZERNM%'")}
+        assert stored == {"ZZERNM1": None, "ZZERNM2": past, "ZZERNM3": upcoming, "ZZERNM4": None}
+    finally:
+        conn.execute("DELETE FROM stock_signals WHERE ticker LIKE 'ZZERNM%'")
         conn.commit()
         conn.close()
 

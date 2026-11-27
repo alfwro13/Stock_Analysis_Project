@@ -1,4 +1,6 @@
 """Unit tests for the pure helpers extracted from the Portfolio/Watchlist/Stock Detail route handlers."""
+from datetime import timedelta
+
 import pytest
 
 from config import BASE_CURRENCY
@@ -12,6 +14,7 @@ from pages.page_data_portfolio import (
 )
 from pages.page_data_stock import data_freshness, parse_json_field
 from pages.page_data_stock_panels import earnings_timing
+from time_engine import now_local
 
 
 PORTFOLIO_JSON = {
@@ -124,9 +127,10 @@ def test_parse_json_field():
 
 
 def test_earnings_timing():
-    assert earnings_timing({"next_earnings_date": "Unknown"}, "T") == (None, None)
+    assert earnings_timing({"next_earnings_date": None}, "T") == (None, None)
     assert earnings_timing({}, "T") == (None, None)
     assert earnings_timing({"next_earnings_date": "not-a-date"}, "T") == (None, None)
-    days, vol_date = earnings_timing({"next_earnings_date": "2999-01-15"}, "T")
-    assert days > 0
-    assert vol_date == "2999-01-08"
+    report = now_local().date() + timedelta(days=20)
+    days, vol_date = earnings_timing({"next_earnings_date": report.isoformat()}, "T")
+    assert days == 20
+    assert vol_date == (report - timedelta(days=7)).isoformat()

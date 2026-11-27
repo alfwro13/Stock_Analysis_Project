@@ -19,6 +19,7 @@ from db.account_store import (
 )
 from portfolio_service import get_rate_to_base, persisted_fx_reads
 from accounts.treasury_bill_engine import daily_accretion_change, get_treasury_bill_by_ticker, parse_tbill_buy_txn_id
+from utils import upcoming_iso_date
 
 logger = logging.getLogger(__name__)
 
@@ -181,7 +182,7 @@ def holdings_with_metrics_all_accounts() -> dict:
                 "rsi": signals.get("rsi_14"),
                 "trend_50d": signals.get("trend_50d"),
                 "trend_200d": signals.get("trend_200d"),
-                "next_earnings_date": signals.get("next_earnings_date"),
+                "next_earnings_date": upcoming_iso_date(signals.get("next_earnings_date")),
                 "priced_at_cost": h["priced_at_cost"],
                 "allocation_pct": h["allocation_pct"],
                 "low_limit": low_limit,

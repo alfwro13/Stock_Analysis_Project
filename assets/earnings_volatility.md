@@ -41,6 +41,8 @@ The engine also still checks each tracked asset's `next_earnings_date` in `stock
 * **Negative Edge (Red):** Options are *overpriced*. The options market is expecting a massive move, but historically the stock barely moves. This is a prime setup for an "IV Crush." Selling options (like an Iron Condor or Credit Spread) here has a statistical edge.
 * **Options Volume:** The combined open interest/volume of the ATM Call and Put. If this number is very low (e.g., < 100), the Edge Score may be a false positive due to wide, illiquid bid/ask spreads.
 
+**AI stock prompts:** the prompts give a next earnings date only when it is today (UTC) or later. When the report date behind a ticker's options-volatility figures has passed, that block shows `Next Earnings: N/A` and states that the figures were computed ahead of the report on that date.
+
 ### 🎯 4. Scope & Limitations (Why Not The Entire Universe?)
 
 This engine **only** scans assets present in your **Portfolio** and **Watchlist** (plus any other ticker already in the app's shared nightly fetch universe, e.g. an Account Transactions ticker or a Markets page index — see `AGENTS.md`'s priority-arbitration rule). It does not scan the massive 4,000+ Market Screener universe.
