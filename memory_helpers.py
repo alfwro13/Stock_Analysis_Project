@@ -33,6 +33,19 @@ def _load_mallinfo2():
 _MALLINFO2 = _load_mallinfo2()
 
 
+def _load_malloc_trim():
+    try:
+        function = ctypes.CDLL(None).malloc_trim
+    except (AttributeError, OSError):
+        return None
+    function.argtypes = [ctypes.c_size_t]
+    function.restype = ctypes.c_int
+    return function
+
+
+_MALLOC_TRIM = _load_malloc_trim()
+
+
 def _proc_kb_fields(path: str) -> dict[str, int]:
     fields = {}
     try:
@@ -122,12 +135,16 @@ def log_sample(reason: str) -> None:
 
 
 def log_job_memory(job_id: str, rss_before_mib: float, duration_sec: float) -> None:
-    """One line only for a job that ran long or moved the process RSS, so a once-a-minute job adds nothing to the log."""
+    """For a job that ran long or moved the process RSS: hands glibc's free-but-held pages back to the OS, then logs one line; a once-a-minute job adds nothing."""
     rss_after = rss_mib()
     delta = rss_after - rss_before_mib
     if duration_sec < MEMORY_JOB_LOG_MIN_SECONDS and abs(delta) < MEMORY_JOB_LOG_MIN_DELTA_MIB:
         return
+    rss_trimmed = None
+    if _MALLOC_TRIM:
+        _MALLOC_TRIM(0)
+        rss_trimmed = rss_mib()
     logger.info(
-        "Memory job %s: %.0fs, rss %.0f -> %.0f MiB (%+.0f), %.0f MiB available",
-        job_id, duration_sec, rss_before_mib, rss_after, delta, available_mib(),
+        "Memory job %s: %.0fs, rss %.0f -> %.0f MiB (%+.0f), %s MiB after trim, %.0f MiB available",
+        job_id, duration_sec, rss_before_mib, rss_after, delta, _fmt(rss_trimmed), available_mib(),
     )

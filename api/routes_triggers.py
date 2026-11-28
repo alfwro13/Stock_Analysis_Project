@@ -21,7 +21,7 @@ from scheduler_engine import (
     run_fundamentals_profiler, run_universe_deep_sync_job,
     run_xray_risk_cache_job, run_anomaly_training_job, record_job_run,
     run_maintenance_engine, run_manual_job, get_all_job_last_runs,
-    scheduler_quiesced, run_universe_csv_import_scan, log_sched_notification,
+    scheduler_quiesced, run_universe_csv_import_scan, log_sched_notification, run_tail_risk_scan,
 )
 from maintenance_engine import MaintenanceEngine
 from backup_engine import RESTORE_BUSY_MESSAGE, RestoreBusy, get_backup_status, restore_backup, run_backup
@@ -33,8 +33,7 @@ from universe_engine import update_market_universe
 from utils import INVALID_TICKER_MESSAGE, is_valid_ticker
 from ml_backfill_engine import run_historical_backfill
 from ml_inference_engine import alert_unscored_holdings, update_daily_ml_predictions, score_quantile_predictions
-from ml_training_process import TrainingFailed, run_training_child
-from risk_engine import update_all_tail_risks
+from job_process import ChildJobFailed, run_child_job
 from profile_engine import get_profiler_queue_breakdown, load_blacklist, remove_from_blacklist
 from macro_calendar_engine import update_macro_calendar
 from macro_data_engine import update_macro_indicators
@@ -67,7 +66,7 @@ def bg_execute_quant_scan():
     if tickers:
         run_daily_quant_scan(tickers)
         update_daily_ml_predictions(tickers)
-        update_all_tail_risks(tickers)
+        run_tail_risk_scan(tickers)
 
 def bg_execute_earnings_scan():
     engine = DataEngine()
@@ -86,8 +85,8 @@ def bg_execute_universe_quant_scan():
 
 def bg_execute_ml_training():
     try:
-        run_training_child()
-    except TrainingFailed as e:
+        run_child_job("global_model_training")
+    except ChildJobFailed as e:
         logger.error("ML Global Training Failed: %s", e)
         log_sched_notification("Error", f"ML Global Training failed: {e}")
 
