@@ -93,6 +93,7 @@ UNIVERSE_HISTORY_EMPTY_NIGHTS_TO_BLACKLIST = 5  # consecutive counted nights a u
 FUNDAMENTALS_REFRESH_DAYS = 6  # a Yahoo .info dump older than this is due; under a week, so a weekly run always refetches it
 FUNDAMENTALS_OVERDUE_DAYS = 10  # Fundamentals Freshness calls a dump older than this Overdue: with a Mon-Fri Update Pipeline the longest healthy age is about 9 days, so an older dump means a refresh failed
 FUNDAMENTALS_MAX_AGE_DAYS = 21  # past this no reader serves a dump's figures; allows two weeks of failed retries after it falls due
+FUNDAMENTALS_DEGRADED_MIN_DUMPS = 10  # Fundamentals Refresh Degraded warns at this many Overdue, Expired or missing Portfolio/Watchlist or index dumps: one failed night or a few dead symbols stay under it
 FUNDAMENTALS_IDENTITY_KEYS = ("shortName", "longName", "quoteType", "currency", "financialCurrency", "sector", "category", "country", "website")  # what an over-age dump still answers: without them a ticker falls back to USD/EQUITY defaults
 FUNDAMENTALS_REFRESH_SETTLE_SECONDS = 60  # pause after the 429 cooldown before the fundamentals refresh continues
 FUNDAMENTALS_REFRESH_MAX_RATE_LIMITS = 2  # the fundamentals refresh stops for the night at this many 429 trips

@@ -8,20 +8,21 @@ from typing import List, Optional
 
 from config import FUNDAMENTALS_DIR
 from constants import (
-    FUNDAMENTALS_FRESHNESS_LIST_MAX, FUNDAMENTALS_MAX_AGE_DAYS, FUNDAMENTALS_OVERDUE_DAYS, FUNDAMENTALS_REFRESH_DAYS,
+    FUNDAMENTALS_DEGRADED_MIN_DUMPS, FUNDAMENTALS_FRESHNESS_LIST_MAX, FUNDAMENTALS_MAX_AGE_DAYS, FUNDAMENTALS_OVERDUE_DAYS, FUNDAMENTALS_REFRESH_DAYS,
     FUNDAMENTALS_REFRESH_MAX_RATE_LIMITS, FUNDAMENTALS_REFRESH_SETTLE_SECONDS,
 )
 from yahoo_engine import yahoo_engine
 from db.database import get_connection, log_notification
 from db.helpers import get_latest_fundamentals_refresh_run, get_portfolio_watchlist_tickers, record_fundamentals_refresh_run
 from fundamentals_helpers import calculate_peter_lynch_peg, currency_safe_price_ratios, dividend_yield_fraction
+from notification_engine import notify
 from profile_engine import load_blacklist
 from time_engine import fmt_stored_utc, parse_stored_utc
 from tools.network_engine import wait_for_yahoo_rate_limit_reset, yahoo_rate_limit_trips
 from universe_deep_sync_engine import _get_universe_target_tickers
 from utils import (
     contained_ticker_path, epoch_to_iso_date, fundamentals_dump_age, ignored_tickers_set, is_excluded_from_yahoo_fetch,
-    next_earnings_iso_date, normalize_ticker,
+    next_earnings_iso_date, normalize_ticker, save_fundamentals_dump,
 )
 
 logger = logging.getLogger(__name__)
@@ -52,10 +53,7 @@ def _fetch_info(ticker: str) -> dict:
     except Exception as e:
         logger.warning("[%s] yfinance fetch failed: %s", ticker, e)
         info = {}
-    if info.get('quoteType'):
-        FUNDAMENTALS_DIR.mkdir(parents=True, exist_ok=True)
-        with open(cache_path, 'w') as f:
-            json.dump(info, f)
+    if save_fundamentals_dump(ticker, info):
         return info
     if not cached:
         return info
@@ -94,6 +92,7 @@ def refresh_due_fundamentals() -> None:
     if not due:
         logger.info("Fundamentals refresh: nothing due.")
         _record_refresh_run(started_at, 0, 0, False, 0)
+        check_fundamentals_refresh_degraded()
         return
 
     logger.info("Fundamentals refresh: %s dump(s) due.", len(due))
@@ -122,6 +121,7 @@ def refresh_due_fundamentals() -> None:
             time.sleep(0.4)
     logger.info("Fundamentals refresh: %s of %s due dump(s) refreshed.", refreshed, len(due))
     _record_refresh_run(started_at, len(due), refreshed, stopped_early, yahoo_rate_limit_trips() - trips_at_start)
+    check_fundamentals_refresh_degraded()
 
 
 def _record_refresh_run(started_at: str, due: Optional[int], refreshed: Optional[int], stopped_early: bool, rate_limits: Optional[int]) -> None:
@@ -158,8 +158,8 @@ def _freshness_status(counts: dict, missing_counts: bool) -> str:
     return "amber" if counts["overdue"] else "green"
 
 
-def fundamentals_freshness() -> dict:
-    """Dump-age buckets for the tickers the refresh would fetch, grouped like its own due list: other-scope tickers get no missing dump fetched, so their No dump is neutral."""
+def _freshness_snapshot() -> tuple:
+    """(scope, rows, attention): dump-age buckets for the tickers the refresh would fetch, grouped like its own due list (other-scope tickers get no missing dump fetched, so their No dump is neutral); attention is every flagged ticker, oldest first."""
     from quant_signals import QuantEngine
     scope = QuantEngine._scan_scope()
     blacklist = load_blacklist()
@@ -201,6 +201,12 @@ def fundamentals_freshness() -> dict:
 
     attention.sort(key=lambda r: r["ticker"])
     attention.sort(key=lambda r: float("inf") if r["age_days"] is None else r["age_days"], reverse=True)
+    return scope, rows, attention
+
+
+def fundamentals_freshness() -> dict:
+    """The Fundamentals Freshness table for System Diagnostics."""
+    scope, rows, attention = _freshness_snapshot()
     last_run = get_latest_fundamentals_refresh_run()
     if last_run is not None:
         last_run["finished_display"] = fmt_stored_utc(last_run["finished_at"])
@@ -216,6 +222,67 @@ def fundamentals_freshness() -> dict:
         },
         "last_run": last_run,
     }
+
+
+_DEGRADED_GROUPS = ("portfolio_watchlist", "index")
+_DEGRADED_BUCKETS = ("overdue", "expired", "no_dump")
+_DEGRADED_ENGINE = "fundamentals_refresh"
+_DEGRADED_KEY = "ALL"
+_DEGRADED_SAMPLE = 10
+
+
+def check_fundamentals_refresh_degraded() -> None:
+    """Warns once while FUNDAMENTALS_DEGRADED_MIN_DUMPS or more Portfolio/Watchlist or index dumps are Overdue, Expired or missing, which takes repeated failed nights rather than one, and re-arms when they fall below it; never raises."""
+    try:
+        _, rows, attention = _freshness_snapshot()
+    except Exception:
+        logger.error("Fundamentals refresh: could not read the dump ages for the degraded check.", exc_info=True)
+        return
+    by_key = {row["key"]: row for row in rows}
+    counts = {bucket: sum(by_key[group][bucket] for group in _DEGRADED_GROUPS) for bucket in _DEGRADED_BUCKETS}
+    stale = sum(counts.values())
+    labels = {label for key, label in _FRESHNESS_GROUPS if key in _DEGRADED_GROUPS}
+    flagged = [r["ticker"] for r in attention if r["group"] in labels]
+
+    conn = None
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT 1 FROM alert_state WHERE engine = ? AND ticker = ?", (_DEGRADED_ENGINE, _DEGRADED_KEY))
+        warned = cursor.fetchone() is not None
+        now = datetime.now(timezone.utc)
+        if stale < FUNDAMENTALS_DEGRADED_MIN_DUMPS:
+            if warned:
+                cursor.execute("DELETE FROM alert_state WHERE engine = ? AND ticker = ?", (_DEGRADED_ENGINE, _DEGRADED_KEY))
+                logger.info("Fundamentals refresh recovered: %s Portfolio/Watchlist or index dump(s) stale or missing.", stale)
+        elif warned:
+            cursor.execute(
+                "UPDATE alert_state SET state_date = ? WHERE engine = ? AND ticker = ?",
+                (now.date().isoformat(), _DEGRADED_ENGINE, _DEGRADED_KEY),
+            )
+        else:
+            shown = flagged[:_DEGRADED_SAMPLE]
+            extra = f" (+{len(flagged) - len(shown)} more)" if len(flagged) > len(shown) else ""
+            notify(
+                "fundamentals_refresh_degraded", "Warning",
+                f"{stale} Portfolio, Watchlist or index fundamentals dumps are older than {FUNDAMENTALS_OVERDUE_DAYS} days "
+                f"or missing ({counts['overdue']} Overdue, {counts['expired']} Expired, {counts['no_dump']} No dump), "
+                f"so the nightly fundamentals refresh keeps failing for them. Past {FUNDAMENTALS_MAX_AGE_DAYS} days a dump's "
+                f"figures (P/E, target price, earnings date) are blank. Oldest first: {', '.join(shown)}{extra}. "
+                f"See Fundamentals Freshness in System Diagnostics.",
+                level="warning",
+            )
+            cursor.execute(
+                "INSERT INTO alert_state (engine, ticker, last_fired_utc, state_date) VALUES (?, ?, ?, ?) "
+                "ON CONFLICT(engine, ticker) DO UPDATE SET last_fired_utc = excluded.last_fired_utc, state_date = excluded.state_date",
+                (_DEGRADED_ENGINE, _DEGRADED_KEY, now.strftime("%Y-%m-%d %H:%M:%S"), now.date().isoformat()),
+            )
+        conn.commit()
+    except Exception:
+        logger.error("Fundamentals refresh degraded check failed.", exc_info=True)
+    finally:
+        if conn:
+            conn.close()
 
 
 def _compute_fundamental_score(info: dict) -> tuple:

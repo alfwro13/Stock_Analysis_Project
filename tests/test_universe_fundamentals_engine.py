@@ -10,7 +10,7 @@ import pandas as pd
 import pytest
 
 from constants import (
-    FUNDAMENTALS_FRESHNESS_LIST_MAX, FUNDAMENTALS_MAX_AGE_DAYS, FUNDAMENTALS_OVERDUE_DAYS, FUNDAMENTALS_REFRESH_DAYS, FUNDAMENTALS_REFRESH_MAX_RATE_LIMITS,
+    FUNDAMENTALS_DEGRADED_MIN_DUMPS, FUNDAMENTALS_FRESHNESS_LIST_MAX, FUNDAMENTALS_MAX_AGE_DAYS, FUNDAMENTALS_OVERDUE_DAYS, FUNDAMENTALS_REFRESH_DAYS, FUNDAMENTALS_REFRESH_MAX_RATE_LIMITS,
     FUNDAMENTALS_REFRESH_SETTLE_SECONDS,
 )
 from db import database as _db
@@ -19,7 +19,7 @@ from universe_fundamentals_engine import (
     _upsert_fundamentals,
 )
 
-pytestmark = pytest.mark.restore_tables("fundamentals_refresh_runs", "stock_signals")
+pytestmark = pytest.mark.restore_tables("alert_state", "fundamentals_refresh_runs", "stock_signals")
 
 
 # ---------------------------------------------------------------------------
@@ -483,7 +483,7 @@ class TestFetchInfoRefreshesAnAgedDump:
 
         path = self._write_dump(tmp_path, {"quoteType": "EQUITY", "regularMarketPrice": 6925.0}, days_old=FUNDAMENTALS_REFRESH_DAYS + 1)
         fresh = {"quoteType": "EQUITY", "regularMarketPrice": 8890.0}
-        with patch.object(engine, "FUNDAMENTALS_DIR", tmp_path), \
+        with patch.object(engine, "FUNDAMENTALS_DIR", tmp_path), patch("config.FUNDAMENTALS_DIR", tmp_path), \
              patch.object(engine.yahoo_engine, "get_ticker_info", return_value=fresh):
             assert engine._fetch_info(self.TICKER) == fresh
         assert json.loads(path.read_text()) == fresh
@@ -697,6 +697,144 @@ class TestFundamentalsFreshness:
         assert result["last_run"]["finished_at"] == get_latest_fundamentals_refresh_run()["finished_at"]
 
 
+class TestFetchInfoKeepsTheDumpOnAnIncompleteAnswer:
+    def test_an_answer_without_quote_type_leaves_the_young_enough_aged_dump_and_its_age(self, tmp_path):
+        import universe_fundamentals_engine as engine
+
+        old = {"quoteType": "EQUITY", "regularMarketPrice": 6925.0}
+        path = _write_aged_dump(tmp_path, "ZZKEEP", old, FUNDAMENTALS_REFRESH_DAYS + 1)
+        mtime = path.stat().st_mtime
+        with patch.object(engine, "FUNDAMENTALS_DIR", tmp_path), patch("config.FUNDAMENTALS_DIR", tmp_path), \
+             patch.object(engine.yahoo_engine, "get_ticker_info", return_value={"regularMarketPrice": 1}):
+            assert engine._fetch_info("ZZKEEP") == old
+        assert json.loads(path.read_text()) == old
+        assert path.stat().st_mtime == mtime
+
+
+class TestCheckFundamentalsRefreshDegraded:
+    @pytest.fixture
+    def check(self, tmp_path):
+        """check_fundamentals_refresh_degraded with its group sources patched; the dumps live in tmp_path and notify is captured."""
+        import universe_fundamentals_engine as engine
+
+        sources = SimpleNamespace(pw=[], index=[], scope=set(), dir=tmp_path, engine=engine)
+
+        def read_state():
+            conn = _db.get_connection()
+            try:
+                return conn.execute("SELECT last_fired_utc, state_date FROM alert_state WHERE engine = 'fundamentals_refresh' AND ticker = 'ALL'").fetchone()
+            finally:
+                conn.close()
+
+        def run():
+            with patch.object(engine, "FUNDAMENTALS_DIR", tmp_path), \
+                 patch.object(engine, "get_portfolio_watchlist_tickers", side_effect=lambda: sources.pw), \
+                 patch.object(engine, "_get_universe_target_tickers", side_effect=lambda **_: sources.index), \
+                 patch("quant_signals.QuantEngine._scan_scope", side_effect=lambda: sources.scope), \
+                 patch.object(engine, "load_blacklist", return_value=set()), \
+                 patch.object(engine, "ignored_tickers_set", return_value=set()), \
+                 patch.object(engine, "notify") as notify:
+                engine.check_fundamentals_refresh_degraded()
+            return notify
+
+        def stale(pw_count, index_count):
+            """Overdue, Expired and No dump tickers spread over both counted groups, oldest dumps first by name."""
+            kinds = [FUNDAMENTALS_OVERDUE_DAYS + 1, FUNDAMENTALS_MAX_AGE_DAYS + 1, None]
+            sources.pw = [f"PW{i}" for i in range(pw_count)]
+            sources.index = [f"IDX{i}" for i in range(index_count)]
+            for i, ticker in enumerate(sources.pw + sources.index):
+                age = kinds[i % 3]
+                if age is not None:
+                    _write_aged_dump(tmp_path, ticker, {"quoteType": "EQUITY"}, age)
+            sources.scope = set(sources.pw + sources.index)
+
+        sources.read_state = read_state
+        sources.run = run
+        sources.stale = stale
+        conn = _db.get_connection()
+        try:
+            conn.execute("DELETE FROM alert_state WHERE engine = 'fundamentals_refresh'")
+            conn.commit()
+        finally:
+            conn.close()
+        return sources
+
+    def test_fires_once_at_the_threshold_mixing_buckets_and_groups(self, check):
+        check.stale(6, FUNDAMENTALS_DEGRADED_MIN_DUMPS - 6)
+
+        notify = check.run()
+
+        notify.assert_called_once()
+        args, kwargs = notify.call_args
+        assert args[:2] == ("fundamentals_refresh_degraded", "Warning")
+        assert kwargs == {"level": "warning"}
+        assert f"{FUNDAMENTALS_DEGRADED_MIN_DUMPS} Portfolio, Watchlist or index" in args[2]
+        assert "(4 Overdue, 3 Expired, 3 No dump)" in args[2]
+        assert check.read_state() is not None
+
+    def test_names_at_most_ten_tickers(self, check):
+        check.stale(7, 8)
+
+        notify = check.run()
+
+        message = notify.call_args.args[2]
+        assert "(+5 more)" in message
+        assert message.count("PW") + message.count("IDX") == 10
+
+    def test_a_second_run_does_not_notify_again_and_refreshes_state_date(self, check):
+        check.stale(5, 5)
+        check.run()
+        conn = _db.get_connection()
+        try:
+            conn.execute("UPDATE alert_state SET state_date = '2000-01-01' WHERE engine = 'fundamentals_refresh'")
+            conn.commit()
+        finally:
+            conn.close()
+
+        notify = check.run()
+
+        notify.assert_not_called()
+        assert check.read_state()["state_date"] == datetime.now(timezone.utc).date().isoformat()
+
+    def test_one_below_the_threshold_does_not_fire(self, check):
+        check.stale(5, FUNDAMENTALS_DEGRADED_MIN_DUMPS - 6)
+
+        notify = check.run()
+
+        notify.assert_not_called()
+        assert check.read_state() is None
+
+    def test_stale_dumps_of_the_other_group_are_not_counted(self, check):
+        check.stale(3, 3)
+        others = [f"OTH{i}" for i in range(FUNDAMENTALS_DEGRADED_MIN_DUMPS)]
+        for ticker in others:
+            _write_aged_dump(check.dir, ticker, {"quoteType": "EQUITY"}, FUNDAMENTALS_MAX_AGE_DAYS + 1)
+        check.scope |= set(others)
+
+        notify = check.run()
+
+        notify.assert_not_called()
+        assert check.read_state() is None
+
+    def test_recovery_deletes_the_row_so_a_later_degradation_fires_again(self, check):
+        check.stale(5, 5)
+        check.run()
+        for ticker in check.pw + check.index:
+            _write_aged_dump(check.dir, ticker, {"quoteType": "EQUITY"}, 1)
+
+        assert check.run().call_count == 0
+        assert check.read_state() is None
+
+        check.stale(5, 5)
+        for ticker in check.pw + check.index:
+            _write_aged_dump(check.dir, ticker, {"quoteType": "EQUITY"}, FUNDAMENTALS_MAX_AGE_DAYS + 1)
+        assert check.run().call_count == 1
+
+    def test_never_raises_when_the_snapshot_fails(self, check):
+        with patch.object(check.engine, "_freshness_snapshot", side_effect=RuntimeError("boom")):
+            check.engine.check_fundamentals_refresh_degraded()
+
+
 class TestRefreshDueFundamentals:
     @pytest.fixture
     def run(self):
@@ -723,7 +861,7 @@ class TestRefreshDueFundamentals:
         young = _write_aged_dump(tmp_path, "YOUNG", {"quoteType": "EQUITY", "beta": 1.0}, 1)
         fresh = {"quoteType": "EQUITY", "beta": 2.0}
         with patch("quant_signals.QuantEngine._scan_scope", return_value={"AGED", "YOUNG", "NODUMP"}), \
-             patch.object(engine, "FUNDAMENTALS_DIR", tmp_path), \
+             patch.object(engine, "FUNDAMENTALS_DIR", tmp_path), patch("config.FUNDAMENTALS_DIR", tmp_path), \
              patch.object(engine, "_get_universe_target_tickers", return_value=["NODUMP"]), \
              patch.object(engine, "load_blacklist", return_value=set()), \
              patch.object(engine, "ignored_tickers_set", return_value=set()), \
@@ -737,6 +875,15 @@ class TestRefreshDueFundamentals:
         assert json.loads((tmp_path / "NODUMP.json").read_text()) == fresh
         assert json.loads(young.read_text())["beta"] == 1.0
         assert "2 of 2 due dump(s) refreshed" in caplog.text
+
+    def test_the_degraded_check_runs_after_the_loop_and_when_nothing_is_due(self, run):
+        with patch.object(run.engine, "check_fundamentals_refresh_degraded") as degraded:
+            run.engine.refresh_due_fundamentals()
+            degraded.assert_called_once_with()
+            degraded.reset_mock()
+            run.due.return_value = []
+            run.engine.refresh_due_fundamentals()
+            degraded.assert_called_once_with()
 
     def test_one_rate_limit_waits_for_the_reset_settles_and_continues(self, run):
         def fetch(ticker):

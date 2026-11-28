@@ -1519,6 +1519,41 @@ class TestHasCachedFundamentals:
         assert not any(has_cached_fundamentals(t) for t in ("ZZNONE", "../ZZHAS", "", None))
 
 
+class TestSaveFundamentalsDump:
+    OLD = '{"quoteType": "EQUITY", "old": 1}'
+
+    @pytest.fixture
+    def dump_dir(self, tmp_path, monkeypatch):
+        import config as _config
+        monkeypatch.setattr(_config, "FUNDAMENTALS_DIR", tmp_path)
+        return tmp_path
+
+    def test_writes_an_answer_carrying_quote_type(self, dump_dir):
+        import json
+        from datetime import datetime
+        from utils import save_fundamentals_dump
+        info = {"quoteType": "EQUITY", "when": datetime(2026, 1, 2)}
+        assert save_fundamentals_dump("ZZSAVE", info) is True
+        assert json.loads((dump_dir / "ZZSAVE.json").read_text()) == {"quoteType": "EQUITY", "when": "2026-01-02 00:00:00"}
+
+    @pytest.mark.parametrize("answer", [None, {}, {"regularMarketPrice": 1}, {"quoteType": ""}])
+    def test_a_missing_or_incomplete_answer_keeps_the_old_content_and_mtime(self, dump_dir, answer):
+        import os
+        from utils import save_fundamentals_dump
+        path = dump_dir / "ZZSAVE.json"
+        path.write_text(self.OLD)
+        os.utime(path, (1_000_000_000, 1_000_000_000))
+        assert save_fundamentals_dump("ZZSAVE", answer) is False
+        assert path.read_text() == self.OLD
+        assert os.path.getmtime(path) == 1_000_000_000
+
+    def test_an_unsafe_ticker_writes_nothing(self, dump_dir):
+        from utils import save_fundamentals_dump
+        assert save_fundamentals_dump("../ZZSAVE", {"quoteType": "EQUITY"}) is False
+        assert not (dump_dir.parent / "ZZSAVE.json").exists()
+        assert list(dump_dir.iterdir()) == []
+
+
 class TestContainedTickerPath:
     def test_returns_the_real_path_for_a_safe_ticker(self, tmp_path):
         from utils import contained_ticker_path

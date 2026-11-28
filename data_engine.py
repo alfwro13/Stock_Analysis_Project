@@ -1,4 +1,3 @@
-import json
 import os
 import time
 import random
@@ -23,7 +22,7 @@ from quant_signals import QuantEngine
 from tools.network_engine import wait_for_yahoo_rate_limit_reset, yahoo_rate_limit_trips
 import time_engine
 
-from utils import normalize_ticker, ignored_tickers_set, is_excluded_from_yahoo_fetch, safe_ticker_filename, write_parquet_atomic  # noqa: F401 — normalize_ticker re-exported for callers
+from utils import normalize_ticker, ignored_tickers_set, is_excluded_from_yahoo_fetch, safe_ticker_filename, save_fundamentals_dump, write_parquet_atomic  # noqa: F401 — normalize_ticker re-exported for callers
 
 logger = logging.getLogger(__name__)
 
@@ -246,22 +245,13 @@ class DataEngine:
         Mitigates strict JSON-endpoint rate-limiting.
         """
         logger.info('Drip-feeding Fundamental JSONs for %s assets...', len(tickers))
-        fundamentals_root = os.path.realpath(FUNDAMENTALS_DIR)
         for i, ticker in enumerate(tickers):
             try:
-                safe_ticker = safe_ticker_filename(ticker)
-                if not safe_ticker:
+                if not safe_ticker_filename(ticker):
                     logger.warning("Skipping fundamentals fetch for unsafe ticker %r.", ticker)
                     continue
-                path = os.path.realpath(os.path.join(fundamentals_root, f"{safe_ticker}.json"))
-                if not path.startswith(fundamentals_root + os.sep):
-                    logger.warning("Skipping fundamentals path outside cache root for ticker %r.", ticker)
-                    continue
-                fundamentals = yahoo_engine.get_ticker_info(ticker)
-
-                if fundamentals:
-                    with open(path, 'w') as f:
-                        json.dump(fundamentals, f, default=str)
+                if not save_fundamentals_dump(ticker, yahoo_engine.get_ticker_info(ticker)):
+                    logger.info('No usable fundamentals answer for %s; the previous dump is kept.', ticker)
 
                 if i > 0 and i % 50 == 0:
                     logger.info('Fundamentals progress: %s/%s...', i, len(tickers))
@@ -283,12 +273,9 @@ class DataEngine:
         intraday_path = os.path.realpath(os.path.join(intraday_root, f"{safe_ticker}_intraday.parquet"))
         history_root = os.path.realpath(HISTORICAL_DIR)
         history_path = os.path.realpath(os.path.join(history_root, f"{safe_ticker}.parquet"))
-        fundamentals_root = os.path.realpath(FUNDAMENTALS_DIR)
-        fundamentals_path = os.path.realpath(os.path.join(fundamentals_root, f"{safe_ticker}.json"))
         if (
             not intraday_path.startswith(intraday_root + os.sep)
             or not history_path.startswith(history_root + os.sep)
-            or not fundamentals_path.startswith(fundamentals_root + os.sep)
         ):
             logger.error("Refusing cache path outside configured root for ticker %r.", ticker)
             return False
@@ -314,10 +301,7 @@ class DataEngine:
                     write_daily_history(df_daily, history_path)
                     persisted = True
 
-            fundamentals = yahoo_engine.get_ticker_info(ticker) or {}
-            if fundamentals:
-                with open(fundamentals_path, 'w') as f:
-                    json.dump(fundamentals, f, default=str)
+            save_fundamentals_dump(ticker, yahoo_engine.get_ticker_info(ticker))
 
             if not persisted:
                 logger.warning('No price data returned for %s — nothing persisted.', ticker)
