@@ -198,7 +198,8 @@ class TestHeldTicker:
         ml = data["data"]["ml"]
         scored = datetime.strptime(ml["as_of"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
         assert abs((datetime.now(timezone.utc) - scored).total_seconds()) < 300 and ml["stale"] is False
-        assert "rises more than 3% within 10 trading days" in data["units"]["ml"]
+        assert "beats the median return of the stock universe" in data["units"]["ml"]
+        assert "base rate is 50" in data["units"]["ml"]
         assert "step function" in data["units"]["ml"] and "not an expected return" in data["units"]["ml"]
 
     def test_ml_scored_long_ago_is_null_with_no_time(self, mcp_client, book):

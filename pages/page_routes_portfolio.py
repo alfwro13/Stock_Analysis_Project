@@ -9,7 +9,7 @@ from market_pulse import get_all_cached_pulse
 from utils import ignored_tickers_set, measure_request_stage, time_request_call
 from portfolio_service import get_fx_cache_status
 import table_columns_helpers
-from constants import ACCOUNT_NAME_MAX_CHARS, CSS_VERSION
+from constants import ACCOUNT_NAME_MAX_CHARS, CSS_VERSION, ML_CONFIDENCE_BASE_RATE, ML_CONFIDENCE_HIGH, ML_CONFIDENCE_LOW
 from fundamentals_helpers import ALTMAN_Z_DISTRESS
 from pages.page_helpers import (
     _build_position_sizing_context,
@@ -34,6 +34,9 @@ from pages.page_data_accounts import house_account_context, pension_account_cont
 page_router_portfolio = APIRouter()
 templates = Jinja2Templates(directory="templates")
 templates.env.globals["css_version"] = CSS_VERSION
+templates.env.globals["ml_confidence_base_rate"] = ML_CONFIDENCE_BASE_RATE
+templates.env.globals["ml_confidence_high"] = ML_CONFIDENCE_HIGH
+templates.env.globals["ml_confidence_low"] = ML_CONFIDENCE_LOW
 
 
 @page_router_portfolio.get("/portfolio", response_class=HTMLResponse)

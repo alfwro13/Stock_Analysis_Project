@@ -244,8 +244,8 @@ class TestLatestRowReadersBoundMlScoreAge:
         fresh = engine.generate_prompt("MLFRESH_1", "Quantamental Deep-Dive")
         old = engine.generate_prompt("MLFRESH_2", "Quantamental Deep-Dive")
 
-        assert "ML Confidence Score (>3% return in 5d): 61.0%" in fresh
-        assert "ML Confidence Score (>3% return in 5d): N/A" in old
+        assert "ML Confidence (chance the 10-day return beats the universe median; base rate 50%): 61.0%" in fresh
+        assert "ML Confidence (chance the 10-day return beats the universe median; base rate 50%): N/A" in old
 
 
 class TestQuantileBandsBoundAge:

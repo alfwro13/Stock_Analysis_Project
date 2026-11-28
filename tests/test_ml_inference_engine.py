@@ -23,6 +23,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+from constants import ML_LABEL
 from db import database as _db_module
 import time_engine
 from ml_features import LATEST_FEATURES_QUERY
@@ -97,6 +98,7 @@ class TestUpdateDailyMlPredictionsSyncsStockSignals:
         fake_df = fake_inference_df(tickers, date_str=_session_date())
 
         fake_model = MagicMock()
+        fake_model.label_ = ML_LABEL
         fake_model.predict_proba.return_value = np.array([[0.2, 0.8]])
 
         from ml_inference_engine import update_daily_ml_predictions
@@ -144,6 +146,7 @@ class TestFeatureStatsFromJson:
     def _run(stats, target_count=2):
         tickers = TestUpdateDailyMlPredictionsSyncsStockSignals._seed_universe()
         fake_model = MagicMock()
+        fake_model.label_ = ML_LABEL
         fake_model.predict_proba.return_value = np.array([[0.2, 0.8]])
         from ml_inference_engine import update_daily_ml_predictions
         with patch("ml_inference_engine.MODEL_PATH") as mock_path, \
@@ -170,6 +173,7 @@ class TestInferenceUsesOnlyFreshWellCoveredRows:
     @staticmethod
     def _run(target, stats=None):
         fake_model = MagicMock()
+        fake_model.label_ = ML_LABEL
         fake_model.predict_proba.return_value = np.array([[0.2, 0.8]])
         from ml_inference_engine import update_daily_ml_predictions
         with patch("ml_inference_engine.MODEL_PATH") as mock_path, \

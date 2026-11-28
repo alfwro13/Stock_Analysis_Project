@@ -95,6 +95,7 @@ def test_training_load_closes_connection_after_partial_read_failure():
 @pytest.mark.parametrize("kind", ["classifier", "quantile"])
 def test_training_completes_after_releasing_intermediates(training_history, tmp_path, kind):
     import ml_training_engine as engine
+    from constants import ML_LABEL
 
     search_class = engine.RandomizedSearchCV
     regressor_class = engine.XGBRegressor
@@ -126,6 +127,7 @@ def test_training_completes_after_releasing_intermediates(training_history, tmp_
             model = joblib.load(engine.MODEL_PATH)
             scores = model.predict_proba(pd.DataFrame(np.zeros((2, len(engine.FEATURE_COLS))), columns=engine.FEATURE_COLS))
             assert np.isfinite(scores).all()
+            assert model.label_ == ML_LABEL
             assert engine.FEATURE_STATS_PATH.exists()
         else:
             assert engine.train_quantile_models() is True
@@ -156,23 +158,72 @@ def test_search_draws_the_configured_iteration_budget():
     assert [c.kwargs["n_iter"] for c in search.call_args_list] == [ML_TRAINING_SEARCH_ITERATIONS] * 2
 
 
-def test_classifier_target_labels_the_entry_to_exit_return_and_drops_unresolved_rows():
+def test_classifier_target_labels_beating_the_dates_median_return_and_drops_unresolved_rows():
     import ml_training_engine as engine
     from constants import PREDICTION_HORIZON_DAYS
 
     n = 30
-    jump = np.where(np.arange(n) >= 13, 120.0, 100.0)
+    big_jump = np.where(np.arange(n) >= 13, 106.0, 100.0)
+    small_jump = np.where(np.arange(n) >= 13, 101.0, 100.0)
     df = pd.DataFrame({
-        "ticker": ["UP"] * n + ["FLAT"] * n,
-        "date": list(range(n)) * 2,
-        "close_price": np.concatenate([jump, np.full(n, 100.0)]),
+        "ticker": ["BIG"] * n + ["MID"] * n + ["SMALL"] * n,
+        "date": list(range(n)) * 3,
+        "close_price": np.concatenate([np.where(np.arange(n) >= 13, 130.0, 100.0), big_jump, small_jump]),
     })
     result = engine._add_classifier_target(df)
 
-    assert len(result) == 2 * (n - PREDICTION_HORIZON_DAYS)
-    up = result[result["ticker"] == "UP"]["target"].tolist()
-    assert up[:6] == [0, 0, 0, 1, 1, 1]
-    assert result[result["ticker"] == "FLAT"]["target"].sum() == 0
+    assert len(result) == 3 * (n - PREDICTION_HORIZON_DAYS)
+    rows = result[result["date"] == 3].set_index("ticker")["target"].to_dict()
+    assert rows == {"BIG": 1, "MID": 0, "SMALL": 0}
+
+
+def test_classifier_target_gives_a_small_rise_above_the_median_a_positive_label():
+    import ml_training_engine as engine
+
+    n = 30
+    flat = np.full(n, 100.0)
+    df = pd.DataFrame({
+        "ticker": ["FALL"] * n + ["FLAT"] * n + ["TINY"] * n,
+        "date": list(range(n)) * 3,
+        "close_price": np.concatenate([np.where(np.arange(n) >= 13, 90.0, 100.0), flat, np.where(np.arange(n) >= 13, 100.5, 100.0)]),
+    })
+    result = engine._add_classifier_target(df)
+
+    row = result[result["date"] == 3].set_index("ticker")["target"].to_dict()
+    assert row == {"FALL": 0, "FLAT": 0, "TINY": 1}
+
+
+def test_refit_production_ensemble_calibrates_on_the_unseen_rows_and_carries_the_label():
+    from sklearn.ensemble import RandomForestClassifier
+    from sklearn.tree import DecisionTreeClassifier
+    import ml_training_engine as engine
+    from constants import ML_LABEL
+
+    rng = np.random.default_rng(0)
+    X_prod = pd.DataFrame(rng.normal(size=(200, 3)), columns=list("abc"))
+    y_prod = pd.Series((X_prod["a"] > 0).astype(int))
+    X_unseen = pd.DataFrame(rng.normal(size=(60, 3)), columns=list("abc"))
+    y_unseen = pd.Series((X_unseen["a"] > 0).astype(int))
+
+    fitted_on = []
+    real = engine._fit_calibrated
+
+    def spy(estimator, X, y):
+        fitted_on.append(X)
+        return real(estimator, X, y)
+
+    with patch.object(engine, "_fit_calibrated", side_effect=spy):
+        ensemble = engine._refit_production_ensemble(
+            RandomForestClassifier(n_estimators=5, random_state=0),
+            DecisionTreeClassifier(max_depth=3, random_state=0),
+            X_prod, y_prod, X_unseen, y_unseen,
+        )
+
+    assert len(fitted_on) == 2
+    assert all(X is X_unseen for X in fitted_on)
+    assert ensemble.label_ == ML_LABEL
+    assert list(ensemble.classes_) == [0, 1]
+    assert ensemble.predict_proba(X_unseen).shape == (60, 2)
 
 
 def test_temporal_split_regions_are_ordered_and_embargoed():

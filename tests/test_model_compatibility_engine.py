@@ -210,3 +210,90 @@ def test_unrelated_warning_during_load_is_re_emitted(tmp_path):
 
     assert artifact == "model"
     assert [str(w.message) for w in seen] == ["something else"]
+
+
+def _labelled_artifact(label):
+    class Artifact:
+        pass
+
+    artifact = Artifact()
+    if label is not None:
+        artifact.label_ = label
+    return artifact
+
+
+def test_artifact_trained_on_another_label_is_rejected_and_reported_once(tmp_path):
+    reports = []
+    compatibility.set_retraining_callback(
+        lambda job_id, path, version: reports.append((job_id, path, version))
+    )
+
+    with patch("model_compatibility_engine.joblib.load", return_value=_labelled_artifact("old_label")):
+        for name in ("a.joblib", "b.joblib"):
+            with pytest.raises(compatibility.ModelVersionMismatch):
+                compatibility.load_sklearn_artifact(tmp_path / name, "ml_training_job", "new_label")
+
+    assert reports == [("ml_training_job", tmp_path / "a.joblib", "an earlier training label")]
+
+
+def test_artifact_without_a_label_is_rejected_when_a_label_is_required(tmp_path):
+    with patch("model_compatibility_engine.joblib.load", return_value=_labelled_artifact(None)):
+        with pytest.raises(compatibility.ModelVersionMismatch):
+            compatibility.load_sklearn_artifact(tmp_path / "m.joblib", "ml_training_job", "new_label")
+
+
+def test_artifact_with_the_matching_label_loads_without_a_report(tmp_path):
+    artifact = _labelled_artifact("new_label")
+    reports = []
+    compatibility.set_retraining_callback(lambda *args: reports.append(args))
+
+    with patch("model_compatibility_engine.joblib.load", return_value=artifact):
+        assert compatibility.load_sklearn_artifact(tmp_path / "m.joblib", "ml_training_job", "new_label") is artifact
+
+    assert reports == []
+
+
+def test_label_is_ignored_when_no_label_is_requested(tmp_path):
+    artifact = _labelled_artifact("anything")
+    with patch("model_compatibility_engine.joblib.load", return_value=artifact):
+        assert compatibility.load_sklearn_artifact(tmp_path / "m.joblib", "ml_training_job") is artifact
+
+
+def test_scan_rejects_an_ml_ensemble_without_the_current_label(tmp_path):
+    models = tmp_path / "models"
+    models.mkdir()
+    (models / "ml_ensemble.joblib").write_bytes(b"x")
+    (tmp_path / "hist").mkdir()
+    (tmp_path / "anomaly").mkdir()
+    reports = []
+    compatibility.set_retraining_callback(
+        lambda job_id, path, version: reports.append((job_id, path, version))
+    )
+
+    with patch.object(compatibility, "BASE_DIR", tmp_path), \
+         patch.object(compatibility, "HISTORICAL_DIR", tmp_path / "hist"), \
+         patch.object(compatibility, "ANOMALY_MODELS_DIR", tmp_path / "anomaly"), \
+         patch("model_compatibility_engine.joblib.load", return_value=_labelled_artifact(None)):
+        compatibility.scan_model_compatibility()
+
+    assert reports == [("ml_training_job", models / "ml_ensemble.joblib", "an earlier training label")]
+
+
+def test_scan_accepts_an_ml_ensemble_with_the_current_label(tmp_path):
+    from constants import ML_LABEL
+
+    models = tmp_path / "models"
+    models.mkdir()
+    (models / "ml_ensemble.joblib").write_bytes(b"x")
+    (tmp_path / "hist").mkdir()
+    (tmp_path / "anomaly").mkdir()
+    reports = []
+    compatibility.set_retraining_callback(lambda *args: reports.append(args))
+
+    with patch.object(compatibility, "BASE_DIR", tmp_path), \
+         patch.object(compatibility, "HISTORICAL_DIR", tmp_path / "hist"), \
+         patch.object(compatibility, "ANOMALY_MODELS_DIR", tmp_path / "anomaly"), \
+         patch("model_compatibility_engine.joblib.load", return_value=_labelled_artifact(ML_LABEL)):
+        compatibility.scan_model_compatibility()
+
+    assert reports == []

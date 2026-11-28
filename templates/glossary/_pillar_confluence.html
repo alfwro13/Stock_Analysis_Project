@@ -18,7 +18,7 @@
                 <span class="term-title">The Three Pillars</span>
                 <p><strong>Technical</strong> — every confirmed Pattern Detection result (any registered family — Head & Shoulders, Double Top/Bottom, Flag, Triangle, Wedge, Pennant, Volatility Squeeze, NR4/NR7, Parabolic Stretch, Momentum Divergence, Candlestick Trigger, and any family added later) plus the Trap Monitor's current phase, each resolved to "up"/"down" via that engine's own existing direction convention.</p>
                 <p><strong>Statistical</strong> — Earnings Volatility's historical 5-day post-earnings drift, only counted when there's a real measured mispricing edge (<code>edge_score &gt; 0</code>) — a drift reading with no edge is noise, not signal.</p>
-                <p><strong>ML</strong> — the daily ML confidence score (the same Quantamental ML ensemble read elsewhere in the app) above or below 50.</p>
+                <p><strong>ML</strong> — the daily ML confidence score (the same Quantamental ML ensemble read elsewhere in the app) above or below 50 (the base rate: it votes up above 50 and down below 50).</p>
                 <p>A pillar only casts a vote when every signal it saw in the window points the same way — if a pillar's own signals conflict with each other (e.g. one confirmed pattern says up, another says down), that pillar abstains rather than forcing a side.</p>
             </div>
 

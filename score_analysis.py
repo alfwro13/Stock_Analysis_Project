@@ -4,7 +4,7 @@ from typing import Optional
 
 import pandas as pd
 
-from constants import COMPOSITE_SCORE_MAX
+from constants import COMPOSITE_SCORE_MAX, ML_CONFIDENCE_BASE_RATE
 from db.database import get_connection, get_watchlist_tickers
 from db.helpers import ml_fresh_since
 
@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 _HORIZONS = {"3m": 90, "6m": 180, "12m": 365}
 
 _CONFLUENCE_WINDOW = 5
-_ML_CONFIDENCE_BULLISH = 50
+_ML_CONFIDENCE_BULLISH = ML_CONFIDENCE_BASE_RATE
 
 
 def _available_from(earliest: str, days: int) -> str:

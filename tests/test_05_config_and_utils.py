@@ -679,12 +679,10 @@ def test_ml_horizon_is_positive_integer():
 
 
 @pytest.mark.config
-def test_ml_return_threshold_is_reasonable():
-    """ML return threshold must be a positive percentage (typically 1–10%)."""
-    from constants import PREDICTION_RETURN_THRESHOLD
-    assert 0 < PREDICTION_RETURN_THRESHOLD < 0.50, (
-        f"PREDICTION_RETURN_THRESHOLD={PREDICTION_RETURN_THRESHOLD} looks wrong (expected 0.01–0.50)"
-    )
+def test_ml_confidence_cutoffs_are_ordered_around_the_base_rate():
+    """Low < base rate < high, all percentages."""
+    from constants import ML_CONFIDENCE_BASE_RATE, ML_CONFIDENCE_HIGH, ML_CONFIDENCE_LOW
+    assert 0 <= ML_CONFIDENCE_LOW < ML_CONFIDENCE_BASE_RATE < ML_CONFIDENCE_HIGH <= 100
 
 
 @pytest.mark.config
