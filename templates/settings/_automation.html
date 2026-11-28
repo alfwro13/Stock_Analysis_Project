@@ -141,7 +141,7 @@
 
                 <div class="settings-panel border-left-orange">
                     <h4 class="settings-panel-header text-orange">⚙️ Historical Data Backfill &amp; Sync</h4>
-                    <p class="settings-desc-sm">Heavy ETL job that synchronizes structural metadata (Beta, Sector) and fetches 2 years of history for ML feature vectors.</p>
+                    <p class="settings-desc-sm">Heavy ETL job that fetches 2 years of history for ML feature vectors.</p>
                     <div class="checkbox-group">
                         <input type="checkbox" id="ML_BACKFILL_ENABLED" {% if ml_backfill.ENABLED %}checked{% endif %}>
                         <label for="ML_BACKFILL_ENABLED">Enable automated background execution</label>

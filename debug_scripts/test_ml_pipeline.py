@@ -192,10 +192,14 @@ def verify_database_state() -> None:
         return
     try:
         conn = sqlite3.connect(DB_PATH)
-        meta_df = pd.read_sql_query(
-            "SELECT ticker, sector, beta, market_cap FROM ticker_metadata LIMIT 5", conn
+        sector_df = pd.read_sql_query(
+            "SELECT ticker, sector FROM stock_signals WHERE sector IS NOT NULL LIMIT 5", conn
         )
-        logger.info(f"--- Ticker Metadata Sample ---\n{meta_df}")
+        logger.info(f"--- Sector Sample (stock_signals) ---\n{sector_df}")
+        cap_df = pd.read_sql_query(
+            "SELECT ticker, market_cap FROM stock_signals WHERE market_cap IS NOT NULL LIMIT 5", conn
+        )
+        logger.info(f"--- Market Cap Sample (stock_signals) ---\n{cap_df}")
         inf_df = pd.read_sql_query(
             """SELECT ticker, date, close_price, ml_confidence_score
                FROM quant_signals

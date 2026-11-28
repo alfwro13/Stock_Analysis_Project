@@ -98,7 +98,7 @@ The model uses **24 features** across five categories. All continuous features r
 | `bullish_cross` | Binary: MACD crossed above signal | Confirmed momentum shift |
 | `dist_sma_50` | (close - SMA50) / SMA50 | Trend proximity to 50-day moving average |
 | `dist_sma_200` | (close - SMA200) / SMA200 | Structural trend position |
-| `sector_code` | Integer mapping of GICS sector | Captures sector regime effects |
+| `sector_code` | Integer mapping of GICS sector | Captures sector regime effects; read from `stock_signals.sector` |
 | `dollar_vol_log` | log(close × volume + 1) | Liquidity proxy; log-transformed to compress the extreme right tail |
 
 ### 4.2 Momentum Factors (4)
@@ -167,7 +167,7 @@ LEFT JOIN stock_signals ss ON qs.ticker = ss.ticker
 | Module | Scheduled job | Contents |
 |---|---|---|
 | `ml_features.py` | — (shared) | Model/feature-stats/quantile file paths, `FEATURE_COLS`, `SECTOR_MAP`, fundamental bounds, `cross_sectional_zscore`, fundamental winsorize/impute, `build_model_features`, and the `TRAINING_HISTORY_QUERY` / `LATEST_FEATURES_QUERY` SQL |
-| `ml_backfill_engine.py` | Historical Data Backfill & Sync | SPY benchmark, target-ticker selection, ticker metadata sync, `run_historical_backfill`, `rebuild_quant_history` |
+| `ml_backfill_engine.py` | Historical Data Backfill & Sync | SPY benchmark, target-ticker selection, `run_historical_backfill`, `rebuild_quant_history` |
 | `ml_training_engine.py` | Global Model Training (Walk-Forward) | `train_global_ml_model` (classifier), `train_quantile_models` (Q10/Q90); each returns `False` when training did not finish |
 | `ml_training_process.py` | Global Model Training (Walk-Forward) | `run_training_child` (the web process's supervisor: starts the child, relays its log, watchdog), `child_main` (the child's entry point) |
 | `ml_inference_engine.py` | Daily ML Inference | `update_daily_ml_predictions`, `score_quantile_predictions` |

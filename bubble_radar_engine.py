@@ -132,7 +132,7 @@ def _get_quant_signals(ticker: str, conn) -> tuple[Optional[float], Optional[flo
 def _get_fundamentals(ticker: str, conn) -> tuple[Optional[float], Optional[float], Optional[float], Optional[float]]:
     cursor = conn.cursor()
     cursor.execute(
-        "SELECT price_to_sales, free_cash_flow, peg_ratio, current_price FROM stock_signals WHERE ticker=?",
+        "SELECT price_to_sales, free_cash_flow, market_cap, peg_ratio, current_price FROM stock_signals WHERE ticker=?",
         (ticker,),
     )
     row = cursor.fetchone()
@@ -144,11 +144,9 @@ def _get_fundamentals(ticker: str, conn) -> tuple[Optional[float], Optional[floa
     price = row["current_price"]
 
     fcf_yield_pct: Optional[float] = None
-    if fcf is not None:
-        cursor.execute("SELECT market_cap FROM ticker_metadata WHERE ticker=?", (ticker,))
-        mc_row = cursor.fetchone()
-        if mc_row and mc_row["market_cap"] and mc_row["market_cap"] > 0:
-            fcf_yield_pct = (fcf / mc_row["market_cap"]) * 100
+    market_cap = row["market_cap"]
+    if fcf is not None and market_cap and market_cap > 0:
+        fcf_yield_pct = (fcf / market_cap) * 100
 
     return ps, fcf_yield_pct, peg, price
 

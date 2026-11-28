@@ -19,10 +19,13 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+from db.database import get_connection
 from ml_features import (
+    LATEST_FEATURES_QUERY,
     CONTINUOUS_FEATURES,
     FEATURE_COLS,
     cross_sectional_zscore,
@@ -32,6 +35,9 @@ from ml_features import (
     load_feature_stats,
     save_feature_stats,
 )
+
+
+pytestmark = pytest.mark.restore_tables("quant_signals", "stock_signals")
 
 
 # ── cross_sectional_zscore ────────────────────────────────────────────────────
@@ -291,3 +297,23 @@ class TestFeatureStatsFile:
         path = tmp_path / "feature_stats.json"
         path.write_bytes(b"\x80\x04N.")
         assert load_feature_stats(path) is None
+
+
+class TestFeatureQuerySector:
+    def test_sector_code_comes_from_stock_signals(self):
+        conn = None
+        try:
+            conn = get_connection()
+            conn.execute(
+                "INSERT INTO quant_signals (ticker, date, close_price, volume, mom_1m, atr_pct, "
+                "rel_strength_5d, rel_strength_20d) VALUES ('ZZSECQ', '2026-01-02', 10.0, 1000, 0.1, 0.02, 0.01, 0.02)"
+            )
+            conn.execute("INSERT OR REPLACE INTO stock_signals (ticker, sector) VALUES ('ZZSECQ', 'Technology')")
+            conn.commit()
+            df = pd.read_sql_query(LATEST_FEATURES_QUERY, conn)
+        finally:
+            if conn:
+                conn.close()
+        row = df[df["ticker"] == "ZZSECQ"]
+        assert list(row["sector"]) == ["Technology"]
+        assert list(build_model_features(row.copy())["sector_code"]) == [1]

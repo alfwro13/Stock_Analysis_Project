@@ -425,6 +425,32 @@ class TestUpsertFundamentalsStoresYahooUnits:
         assert (row["price_to_book"], row["price_to_sales"]) == (pytest.approx(1.4), pytest.approx(0.7))
 
 
+class TestUpsertFundamentalsStoresMarketCap:
+    TICKER = "TST_UNITS_MCAP"
+
+    def teardown_method(self):
+        conn = _db.get_connection()
+        try:
+            conn.execute("DELETE FROM stock_signals WHERE ticker=?", (self.TICKER,))
+            conn.commit()
+        finally:
+            conn.close()
+
+    def _stored(self):
+        conn = _db.get_connection()
+        try:
+            return conn.execute("SELECT market_cap FROM stock_signals WHERE ticker=?", (self.TICKER,)).fetchone()["market_cap"]
+        finally:
+            conn.close()
+
+    def test_stores_market_cap_from_the_dump_and_null_when_the_dump_lacks_it(self):
+        _upsert_fundamentals(self.TICKER, {"shortName": "Cap Co", "currency": "USD", "marketCap": 3.2e9})
+        assert self._stored() == 3.2e9
+
+        _upsert_fundamentals(self.TICKER, {"shortName": "Cap Co", "currency": "USD"})
+        assert self._stored() is None
+
+
 def _write_aged_dump(directory, ticker, payload, days_old):
     path = directory / f"{ticker}.json"
     path.write_text(json.dumps(payload))
@@ -507,6 +533,18 @@ class TestDueFundamentalsTickers:
 
         assert due == ["NODUMP", "OLDEST", "AGED"]
         targets.assert_called_once_with(freetrade_firewall=False)
+
+    def test_portfolio_and_watchlist_tickers_without_a_dump_are_due_but_other_tickers_are_not(self, tmp_path):
+        import universe_fundamentals_engine as engine
+
+        with patch.object(engine, "FUNDAMENTALS_DIR", tmp_path), \
+             patch.object(engine, "_get_universe_target_tickers", return_value=["INDEXED"]), \
+             patch.object(engine, "get_portfolio_watchlist_tickers", return_value=["HELD"]), \
+             patch.object(engine, "load_blacklist", return_value=set()), \
+             patch.object(engine, "ignored_tickers_set", return_value=set()):
+            due = engine._due_fundamentals_tickers({"INDEXED", "HELD", "OTHER"})
+
+        assert sorted(due) == ["HELD", "INDEXED"]
 
 
 class TestRefreshDueFundamentals:

@@ -68,7 +68,6 @@ EXPECTED_TABLES = [
     "market_universe",
     "asset_profiles",
     "profile_empty_strikes",
-    "ticker_metadata",
     "company_name_overrides",
     "market_regimes",
     "intraday_monitors",
@@ -1013,6 +1012,24 @@ def test_migrate_db_adds_scope_column_to_predicted_movers_history():
 
 
 @pytest.mark.db
+def test_migrate_db_drops_ticker_metadata_table_and_adds_stock_signals_market_cap():
+    conn = _conn()
+    try:
+        conn.execute("CREATE TABLE ticker_metadata (ticker TEXT PRIMARY KEY, sector TEXT, beta REAL)")
+        conn.execute("INSERT INTO ticker_metadata VALUES ('MIGMCAP', 'Tech', 1.1)")
+        conn.execute("ALTER TABLE stock_signals DROP COLUMN market_cap")
+        conn.commit()
+        cursor = conn.cursor()
+        db_schema.migrate_db(conn, cursor)
+        db_schema.migrate_db(conn, cursor)
+        conn.commit()
+        assert conn.execute("SELECT 1 FROM sqlite_master WHERE name = 'ticker_metadata'").fetchone() is None
+        assert "market_cap" in {r["name"] for r in conn.execute("PRAGMA table_info(stock_signals)").fetchall()}
+    finally:
+        conn.close()
+
+
+@pytest.mark.db
 def test_profile_empty_strikes_has_history_strike_columns():
     assert {"strikes", "last_empty_at", "history_strikes", "last_history_empty_at"} <= _columns("profile_empty_strikes")
 
@@ -1082,7 +1099,7 @@ def test_migrate_db_deletes_exchange_test_symbol_history_and_fundamentals_files_
 
 @pytest.mark.db
 def test_migrate_db_removes_exchange_test_symbols_from_the_universe_tables_and_keeps_real_tickers():
-    tables = ("market_universe", "stock_signals", "ticker_metadata", "asset_profiles")
+    tables = ("market_universe", "stock_signals", "asset_profiles")
     conn = _conn()
     try:
         cursor = conn.cursor()

@@ -107,7 +107,7 @@ async function triggerUniverseDeepSync() {
     }
     try {
         const job = await postJobTrigger('/api/universe/deep-sync');
-        alert(job.ok ? "Universe Deep Sync Pipeline initiated in background. Sequencing fundamentals → metadata → technicals → ML inference for the full index universe. Estimated runtime: 30–45 minutes. Check notifications for progress." : (job.message || "The server did not start the job."));
+        alert(job.ok ? "Universe Deep Sync Pipeline initiated in background. Sequencing fundamentals → technicals → momentum/volatility/relative-strength backfill → ML inference for the full index universe. Estimated runtime: 30–45 minutes. Check notifications for progress." : (job.message || "The server did not start the job."));
     } catch (error) {
         alert("Failed to initiate Universe Deep Sync. Network or server error.");
     }

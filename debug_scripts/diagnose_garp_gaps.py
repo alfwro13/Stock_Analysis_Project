@@ -167,18 +167,6 @@ def section_table_coverage(cursor: sqlite3.Cursor, universe_total: int) -> None:
     qs_fresh: int = cursor.fetchone()['c']
     emit(f"  quant_signals ≤ 7 days   : {qs_fresh:>5,} / {universe_total:>5,}  ({pct(qs_fresh, universe_total)})")
 
-    try:
-        cursor.execute("""
-            SELECT COUNT(*) AS c
-            FROM market_universe m
-            INNER JOIN ticker_metadata tm ON m.ticker = tm.ticker
-            WHERE m.is_index = 1
-        """)
-        tm_count: int = cursor.fetchone()['c']
-        emit(f"  In ticker_metadata       : {tm_count:>5,} / {universe_total:>5,}  ({pct(tm_count, universe_total)})")
-    except sqlite3.OperationalError:
-        emit(f"  {Color.RED}ticker_metadata table missing — run ml_backfill_engine.run_historical_backfill() first.{Color.END}")
-
     cursor.execute("""
         SELECT COUNT(*) AS c
         FROM market_universe m
@@ -330,52 +318,52 @@ def section_field_coverage_quant_signals(cursor: sqlite3.Cursor) -> None:
 # Section 5 — Market cap coverage
 # ─────────────────────────────────────────────────────────────────────────────
 def section_market_cap_coverage(cursor: sqlite3.Cursor) -> None:
-    """Audit ticker_metadata.market_cap availability + distribution."""
-    emit(hr("5. ticker_metadata.market_cap COVERAGE & DISTRIBUTION"))
+    """Audit stock_signals.market_cap availability + distribution."""
+    emit(hr("5. stock_signals.market_cap COVERAGE & DISTRIBUTION"))
 
     try:
         cursor.execute("""
             SELECT COUNT(*) AS c
-            FROM ticker_metadata tm
-            INNER JOIN market_universe m ON tm.ticker = m.ticker
+            FROM stock_signals s
+            INNER JOIN market_universe m ON s.ticker = m.ticker
             WHERE m.is_index = 1
         """)
         base: int = cursor.fetchone()['c']
-        emit(f"  Universe tickers in ticker_metadata: {Color.BOLD}{base:,}{Color.END}\n")
+        emit(f"  Universe tickers in stock_signals: {Color.BOLD}{base:,}{Color.END}\n")
 
         if base == 0:
-            emit(f"  {Color.YELLOW}ticker_metadata empty for universe — run ML historical backfill.{Color.END}")
+            emit(f"  {Color.YELLOW}stock_signals empty for universe — run the fundamentals refresh.{Color.END}")
             return
 
         cursor.execute("""
             SELECT COUNT(*) AS c
-            FROM ticker_metadata tm
-            INNER JOIN market_universe m ON tm.ticker = m.ticker
+            FROM stock_signals s
+            INNER JOIN market_universe m ON s.ticker = m.ticker
             WHERE m.is_index = 1
-              AND tm.market_cap > 0
+              AND s.market_cap > 0
         """)
         nonzero: int = cursor.fetchone()['c']
         emit(f"  With market_cap > 0           : {nonzero:>5,} / {base:>5,}  ({pct(nonzero, base)})")
 
         cursor.execute("""
             SELECT COUNT(*) AS c
-            FROM ticker_metadata tm
-            INNER JOIN market_universe m ON tm.ticker = m.ticker
+            FROM stock_signals s
+            INNER JOIN market_universe m ON s.ticker = m.ticker
             WHERE m.is_index = 1
-              AND tm.market_cap > 500000000
+              AND s.market_cap > 500000000
         """)
         gate: int = cursor.fetchone()['c']
         emit(f"  With market_cap > $500M       : {gate:>5,} / {base:>5,}  ({pct(gate, base)})")
 
         cursor.execute("""
             SELECT
-                MIN(market_cap) AS mn,
-                MAX(market_cap) AS mx,
-                AVG(market_cap) AS av
-            FROM ticker_metadata tm
-            INNER JOIN market_universe m ON tm.ticker = m.ticker
+                MIN(s.market_cap) AS mn,
+                MAX(s.market_cap) AS mx,
+                AVG(s.market_cap) AS av
+            FROM stock_signals s
+            INNER JOIN market_universe m ON s.ticker = m.ticker
             WHERE m.is_index = 1
-              AND tm.market_cap > 0
+              AND s.market_cap > 0
         """)
         stats = cursor.fetchone()
         if stats and stats['mn'] is not None:
@@ -384,7 +372,7 @@ def section_market_cap_coverage(cursor: sqlite3.Cursor) -> None:
             emit(f"    Avg  : ${stats['av']:>20,.0f}")
             emit(f"    Max  : ${stats['mx']:>20,.0f}")
     except sqlite3.OperationalError as e:
-        emit(f"  {Color.RED}Error querying ticker_metadata: {e}{Color.END}")
+        emit(f"  {Color.RED}Error querying stock_signals: {e}{Color.END}")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -408,7 +396,6 @@ def section_garp_filter_funnel(cursor: sqlite3.Cursor) -> None:
         FROM stock_signals s
         INNER JOIN market_universe m ON s.ticker = m.ticker
         LEFT JOIN latest_quant lq ON s.ticker = lq.ticker
-        LEFT JOIN ticker_metadata tm ON s.ticker = tm.ticker
         WHERE m.is_index = 1
         {predicate}
     """
@@ -420,7 +407,7 @@ def section_garp_filter_funnel(cursor: sqlite3.Cursor) -> None:
         ("AND revenue_growth > 0.15",                 "AND s.revenue_growth > 0.15"),
         ("AND roe > 0.10",                            "AND s.roe > 0.10"),
         ("AND forward_pe BETWEEN 10 AND 40",          "AND s.forward_pe BETWEEN 10 AND 40"),
-        ("AND market_cap > $500M",                    "AND COALESCE(tm.market_cap, 0) > 500000000"),
+        ("AND market_cap > $500M",                    "AND s.market_cap > 500000000"),
         ("AND ml_confidence_score >= 45",             "AND lq.ml_confidence_score >= 45"),
     ]
 
@@ -468,11 +455,10 @@ def section_sample_universe_rows(cursor: sqlite3.Cursor) -> None:
             s.revenue_growth,
             s.roe,
             lq.ml_confidence_score               AS ml_score,
-            tm.market_cap
+            s.market_cap
         FROM stock_signals s
         INNER JOIN market_universe m ON s.ticker = m.ticker
         LEFT JOIN latest_quant lq    ON s.ticker = lq.ticker
-        LEFT JOIN ticker_metadata tm ON s.ticker = tm.ticker
         WHERE m.is_index = 1
         ORDER BY RANDOM()
         LIMIT 10
@@ -579,7 +565,7 @@ def section_recommendations() -> None:
     emit("          Inspect scheduler_engine.py for the active caller.")
     emit("")
     emit("    • If market_cap coverage in section 5 is low:")
-    emit("        → Run ml_backfill_engine.sync_ticker_metadata(get_universe_tickers()).")
+    emit("        → Run the fundamentals refresh (universe_fundamentals_engine) so stock_signals.market_cap fills.")
     emit("")
     emit("  Once gaps are closed (or at least quantified), we can implement the GARP report")
     emit("  with confidence that the universe is fairly represented.")

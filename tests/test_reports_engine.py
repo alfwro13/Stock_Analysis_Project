@@ -24,7 +24,7 @@ from reports_engine import (
     get_garp_tenbaggers,
 )
 
-pytestmark = [pytest.mark.reports, pytest.mark.restore_tables("market_universe", "quant_signals")]
+pytestmark = [pytest.mark.reports, pytest.mark.restore_tables("market_universe", "quant_signals", "stock_signals")]
 
 
 def _seed_universe(conn, ticker, company="Test Co", sector="Technology"):
@@ -53,6 +53,32 @@ def _seed_stock_signal(conn, ticker, div_yield=0.04, ex_date="2026-09-01",
         (ticker, div_yield, ex_date, score, quote_type,
          0.20, 0.15, 50.0, 0.20, 2.0, 18.0, 20.0, 85.0, 0.5),
     )
+
+
+class TestGarpMarketCapFloor:
+    """The GARP screen reads stock_signals.market_cap; a row with no market cap never passes the floor."""
+
+    def _seed(self, conn, ticker, market_cap):
+        _seed_universe(conn, ticker)
+        conn.execute(
+            "INSERT OR REPLACE INTO stock_signals (ticker, quote_type, peter_lynch_peg, revenue_growth, roe, forward_pe, market_cap) "
+            "VALUES (?, 'EQUITY', 0.5, 0.3, 0.3, 20.0, ?)",
+            (ticker, market_cap),
+        )
+
+    def test_null_market_cap_is_excluded_and_a_cap_above_the_floor_is_included(self):
+        conn = database.get_connection()
+        try:
+            self._seed(conn, "TSTGARP_BIG", 5e9)
+            self._seed(conn, "TSTGARP_NULL", None)
+            self._seed(conn, "TSTGARP_SMALL", 1e8)
+            conn.commit()
+        finally:
+            conn.close()
+
+        tickers = {r["ticker"]: r["market_cap"] for r in get_garp_tenbaggers() if r["ticker"].startswith("TSTGARP_")}
+
+        assert tickers == {"TSTGARP_BIG": 5e9}
 
 
 class TestDividendHarvestDateParsing:

@@ -352,6 +352,7 @@ def init_db() -> None:
                 price_to_book REAL,
                 price_to_sales REAL,
                 free_cash_flow REAL,
+                market_cap REAL,
 
                 -- Profitability & Health (Equities)
                 profit_margin REAL,
@@ -645,15 +646,6 @@ def init_db() -> None:
                 last_empty_at TIMESTAMP NOT NULL,
                 history_strikes INTEGER NOT NULL DEFAULT 0,
                 last_history_empty_at TIMESTAMP
-            )
-        ''')
-
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS ticker_metadata (
-                ticker TEXT PRIMARY KEY,
-                sector TEXT,
-                beta REAL,
-                market_cap REAL
             )
         ''')
 
@@ -2191,7 +2183,7 @@ def migrate_db(conn, cursor) -> None:
         'fifty_two_week_low': 'REAL', 'fifty_two_week_high': 'REAL',
         'trailing_pe': 'REAL', 'forward_pe': 'REAL', 'peg_ratio': 'REAL',
         'peter_lynch_peg': 'REAL', 'price_to_book': 'REAL',
-        'price_to_sales': 'REAL', 'free_cash_flow': 'REAL',
+        'price_to_sales': 'REAL', 'free_cash_flow': 'REAL', 'market_cap': 'REAL',
         'profit_margin': 'REAL', 'roe': 'REAL', 'revenue_growth': 'REAL',
         'debt_to_equity': 'REAL', 'current_ratio': 'REAL', 'operating_cash_flow': 'REAL',
         'ytd_return': 'REAL', 'total_assets': 'REAL', 'nav_price': 'REAL',
@@ -2497,18 +2489,13 @@ def migrate_db(conn, cursor) -> None:
             except Exception as e:
                 logger.error("[MIGRATION ERROR] Failed adding %s to intraday_monitor_results: %s", col_name, e)
 
-    # ticker_metadata (guard for pre-feature DBs)
-    try:
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS ticker_metadata (
-                ticker TEXT PRIMARY KEY,
-                sector TEXT,
-                beta REAL,
-                market_cap REAL
-            )
-        ''')
-    except Exception as e:
-        logger.error("[MIGRATION ERROR] Failed to create ticker_metadata: %s", e)
+    cursor.execute("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'ticker_metadata'")
+    if cursor.fetchone():
+        try:
+            logger.info("[MIGRATION] Dropping table ticker_metadata...")
+            cursor.execute("DROP TABLE IF EXISTS ticker_metadata")
+        except Exception as e:
+            logger.error("[MIGRATION ERROR] Failed dropping ticker_metadata: %s", e)
 
     # model_training_log (guard for DBs that pre-date init_db ownership of this table)
     try:
@@ -3076,7 +3063,7 @@ def migrate_db(conn, cursor) -> None:
     )
     try:
         removed = 0
-        for table in ("market_universe", "stock_signals", "ticker_metadata", "asset_profiles"):
+        for table in ("market_universe", "stock_signals", "asset_profiles"):
             cursor.execute(f"DELETE FROM {table} WHERE ticker IN ({','.join('?' * len(test_symbols))})", test_symbols)
             removed += cursor.rowcount
         if removed:

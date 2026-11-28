@@ -258,10 +258,9 @@ _FEATURE_SELECT = """
            qs.rel_strength_5d, qs.rel_strength_20d,
            ss.trailing_pe, ss.price_to_book, ss.profit_margin,
            ss.roe, ss.revenue_growth, ss.debt_to_equity,
-           tm.sector
+           ss.sector
     FROM quant_signals qs
     LEFT JOIN stock_signals  ss ON qs.ticker = ss.ticker
-    LEFT JOIN ticker_metadata tm ON qs.ticker = tm.ticker
 """
 
 TRAINING_HISTORY_QUERY = _FEATURE_SELECT + """
