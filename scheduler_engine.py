@@ -367,6 +367,21 @@ def get_job_run_history(job_id: str, limit: int = SCHEDULER_RUN_HISTORY_LIMIT) -
             conn.close()
 
 
+def get_all_job_run_history() -> list[dict]:
+    """Every retained run (at most SCHEDULER_RUN_HISTORY_LIMIT per job), newest first per job."""
+    conn = None
+    try:
+        conn = get_connection()
+        rows = conn.execute(
+            "SELECT job_id, started_at, finished_at, duration_sec, trigger_source, status "
+            "FROM scheduler_run_history ORDER BY job_id, started_at DESC, id DESC"
+        ).fetchall()
+        return [dict(row) for row in rows]
+    finally:
+        if conn:
+            conn.close()
+
+
 def reload_scheduler():
     logger.info("Reloading scheduled jobs from configuration...")
     scheduler.remove_all_jobs()
@@ -1354,7 +1369,7 @@ from scheduler_manifest import (
     JOB_GRAPH, CONFIG_KEY_TO_JOB, job_label, job_id_for_label, display_name_for_config_key,
     scheduler_display_names, _DYNAMIC_ETF_RE, _resolve_manifest,
 )
-from scheduler_monitor import build_workflow_graph, detect_workflow_conflicts, _job_status
+from scheduler_monitor import build_schedule_timeline, build_workflow_graph, detect_workflow_conflicts, timeline_window_start, _job_status
 from scheduler_jobs import (
     resume_interrupted_scans,
     trigger_sentiment_report, run_intraday_orchestrator, run_maintenance_engine,

@@ -250,6 +250,16 @@ class TestAuthMiddleware:
         assert resp.status_code == 302
         assert "/login" in resp.headers["location"]
 
+    @pytest.mark.parametrize("path", ["/api/workflow-monitor/timeline", "/workflow-monitor/timeline"])
+    def test_job_scheduling_timeline_requires_login(self, raw_client, path):
+        resp = raw_client.get(path)
+        assert resp.status_code == 302
+        assert "/login" in resp.headers["location"]
+
+    def test_job_scheduling_timeline_rejects_api_key(self, raw_client):
+        resp = raw_client.get("/api/workflow-monitor/timeline", headers={"X-API-Key": os.environ["API_KEY"]})
+        assert resp.status_code == 403
+
     def test_redirect_preserves_destination_in_next_param(self, raw_client):
         resp = raw_client.get("/api/screener/data")
         location = resp.headers.get("location", "")

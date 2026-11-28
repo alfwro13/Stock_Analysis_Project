@@ -694,6 +694,7 @@ The Workflow Monitor (Settings UI) does not store a graph in the database — it
 * **Edges** are derived, never hand-listed: a dependency `A → B` exists iff `A.produces ∩ B.consumes ≠ ∅`. Adding a job with correct declarations auto-wires it into the graph.
 * **Live overlay:** `build_workflow_graph()` (`scheduler_monitor.py`) merges the manifest with `scheduler.get_jobs()` (enabled? next run?) and `scheduler_run_log` (last run, average duration, last status) to colour each node and compute conflicts. Individual executions remain in `scheduler_run_history` for the Settings Master APScheduler Matrix detail window.
 * **Conflict engine** (`detect_workflow_conflicts()` in `scheduler_monitor.py`): `overlap_risk` (consumer scheduled within the producer's average run duration), `backwards_ordering`, `disabled_upstream`, `stale_never_run`, `last_run_error`.
+* **Job Scheduling Timeline:** `GET /workflow-monitor/timeline` and `GET /api/workflow-monitor/timeline` lay the same enabled jobs out on a clock from the live schedule, the average and longest recent successful run times, and `scheduler_run_history`. Nothing is stored. Producer→consumer gaps are classified by `scheduler_monitor.classify_dependency_gap`, which the conflict engine also calls.
 * **Enforcement:** the manifest-completeness test fails CI if any registered job lacks a `JOB_GRAPH` entry, keeping the map in sync with the scheduler automatically.
 
 ### Persisted FX quotes in `market_pulse_cache`

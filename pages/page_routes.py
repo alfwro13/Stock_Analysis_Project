@@ -182,6 +182,11 @@ def _render_asset_docs() -> list[dict]:
     return docs
 
 
+@page_router.get("/workflow-monitor/timeline", response_class=HTMLResponse)
+def job_scheduling_timeline(request: Request):
+    return templates.TemplateResponse(request=request, name="job_scheduling_timeline.html", context={"embed": True})
+
+
 @page_router.get("/glossary", response_class=HTMLResponse)
 def glossary(request: Request):
     return templates.TemplateResponse(

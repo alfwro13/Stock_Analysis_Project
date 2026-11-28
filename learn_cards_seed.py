@@ -3800,6 +3800,19 @@ The connector changes nothing without my yes: never claim to have placed a trade
 <p>When conflicts are detected, they are shown on the Workflow Monitor with specific labels on the affected job boxes, allowing you to resolve scheduling gaps without reading the application logs.</p>""",
     },
     {
+        "term_key": "job-scheduling-timeline",
+        "section_id": "workflow-monitor",
+        "term_title": "Job Scheduling Timeline",
+        "question": "What does a dependency violation on the Job Scheduling Timeline mean?",
+        "answer": "A job is planned to start before the job that produces its input is expected to finish",
+        "distractors": [
+            "A job has been turned off in Settings",
+            "A job's last run ended with an error",
+            "Two unrelated jobs share the same row of the chart",
+        ],
+        "explanation": """<p>The <strong>Job Scheduling Timeline</strong> is a read-only Plotly chart of every enabled scheduled job laid out on a clock, opened in a new tab from the Open Job Scheduling Timeline link in the Workflow Monitor full-graph window. Once-a-day and weekly jobs share a <strong>Scheduled jobs</strong> row, where overlapping blocks stack into extra lanes and are flagged; jobs that run more than once a day get their own row as merged active bands with a run count and can be hidden. Each planned block runs from the configured start to the start plus the job's average successful run time, and a <em>recent longest run</em> line shows the longest of its last 5 successful runs. Between a producer job and the consumer that reads its data, the chart draws the 2-minute safety margin and the idle buffer, and flags a <strong>tight</strong> gap, a <strong>dependency violation</strong> (the consumer starts before the producer's expected end), <strong>backwards ordering</strong>, and a <strong>recent overrun</strong> (the producer's longest recent run would still be running when the consumer starts). The Workflow Monitor conflict check uses the same gap rule, so both views judge a gap the same way. Actual runs come from the last 20 runs per job, and earlier time is shaded <strong>No history</strong>; planned blocks in the past use the current schedule. Week, Day and 6 h zoom, week navigation, Now and Refresh controls are available, and clicking a block opens a details panel with an Open in Settings link. Times use the configured display timezone. The page never changes a schedule.</p>""",
+    },
+    {
         "term_key": "yahoo-finance-api-usage-detail",
         "section_id": "workflow-monitor",
         "term_title": "Yahoo Finance API Usage Detail",

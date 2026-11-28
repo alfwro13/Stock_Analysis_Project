@@ -2061,6 +2061,67 @@ Most nodes are scheduled jobs (`status` of `green`/`amber`/`red`/`disabled`). Tw
 
 ---
 
+### `GET /api/workflow-monitor/timeline`
+
+Returns the data behind the Job Scheduling Timeline page (`GET /workflow-monitor/timeline`, a navbar-less tool window opened from the Workflow Monitor full-graph window). Session auth, read-only.
+
+**Query parameters**
+
+| Param | Default | Description |
+|---|---|---|
+| `start` | Monday of the current local week | Window start, `YYYY-MM-DD`, in `USER_TIMEZONE` |
+| `days` | `7` | Window length, `1`-`14` |
+
+An invalid `start` or an out-of-range `days` returns `422`.
+
+**Response**
+
+```json
+{
+  "status": "success",
+  "timezone": "Europe/London",
+  "window": { "start": "2026-06-08 00:00:00", "end": "2026-06-15 00:00:00", "now": "2026-06-10 09:12:00" },
+  "lanes": 2,
+  "jobs": [
+    {
+      "id": "ml_inference_job", "label": "Daily ML Inference", "category": "ml",
+      "row": "scheduled", "max_fires_per_day": 1,
+      "avg_duration_sec": 92.4, "recent_max_sec": 130.0,
+      "status": "green", "status_reason": "ok", "running": false,
+      "settings_anchor": "ml-ai-card",
+      "upstream": ["Daily Quant Screener (Portfolio & Watchlist)"], "downstream": [],
+      "history_from": "2026-05-12 02:30:00",
+      "reschedule": { "config_key": "ML_INFERENCE", "field": "TIME", "editable": true }
+    }
+  ],
+  "blocks": [
+    { "job_id": "ml_inference_job", "start": "2026-06-10 02:30:00", "end": "2026-06-10 02:31:32",
+      "whisker_end": "2026-06-10 02:32:10", "lane": 0, "overlap_with": [] }
+  ],
+  "bands": [
+    { "job_id": "intraday_dip_scan_job", "start": "2026-06-10 07:00:00", "end": "2026-06-10 21:59:00", "fires": 450 }
+  ],
+  "runs": [
+    { "job_id": "ml_inference_job", "start": "2026-06-09 02:30:00", "end": "2026-06-09 02:31:32",
+      "duration_sec": 92.0, "status": "success", "trigger": "scheduled" }
+  ],
+  "dependencies": [
+    { "from": "overnight_quant_scan_job", "to": "ml_inference_job", "via": ["quant_signals"],
+      "producer_start": "2026-06-10 01:00:00", "producer_end": "2026-06-10 02:00:00",
+      "consumer_start": "2026-06-10 02:30:00", "gap_min": 90.0,
+      "overlap": "ok", "backwards": false, "recent_overrun": false, "margin_min": 2 }
+  ]
+}
+```
+
+* All times are `USER_TIMEZONE` wall-clock strings (`YYYY-MM-DD HH:MM:SS`).
+* `jobs[].row` is `scheduled` for jobs that run at most once a day (the shared `Scheduled jobs` row, packed into `lanes`) and `frequent` for jobs that run more than once a day (drawn as `bands`). `blocks[].end` is the start plus the average successful run time (at least 60 s); `whisker_end` is the start plus the longest of the last 5 successful runs (`recent_max_sec`) when that is longer, otherwise `null`. `upstream`/`downstream` list job labels.
+* `runs` come from `scheduler_run_history` (last 20 runs per job). `jobs[].history_from` is the start of the oldest kept run when a job has the full 20 runs (earlier time has no history), otherwise `null`. Planned blocks in the past use the current schedule.
+* `dependencies[].overlap` is one of `ok` / `tight` / `violation` / `unknown`, decided by `scheduler_monitor.classify_dependency_gap`, the same classifier the Workflow Monitor conflict check uses. `margin_min` is the safety margin (2 min). `recent_overrun` is true when the producer's longest recent run would still be running when the consumer starts. `gap_min` and `producer_start` are `null` when no producer run falls in the 8 days before the consumer.
+* `jobs[].reschedule` is `null` for jobs without a Settings schedule key; otherwise it names the `config.json` `SCHEDULING` key and the `TIME` field, and `editable` is true only for single-time daily or weekly jobs. The page does not change schedules.
+
+---
+
 ### `POST /api/maintenance/run`
 
 Triggers the weekly `MaintenanceEngine` as a background task. Returns immediately; progress is visible in the Notifications panel. The run removes scheduler execution-history rows older than the newest 20 entries for each job.

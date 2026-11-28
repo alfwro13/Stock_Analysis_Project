@@ -478,6 +478,60 @@ def test_workflow_tab_panel_escapes_node_text_and_has_no_inline_handler():
     _s5_2_run_node(_S5_9_WORKFLOW_TAB_SCRIPT, _s5_2_js('utils.js'), _s5_2_js('workflow_tab.js'))
 
 
+_S5_9_SCHEDULING_TIMELINE_SCRIPT = _S5_2_DOM_PRELUDE + r"""
+const figures = [];
+const created = [];
+const mkNode = () => {
+    const node = {
+        innerHTML: '', textContent: '', className: '', dataset: {}, children: [],
+        classList: {add() {}, remove() {}, toggle() {}},
+        appendChild(child) { node.children.push(child); }, replaceChildren() { node.children = []; },
+    };
+    created.push(node);
+    return node;
+};
+Object.assign(el('jstChart'), {on() {}, querySelector: () => null});
+const jobs = ['a', 'b'].map((id, i) => ({
+    id, label: payload + id, category: payload, row: 'scheduled', max_fires_per_day: 1, avg_duration_sec: 600,
+    recent_max_sec: 1200, status: 'green', status_reason: payload, running: false, settings_anchor: null,
+    upstream: i ? [payload] : [], downstream: i ? [] : [payload], history_from: null, reschedule: null,
+}));
+jobs.push({...jobs[0], id: 'f', row: 'frequent', max_fires_per_day: 30});
+const data = {
+    status: 'success', timezone: payload, lanes: 1, jobs,
+    window: {start: '2026-11-23 00:00:00', end: '2026-11-30 00:00:00', now: '2026-11-25 12:00:00'},
+    blocks: [{job_id: 'a', start: '2026-11-25 22:00:00', end: '2026-11-25 22:10:00', whisker_end: '2026-11-25 22:20:00', overlap_with: ['b'], lane: 0}],
+    bands: [{job_id: 'f', start: '2026-11-25 07:00:00', end: '2026-11-25 21:00:00', fires: 3}],
+    runs: [{job_id: 'a', start: '2026-11-25 22:00:00', end: '2026-11-25 22:09:00', duration_sec: 540, status: payload, trigger: payload}],
+    dependencies: [{from: 'a', to: 'b', via: [payload], producer_start: '2026-11-25 22:00:00', producer_end: '2026-11-25 22:10:00',
+        consumer_start: '2026-11-25 22:05:00', gap_min: 5, overlap: 'violation', backwards: false, recent_overrun: true, margin_min: 2}],
+};
+const context = {
+    window: {innerWidth: 1400, addEventListener() {}}, console, URLSearchParams, Promise,
+    fetch: async () => ({json: async () => data}),
+    DOMParser: function () { this.parseFromString = () => ({documentElement: {textContent: ''}}); },
+    Plotly: {react: (_el, traces, layout) => { figures.push(JSON.stringify([traces, layout])); return Promise.resolve(); }, relayout() {}, restyle() {}},
+    document: {getElementById: el, querySelectorAll: () => [], createElement: mkNode},
+};
+context.window.Plotly = context.Plotly;
+load(context, process.argv.slice(1));
+(async () => {
+    await settle();
+    assert.ok(figures.length > 0, 'chart was not drawn');
+    for (const fig of figures) {
+        assert.ok(!fig.includes('<img'), 'unescaped label reached a Plotly text field');
+        assert.ok(fig.includes('&lt;img'), 'label missing from the figure');
+    }
+    assert.equal(els['jstTz'].textContent, payload);
+    assert.ok(!els['jstStatus'].innerHTML.includes('<img'));
+})().catch(error => {console.error(error); process.exitCode = 1;});
+"""
+
+
+def test_job_scheduling_timeline_escapes_labels_in_chart_text_and_uses_textcontent():
+    _s5_2_run_node(_S5_9_SCHEDULING_TIMELINE_SCRIPT, _s5_2_js('utils.js'), _s5_2_js('job_scheduling_timeline.js'))
+
+
 _S5_9_ACCOUNT_TILES_SCRIPT = _S5_2_DOM_PRELUDE + r"""
 const tiles = [];
 const context = {
