@@ -109,7 +109,7 @@ class AIRegimePromptEngine:
 
     def _compute_transition_matrix(self, regime_daily: list) -> dict:
         """Compute empirical 3×3 transition matrix from consecutive daily state pairs."""
-        state_labels = {0: "Bull", 1: "Chop", 2: "Crash"}
+        state_labels = {0: "Bull", 1: "Chop", 2: "High Volatility"}
         counts: Dict[int, Dict[int, int]] = {0: {0: 0, 1: 0, 2: 0}, 1: {0: 0, 1: 0, 2: 0}, 2: {0: 0, 1: 0, 2: 0}}
         for i in range(len(regime_daily) - 1):
             s_from = regime_daily[i].get("price_hmm_state")

@@ -1446,7 +1446,8 @@ def init_db() -> None:
                 date      TEXT PRIMARY KEY,
                 state     INTEGER NOT NULL,
                 label     TEXT NOT NULL,
-                probability REAL NOT NULL
+                probability REAL NOT NULL,
+                mean_return REAL
             )
         ''')
 
@@ -2311,6 +2312,7 @@ def migrate_db(conn, cursor) -> None:
         'price_hmm_state': 'INTEGER',
         'price_hmm_label': 'TEXT',
         'price_hmm_prob': 'REAL',
+        'price_hmm_mean_return': 'REAL',
         'market_stress_score': 'REAL',
         'market_stress_features': 'TEXT',
     }
@@ -2416,6 +2418,21 @@ def migrate_db(conn, cursor) -> None:
         ''')
     except Exception as e:
         logger.error("[MIGRATION ERROR] Failed to create price_hmm_states: %s", e)
+
+    try:
+        cursor.execute("PRAGMA table_info(price_hmm_states)")
+        if "mean_return" not in {info["name"] for info in cursor.fetchall()}:
+            cursor.execute("ALTER TABLE price_hmm_states ADD COLUMN mean_return REAL")
+        cursor.execute("UPDATE price_hmm_states SET label = 'High Volatility' WHERE label = 'Crash'")
+        renamed = cursor.rowcount
+        cursor.execute("UPDATE market_regimes SET price_hmm_label = 'High Volatility' WHERE price_hmm_label = 'Crash'")
+        renamed += cursor.rowcount
+        conn.commit()
+        if renamed:
+            logger.info("[MIGRATION] Renamed the Price-Action HMM top-volatility state to High Volatility on %d row(s).", renamed)
+    except Exception as e:
+        conn.rollback()
+        logger.error("[MIGRATION ERROR] Failed to rename the Price-Action HMM Crash state: %s", e)
 
     try:
         cursor.execute('''

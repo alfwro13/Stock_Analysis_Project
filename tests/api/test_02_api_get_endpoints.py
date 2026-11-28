@@ -1212,7 +1212,7 @@ def test_market_regime_current_null_on_fresh_db(client):
 def test_market_regime_current_includes_us_uk_regime_labels(client):
     """Once a row has both HMM and turbulence-classifier columns, current must expose
     us_regime_label/uk_regime_label alongside the HMM label — a distinct Normal/Volatile/Crash
-    taxonomy from the HMM's own Bull/Chop/Crash label on the same row.
+    taxonomy from the HMM's own Bull/Chop/High Volatility label on the same row.
 
     Seeds every turbulence-classifier column (not just the two labels) because this INSERT OR
     REPLACE can make this row "the latest" market_regimes row for the whole shared-session test

@@ -846,7 +846,7 @@ def get_market_regime_full(request: Request):
             spy_returns = {d.strftime("%Y-%m-%d"): float(v) for d, v in log_ret.items()}
 
         regime_stats: dict = {}
-        for label in ("Bull", "Chop", "Crash"):
+        for label in ("Bull", "Chop", "High Volatility"):
             label_rows = [r for r in stat_rows if r["label"] == label]
             days = len(label_rows)
             vols = [r["spy_volatility"] for r in label_rows if r["spy_volatility"] is not None]

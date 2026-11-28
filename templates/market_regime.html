@@ -10,8 +10,8 @@
 <h1 class="mb-1">&#128200; Market Regime (HMM)</h1>
 <p class="text-muted mb-3">
     5-year
-    <abbr title="Hidden Markov Model trained on SPY daily log-returns and EWMA volatility. States are sorted by mean volatility: 0=Bull (low vol), 1=Chop (elevated vol), 2=Crash (high vol). Updated daily as part of the quant pipeline.">Hidden Markov Model</abbr>
-    on SPY returns and volatility — classifies the market into Bull, Chop, or Crash states with transition probabilities.
+    <abbr title="Hidden Markov Model trained on SPY daily log-returns and EWMA volatility. States are sorted by mean volatility: 0=Bull (low vol), 1=Chop (elevated vol), 2=High Volatility (highest vol). Updated daily as part of the quant pipeline.">Hidden Markov Model</abbr>
+    on SPY returns and volatility — classifies the market into Bull, Chop, or High Volatility states with transition probabilities.
 </p>
 
 <a href="/tools" class="btn btn-outline-secondary btn-sm mb-3">&#8592; Back to Tools</a>
@@ -81,7 +81,7 @@
                             <th class="text-muted">From \ To</th>
                             <th class="text-center col-bull">Bull</th>
                             <th class="text-center col-chop">Chop</th>
-                            <th class="text-center col-crash">Crash</th>
+                            <th class="text-center col-crash">High Volatility</th>
                         </tr>
                     </thead>
                     <tbody id="transition-tbody"></tbody>
@@ -143,8 +143,8 @@
                     <div class="col-12 col-md-6 col-xl-3">
                         <div class="sentiment-module module-red mb-0">
                             <div class="p-3">
-                                <h4 class="col-crash hmm-state-label">&#128308; State 2 — Crash</h4>
-                                <p class="mb-0 small text-muted lh-base">High EWMA volatility with negative average daily returns. The market is in a sustained risk-off move. Historical examples: COVID crash (2020), 2022 bear market. The transition matrix diagonal entry shows how long these states typically persist.</p>
+                                <h4 class="col-crash hmm-state-label">&#128308; State 2 — High Volatility</h4>
+                                <p class="mb-0 small text-muted lh-base">The highest-volatility state. Its average daily return can be positive or negative, so it marks turbulent conditions rather than a confirmed decline. Historical examples: COVID crash (2020), 2022 bear market. The transition matrix diagonal entry shows how long these states typically persist.</p>
                             </div>
                         </div>
                     </div>

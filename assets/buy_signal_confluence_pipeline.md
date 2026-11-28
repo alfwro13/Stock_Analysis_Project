@@ -129,15 +129,18 @@ Score" card, `id="meta-scoring-card"`):
 |---|---|---|---|---|
 | Bull | 40% | 30% | 20% | 10% |
 | Chop | 25% | 25% | 35% | 15% |
+| High Volatility | 20% | 20% | 30% | 30% |
 
 Regime is read from `regime_engine.get_latest_regime()`'s `price_hmm_label`
-(Bull/Chop/Crash — the same 3-state Gaussian HMM classification the Market Regime page shows).
+(Bull/Chop/High Volatility — the same 3-state Gaussian HMM classification the Market Regime page shows).
 
 **Crash veto.** Suppressed entirely — `None`, never a reweighted number — whenever:
-- `price_hmm_label == "Crash"`, or
+- `price_hmm_label == "High Volatility"` and that state's fitted `price_hmm_mean_return` is below `META_SCORING.CRASH_VETO.HMM_MEAN_RETURN_FLOOR` (default 0.0 percent per day, negative allowed) or is `NULL`, or
 - `market_regimes.market_stress_score` (the Isolation Forest market-wide stress score; `market_stress_states.score` for an as-of date) is at
   or above `META_SCORING.CRASH_VETO.MARKET_STRESS_THRESHOLD` (default 0.75), or
 - no regime has been computed yet (`get_latest_regime()` returns `None`).
+
+A High Volatility state whose fitted mean return is at or above the floor is scored with its own weight row.
 
 None of the four inputs were validated to mean anything during a genuine crash regime, and the
 market-stress score itself is non-directional (high = unusual, not bullish/bearish), so it

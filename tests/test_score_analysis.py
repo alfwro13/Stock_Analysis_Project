@@ -28,8 +28,9 @@ _DEFAULT_META_SCORING = {
     "REGIME_WEIGHTS": {
         "Bull": {"composite_score": 0.40, "ml_confidence": 0.30, "pattern": 0.20, "trap": 0.10},
         "Chop": {"composite_score": 0.25, "ml_confidence": 0.25, "pattern": 0.35, "trap": 0.15},
+        "High Volatility": {"composite_score": 0.20, "ml_confidence": 0.20, "pattern": 0.30, "trap": 0.30},
     },
-    "CRASH_VETO": {"MARKET_STRESS_THRESHOLD": 0.75},
+    "CRASH_VETO": {"MARKET_STRESS_THRESHOLD": 0.75, "HMM_MEAN_RETURN_FLOOR": 0.0},
 }
 
 
@@ -89,12 +90,12 @@ def clean_tables():
     conn.close()
 
 
-def _seed_market_regime_as_of(date_, price_hmm_label, market_stress_score=0.1):
+def _seed_market_regime_as_of(date_, price_hmm_label, market_stress_score=0.1, mean_return=None):
     conn = _db_module.get_connection()
     if price_hmm_label is not None:
         conn.execute(
-            "INSERT OR REPLACE INTO price_hmm_states (date, state, label, probability) VALUES (?, 0, ?, 1.0)",
-            (date_, price_hmm_label),
+            "INSERT OR REPLACE INTO price_hmm_states (date, state, label, probability, mean_return) VALUES (?, 0, ?, 1.0, ?)",
+            (date_, price_hmm_label, mean_return),
         )
     if market_stress_score is not None:
         conn.execute(
@@ -479,8 +480,11 @@ class TestGetScoreAnalysisWithData:
 # compute_regime_weighted_score_batch
 # ---------------------------------------------------------------------------
 
-def _patched_regime(regime, market_stress_score=0.1, meta_scoring=None):
-    regime_row = {"price_hmm_label": regime, "market_stress_score": market_stress_score} if regime else None
+def _patched_regime(regime, market_stress_score=0.1, meta_scoring=None, mean_return=None):
+    regime_row = (
+        {"price_hmm_label": regime, "price_hmm_mean_return": mean_return, "market_stress_score": market_stress_score}
+        if regime else None
+    )
     cfg = {"META_SCORING": meta_scoring or _DEFAULT_META_SCORING}
     return (
         patch("regime_engine.get_latest_regime", return_value=regime_row),
@@ -530,11 +534,37 @@ class TestComputeRegimeWeightedScore:
         assert all(0.0 <= v <= 100.0 for v in result["components"].values())
         assert 0.0 <= result["score"] <= 100.0
 
-    def test_crash_regime_returns_none(self):
+    def test_high_volatility_with_negative_mean_return_returns_none(self):
         _seed_stock_signals("RWC", composite_score=80, ml_confidence=60)
-        p1, p2 = _patched_regime("Crash")
+        p1, p2 = _patched_regime("High Volatility", mean_return=-0.05)
         with p1, p2:
             result = compute_regime_weighted_score("RWC")
+        assert result is None
+
+    def test_high_volatility_with_positive_mean_return_is_scored_with_its_weights(self):
+        _seed_stock_signals("RWC2", composite_score=80, ml_confidence=60)
+        p1, p2 = _patched_regime("High Volatility", mean_return=0.02)
+        with p1, p2:
+            result = compute_regime_weighted_score("RWC2")
+        assert result["regime"] == "High Volatility"
+        comps = result["components"]
+        w = _DEFAULT_META_SCORING["REGIME_WEIGHTS"]["High Volatility"]
+        expected = sum(w[k] * comps[k] for k in w if comps.get(k) is not None) / sum(w[k] for k in w if comps.get(k) is not None)
+        assert result["score"] == pytest.approx(round(expected, 1), abs=0.1)
+
+    def test_high_volatility_with_unknown_mean_return_returns_none(self):
+        _seed_stock_signals("RWC3", composite_score=80, ml_confidence=60)
+        p1, p2 = _patched_regime("High Volatility", mean_return=None)
+        with p1, p2:
+            result = compute_regime_weighted_score("RWC3")
+        assert result is None
+
+    def test_configured_floor_above_mean_return_returns_none(self):
+        _seed_stock_signals("RWC4", composite_score=80, ml_confidence=60)
+        meta = {**_DEFAULT_META_SCORING, "CRASH_VETO": {"MARKET_STRESS_THRESHOLD": 0.75, "HMM_MEAN_RETURN_FLOOR": 0.05}}
+        p1, p2 = _patched_regime("High Volatility", mean_return=0.02, meta_scoring=meta)
+        with p1, p2:
+            result = compute_regime_weighted_score("RWC4")
         assert result is None
 
     def test_market_stress_threshold_vetoes_even_in_bull_regime(self):
@@ -543,6 +573,10 @@ class TestComputeRegimeWeightedScore:
         with p1, p2:
             result = compute_regime_weighted_score("RWD")
         assert result is None
+
+    def test_as_of_path_reads_mean_return_from_price_hmm_states(self):
+        _seed_market_regime_as_of(_AS_OF_DATE, "High Volatility", mean_return=0.07)
+        assert _regime_as_of(_AS_OF_DATE)["price_hmm_mean_return"] == 0.07
 
     def test_missing_regime_data_returns_none(self):
         _seed_stock_signals("RWE", composite_score=80, ml_confidence=60)
@@ -681,11 +715,25 @@ class TestComputeRegimeWeightedScoreAsOf:
         assert result["regime"] == "Bull"
         conn = _db_module.get_connection()
 
-    def test_crash_regime_as_of_returns_none(self):
-        _seed_market_regime_as_of(_AS_OF_DATE, "Crash")
+    def test_high_volatility_negative_mean_return_as_of_returns_none(self):
+        _seed_market_regime_as_of(_AS_OF_DATE, "High Volatility", mean_return=-0.05)
         _seed_quant_signal_as_of("ASOF6", _AS_OF_DATE, composite_score=80, ml_confidence_score=60)
         with patch("config.load_config", return_value={"META_SCORING": _DEFAULT_META_SCORING}):
             result = compute_regime_weighted_score_as_of("ASOF6", _AS_OF_DATE)
+        assert result is None
+
+    def test_high_volatility_positive_mean_return_as_of_is_scored(self):
+        _seed_market_regime_as_of(_AS_OF_DATE, "High Volatility", mean_return=0.02)
+        _seed_quant_signal_as_of("ASOF10", _AS_OF_DATE, composite_score=80, ml_confidence_score=60)
+        with patch("config.load_config", return_value={"META_SCORING": _DEFAULT_META_SCORING}):
+            result = compute_regime_weighted_score_as_of("ASOF10", _AS_OF_DATE)
+        assert result["regime"] == "High Volatility"
+
+    def test_high_volatility_without_stored_mean_return_as_of_returns_none(self):
+        _seed_market_regime_as_of(_AS_OF_DATE, "High Volatility", mean_return=None)
+        _seed_quant_signal_as_of("ASOF11", _AS_OF_DATE, composite_score=80, ml_confidence_score=60)
+        with patch("config.load_config", return_value={"META_SCORING": _DEFAULT_META_SCORING}):
+            result = compute_regime_weighted_score_as_of("ASOF11", _AS_OF_DATE)
         assert result is None
 
     def test_stress_score_at_crash_veto_threshold_returns_none(self):
@@ -959,12 +1007,12 @@ class TestRegimeAsOf:
     def test_label_and_stress_come_from_their_own_tables_independently(self):
         _seed_market_regime_as_of("2020-01-10", "Chop", market_stress_score=None)
         _seed_market_regime_as_of("2020-01-12", None, market_stress_score=0.3)
-        _seed_market_regime_as_of("2020-01-20", "Crash", market_stress_score=0.9)
-        assert _regime_as_of(_AS_OF_DATE) == {"price_hmm_label": "Chop", "market_stress_score": 0.3}
+        _seed_market_regime_as_of("2020-01-20", "High Volatility", market_stress_score=0.9)
+        assert _regime_as_of(_AS_OF_DATE) == {"price_hmm_label": "Chop", "price_hmm_mean_return": None, "market_stress_score": 0.3}
 
     def test_only_one_table_populated_leaves_the_other_none(self):
         _seed_market_regime_as_of("2020-01-10", "Bull", market_stress_score=None)
-        assert _regime_as_of(_AS_OF_DATE) == {"price_hmm_label": "Bull", "market_stress_score": None}
+        assert _regime_as_of(_AS_OF_DATE) == {"price_hmm_label": "Bull", "price_hmm_mean_return": None, "market_stress_score": None}
 
     def test_nothing_on_or_before_returns_none(self):
         _seed_market_regime_as_of("2020-01-20", "Bull")
@@ -973,7 +1021,7 @@ class TestRegimeAsOf:
     def test_market_regimes_rows_are_ignored(self):
         conn = _db_module.get_connection()
         conn.execute(
-            "INSERT OR REPLACE INTO market_regimes (date, price_hmm_label, market_stress_score) VALUES (?, 'Crash', 0.99)",
+            "INSERT OR REPLACE INTO market_regimes (date, price_hmm_label, market_stress_score) VALUES (?, 'High Volatility', 0.99)",
             (_AS_OF_DATE,),
         )
         conn.commit()
