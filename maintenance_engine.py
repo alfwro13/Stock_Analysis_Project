@@ -12,7 +12,7 @@ from db.database import (
     add_watchlist_item, get_connection, get_watchlist_account, get_watchlist_tickers,
     log_notification as _db_log_notification,
 )
-from db.helpers import add_ticker_note, get_ticker_notes, prune_nextcloud_talk_stats
+from db.helpers import add_ticker_note, get_ticker_notes, prune_fundamentals_refresh_runs, prune_nextcloud_talk_stats
 from accounts.ghostfolio_sync import purge_ghostfolio_files
 from accounts.accounts_engine import get_combined_holdings, resolve_watchlist_metadata, in_scope_currencies
 from portfolio_service import fx_pair
@@ -20,7 +20,7 @@ from market_pulse import get_index_tickers
 from ai_contagion_engine import AI_ECOSYSTEM_TICKERS
 from db import mcp_audit as db_mcp_audit, mcp_write_log as db_mcp_write_log
 from constants import (
-    MCP_AUDIT_RETENTION_DAYS, NEXTCLOUD_TALK_STATS_RETENTION_DAYS, PENSION_BENCHMARK_WATCHLIST_NOTE, PENSION_BENCHMARK_WATCHLIST_TICKERS, SCHEDULER_RUN_HISTORY_LIMIT,
+    FUNDAMENTALS_REFRESH_RUNS_RETENTION_DAYS, MCP_AUDIT_RETENTION_DAYS, NEXTCLOUD_TALK_STATS_RETENTION_DAYS, PENSION_BENCHMARK_WATCHLIST_NOTE, PENSION_BENCHMARK_WATCHLIST_TICKERS, SCHEDULER_RUN_HISTORY_LIMIT,
 )
 
 class MaintenanceEngine:
@@ -175,6 +175,13 @@ class MaintenanceEngine:
             logger.info("Removed %d old Nextcloud Talk daily counters", prune_nextcloud_talk_stats(cutoff))
         except Exception as e:
             logger.error("Error pruning the Nextcloud Talk counters: %s", e)
+
+    def prune_fundamentals_refresh_runs(self):
+        try:
+            cutoff = (datetime.now(timezone.utc) - timedelta(days=FUNDAMENTALS_REFRESH_RUNS_RETENTION_DAYS)).strftime("%Y-%m-%d %H:%M:%S")
+            logger.info("Removed %d old fundamentals refresh run records", prune_fundamentals_refresh_runs(cutoff))
+        except Exception as e:
+            logger.error("Error pruning the fundamentals refresh run records: %s", e)
 
     def _get_pulse_active_tickers(self) -> set:
         """Every ticker any market_pulse_cache writer currently tracks (portfolio holdings,
@@ -388,6 +395,7 @@ class MaintenanceEngine:
         self.prune_mcp_audit_log()
         self.prune_mcp_write_log()
         self.prune_nextcloud_talk_stats()
+        self.prune_fundamentals_refresh_runs()
         self.prune_pulse_cache()
         self.garbage_collect_files()
         self.enforce_ghostfolio_disabled()

@@ -1706,3 +1706,20 @@ def test_xray_hides_text_of_any_other_error(client):
         resp = client.get("/api/xray?account_id=all")
     assert resp.status_code == 500
     assert "secret.db" not in resp.text
+
+
+@pytest.mark.api
+def test_fundamentals_freshness_returns_the_engine_payload(client):
+    payload = {"rows": [], "attention": [], "attention_total": 0, "scope_available": True, "thresholds": {}, "last_run": None}
+    with patch("universe_fundamentals_engine.fundamentals_freshness", return_value=payload):
+        resp = client.get("/api/system/fundamentals-freshness")
+    assert resp.status_code == 200
+    assert resp.json() == {"status": "success", **payload}
+
+
+@pytest.mark.api
+def test_fundamentals_freshness_hides_text_of_any_error(client):
+    with patch("universe_fundamentals_engine.fundamentals_freshness", side_effect=RuntimeError("db at /home/andre/secret.db is locked")):
+        resp = client.get("/api/system/fundamentals-freshness")
+    assert resp.status_code == 500
+    assert resp.json() == {"status": "error", "message": "An internal error occurred. Check server logs for details."}

@@ -1656,6 +1656,58 @@ def prune_nextcloud_talk_stats(cutoff_date: str) -> int:
             conn.close()
 
 
+def record_fundamentals_refresh_run(started_at: str, due: Optional[int], refreshed: Optional[int], stopped_early: bool, rate_limits: Optional[int]) -> None:
+    """`due`/`refreshed`/`rate_limits` are NULL for a run that could not list the due dumps."""
+    finished_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+
+    def write():
+        conn = None
+        try:
+            conn = get_connection()
+            conn.execute(
+                "INSERT INTO fundamentals_refresh_runs (started_at, finished_at, due, refreshed, stopped_early, rate_limits) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
+                (started_at, finished_at, due, refreshed, int(stopped_early), rate_limits),
+            )
+            conn.commit()
+        finally:
+            if conn:
+                conn.close()
+
+    write_or_defer("Fundamentals refresh run record", write)
+
+
+def get_latest_fundamentals_refresh_run() -> Optional[dict]:
+    conn = None
+    try:
+        conn = get_connection()
+        row = conn.execute(
+            "SELECT started_at, finished_at, due, refreshed, stopped_early, rate_limits "
+            "FROM fundamentals_refresh_runs ORDER BY id DESC LIMIT 1"
+        ).fetchone()
+    finally:
+        if conn:
+            conn.close()
+    if row is None:
+        return None
+    keys = ("started_at", "finished_at", "due", "refreshed", "stopped_early", "rate_limits")
+    run = dict(zip(keys, tuple(row)))
+    run["stopped_early"] = bool(run["stopped_early"])
+    return run
+
+
+def prune_fundamentals_refresh_runs(cutoff: str) -> int:
+    conn = None
+    try:
+        conn = get_connection()
+        deleted = conn.execute("DELETE FROM fundamentals_refresh_runs WHERE finished_at < ?", (cutoff,)).rowcount
+        conn.commit()
+        return deleted
+    finally:
+        if conn:
+            conn.close()
+
+
 def get_intraday_volume_coverage(tickers: List[str]) -> dict:
     """{ticker: (coverage or None, computed_at as aware UTC datetime)} for the tickers that have a row."""
     if not tickers:

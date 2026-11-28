@@ -143,9 +143,76 @@ let metricsLoaded = false;
 function handleDiagnosticsToggle(detailsElement) {
     if (detailsElement.open && !metricsLoaded) {
         fetchSystemMetrics();
+        fetchFundamentalsFreshness();
     }
     if (detailsElement.open) {
         loadBackupStatus();
+    }
+}
+
+const FUND_FRESH_STATE_LABELS = { overdue: 'Overdue', expired: 'Expired', no_dump: 'No dump' };
+const FUND_FRESH_STATUS_LABELS = { green: 'OK', amber: 'Overdue', red: 'Attention' };
+
+function fundFreshCell(text, className) {
+    const td = document.createElement('td');
+    td.textContent = text;
+    if (className) td.className = className;
+    return td;
+}
+
+function fundFreshLastRunText(run) {
+    if (!run) return 'Last refresh: no run recorded yet.';
+    const when = run.finished_display || run.finished_at;
+    if (run.due === null) return `Last refresh: ${when}, could not list the due dumps.`;
+    if (run.due === 0) return `Last refresh: ${when}, nothing due.`;
+    const stopped = run.stopped_early ? `, stopped early after ${run.rate_limits} Yahoo rate limits` : '';
+    return `Last refresh: ${when}, ${run.refreshed.toLocaleString()} of ${run.due.toLocaleString()} due refreshed${stopped}.`;
+}
+
+async function fetchFundamentalsFreshness() {
+    const body = document.getElementById('fund-fresh-body');
+    try {
+        const response = await fetch('/api/system/fundamentals-freshness');
+        const data = await response.json();
+        if (!response.ok || data.status !== 'success') throw new Error('freshness unavailable');
+        const t = data.thresholds;
+        document.getElementById('fund-fresh-desc').textContent =
+            `Age of each ticker's Yahoo fundamentals dump, refetched by the Quantamental Analysis Engine when due. ` +
+            `Current: up to ${t.refresh_days} days; Due: up to ${t.overdue_days}; Overdue: up to ${t.max_age_days}; Expired: older. ` +
+            `Tickers that are blacklisted, ignored or never sent to Yahoo are left out.` +
+            (data.scope_available ? '' : ' The Market Universe is unreadable, so Other scan scope is empty and no refresh runs.');
+        body.replaceChildren(...data.rows.map((row) => {
+            const tr = document.createElement('tr');
+            if (row.key === 'total') tr.className = 'fund-fresh-total';
+            tr.append(
+                fundFreshCell(row.label),
+                ...['tickers', 'current', 'due', 'overdue', 'expired', 'no_dump'].map((k) => fundFreshCell(row[k].toLocaleString(), 'sub-val-col')),
+                fundFreshCell(FUND_FRESH_STATUS_LABELS[row.status], `fund-fresh-status fund-fresh-${row.status}`),
+            );
+            return tr;
+        }));
+        document.getElementById('fund-fresh-last-run').textContent = fundFreshLastRunText(data.last_run);
+        const shown = data.attention.length;
+        document.getElementById('fund-fresh-summary').textContent = shown < data.attention_total
+            ? `Tickers needing attention (${shown} oldest of ${data.attention_total.toLocaleString()})`
+            : `Tickers needing attention (${data.attention_total.toLocaleString()})`;
+        document.getElementById('fund-fresh-list').replaceChildren(...data.attention.map((item) => {
+            const tr = document.createElement('tr');
+            tr.append(
+                fundFreshCell(item.ticker),
+                fundFreshCell(item.group),
+                fundFreshCell(FUND_FRESH_STATE_LABELS[item.state]),
+                fundFreshCell(item.age_days === null ? '—' : `${item.age_days} days`, 'sub-val-col'),
+            );
+            return tr;
+        }));
+    } catch (e) {
+        console.error('Fundamentals Freshness failed to load', e);
+        const tr = document.createElement('tr');
+        const td = fundFreshCell('Could not load Fundamentals Freshness.');
+        td.colSpan = 8;
+        tr.append(td);
+        body.replaceChildren(tr);
     }
 }
 

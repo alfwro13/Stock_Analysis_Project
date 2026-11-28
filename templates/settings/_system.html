@@ -75,6 +75,34 @@
                     </div>
                 </div>
 
+                <h4 class="settings-panel-header text-cyan mt-30">📑 Fundamentals Freshness</h4>
+                <p class="settings-desc-sm mb-15" id="fund-fresh-desc">Age of each ticker's Yahoo fundamentals dump, refetched by the Quantamental Analysis Engine when due. Tickers that are blacklisted, ignored or never sent to Yahoo are left out.</p>
+                <div class="table-responsive">
+                    <table class="diag-table">
+                        <thead><tr>
+                            <th>Scope</th>
+                            <th>Tickers</th>
+                            <th><abbr title="Dump younger than the refresh interval.">Current</abbr></th>
+                            <th><abbr title="Past the refresh interval and waiting for the next run; normal over a weekend.">Due</abbr></th>
+                            <th><abbr title="Older than a healthy refresh cycle allows, so at least one refresh of it failed.">Overdue</abbr></th>
+                            <th><abbr title="Past the maximum age: no page serves its figures until it is refetched.">Expired</abbr></th>
+                            <th><abbr title="No dump on disk. Other scan scope tickers get no missing dump fetched, so there it is by design.">No dump</abbr></th>
+                            <th>Status</th>
+                        </tr></thead>
+                        <tbody id="fund-fresh-body"><tr><td colspan="8">--</td></tr></tbody>
+                    </table>
+                </div>
+                <p class="settings-desc-sm mt-10" id="fund-fresh-last-run">Last refresh: --</p>
+                <details class="fund-fresh-details" id="fund-fresh-details">
+                    <summary id="fund-fresh-summary">Tickers needing attention</summary>
+                    <div class="table-responsive">
+                        <table class="diag-table">
+                            <thead><tr><th>Ticker</th><th>Scope</th><th>State</th><th>Age</th></tr></thead>
+                            <tbody id="fund-fresh-list"></tbody>
+                        </table>
+                    </div>
+                </details>
+
                 <h4 class="settings-panel-header text-cyan mt-30">⏱️ Master APScheduler Matrix</h4>
                 <p class="settings-desc-sm mb-15">Overview of all background threads currently registered with the APScheduler engine.</p>
                 <table class="scheduler-table" id="scheduler-matrix">
