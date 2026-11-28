@@ -69,7 +69,7 @@ Each observation is a 6-dimensional vector. The features are computed identicall
 
 | # | Feature | Formula | Source (training) | Source (live) |
 |---|---------|---------|------------------|---------------|
-| 1 | `volume_ratio` | `Volume / rolling_20_mean(Volume)` | Parquet `Volume` column | `df_intraday['Volume'].sum() / df_hist['Volume'].tail(20).mean()` |
+| 1 | `volume_ratio` | `Volume / rolling_20_mean(Volume)` | Parquet `Volume` column | `projected_full_day_volume / df_hist['Volume'].tail(20).mean()` |
 | 2 | `rsi_14` | Wilder RSI, 14-period | `ta.momentum.RSIIndicator` on Parquet Close | `asset_meta['rsi_14']` from `quant_signals` |
 | 3 | `daily_return_pct` | `(Close_t - Close_{t-1}) / Close_{t-1} × 100` | Parquet Close pct_change | `(current_price - df_hist['Close'].iloc[-1]) / df_hist['Close'].iloc[-1] × 100` |
 | 4 | `sma50_dist_pct` | `(Close - SMA50) / SMA50 × 100` | `ta.trend.SMAIndicator`, window=50 | `(current_price - asset_meta['sma_50']) / asset_meta['sma_50'] × 100` |
@@ -78,6 +78,7 @@ Each observation is a 6-dimensional vector. The features are computed identicall
 
 **Feature design rationale:**
 
+- `volume_ratio` uses the projected full-day volume, as the Isolation Forest is trained on full-day ratios. Projection: the 5m volume so far, divided by the typical share of the day's volume traded by the end of the last 5m bar (`constants.INTRADAY_VOLUME_CURVES`: NYSE front-loaded, LSE stocks back-loaded, LSE ETFs separate; the ticker's own exchange session from `time_engine.market_window_utc`, early closes included), divided by the ticker's coverage (`intraday_volume_coverage`: 5m total over the daily bar's `Volume`, latest 20 completed sessions, at least 10). No projection exists until `INTRADAY_VOLUME_MIN_SHARE` (5%) of a typical day has traded (about 5 minutes on NYSE, about 30 on LSE), for an exchange without a curve, or for a ticker without coverage; anomaly scoring and Anomaly alerts are skipped for that ticker until it does. The same projection feeds the Crash alert's volume sentence ("Selling pressure is severe" / "relatively low/average volume") and Moonshot's low-volume breakout caution, which are omitted while no projection exists.
 - `volume_ratio` captures institutional flow — heavy volume during price flat or declining is a distribution signal.
 - `rsi_14` captures momentum divergence from price. RSI at 80 during a price spike is different from RSI at 80 during a price decline.
 - `daily_return_pct` is the raw price shock magnitude.

@@ -249,3 +249,19 @@ SENTIMENT_CHART_DPI        = 300      # export resolution for Nextcloud alert ch
 SENTIMENT_VISUAL_CACHE_TTL_SECONDS = 3600  # Macro Sentiment charts and Fear & Greed value; every rebuild makes a live CNN request
 
 FREETRADE_IGNORED_MICS = frozenset({"XAMS", "XBRU", "XWBO", "XSTO", "XHEL", "XPAR", "MTAA", "XETR", "XLIS"})  # exchanges the app does not cover; the Freetrade sync skips them without a warning
+
+# Cumulative share of a regular session's Yahoo 5m-bar volume by minutes from the open (median of 60 sessions of liquid US
+# tickers, LSE stocks and LSE ETFs). Volume is front-loaded in the US and back-loaded on the LSE, so a linear pace misreads both.
+INTRADAY_VOLUME_CURVES = {
+    "NYSE": ((5, 0.087), (15, 0.125), (30, 0.180), (60, 0.286), (90, 0.363), (120, 0.433), (150, 0.489), (180, 0.547),
+             (210, 0.600), (240, 0.652), (270, 0.702), (300, 0.741), (330, 0.793), (360, 0.858), (385, 0.934), (390, 1.0)),
+    "LSE": ((5, 0.0), (15, 0.025), (30, 0.053), (60, 0.090), (90, 0.124), (120, 0.162), (150, 0.201), (180, 0.247),
+            (210, 0.279), (240, 0.319), (270, 0.367), (300, 0.401), (330, 0.446), (360, 0.506), (390, 0.573),
+            (420, 0.707), (450, 0.806), (480, 0.892), (505, 0.976), (510, 1.0)),
+    "LSE_ETF": ((5, 0.0), (15, 0.022), (30, 0.041), (60, 0.090), (90, 0.133), (120, 0.201), (150, 0.271), (180, 0.333),
+                (210, 0.371), (240, 0.428), (270, 0.469), (300, 0.520), (330, 0.574), (360, 0.633), (390, 0.700),
+                (420, 0.762), (450, 0.858), (480, 0.928), (505, 0.990), (510, 1.0)),
+}
+INTRADAY_VOLUME_MIN_SHARE = 0.05  # below this share of the day's volume the projection is mostly noise (LSE opening bars are often empty), so no volume verdict is given yet
+INTRADAY_VOLUME_COVERAGE_SESSIONS = 20  # completed sessions compared to learn each ticker's 5m-bars-to-daily-bar volume ratio
+INTRADAY_VOLUME_COVERAGE_MIN_SESSIONS = 10  # fewer matched sessions leave the ratio NULL and the volume verdict unset

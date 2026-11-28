@@ -3,7 +3,7 @@ import math
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 
-from constants import QUOTE_CHANGE_TOLERANCE_PCT
+from constants import INTRADAY_VOLUME_CURVES, INTRADAY_VOLUME_MIN_SHARE, QUOTE_CHANGE_TOLERANCE_PCT
 from db.database import get_connection, get_instrument_sessions, get_ticker_registry
 from time_engine import (
     EXCHANGE_HOURS, is_exchange_holiday, is_trading_session, last_reported_session_end_utc,
@@ -375,3 +375,43 @@ def is_ticker_quote_settled(
     if exchange_state_memo is not None:
         exchange_state_memo[memo_key] = settled
     return settled
+
+
+def volume_curve_key(exchange: str, quote_type: Optional[str]) -> Optional[str]:
+    """Key into constants.INTRADAY_VOLUME_CURVES, or None for an exchange with no measured curve."""
+    key = "LSE_ETF" if exchange == "LSE" and quote_type == "ETF" else exchange
+    return key if key in INTRADAY_VOLUME_CURVES else None
+
+
+def session_volume_share(curve_key: str, elapsed_fraction: float) -> float:
+    """Typical share of a session's 5m-bar volume traded by *elapsed_fraction* of it; an early close compresses the curve."""
+    curve = INTRADAY_VOLUME_CURVES[curve_key]
+    minutes = min(max(elapsed_fraction, 0.0), 1.0) * curve[-1][0]
+    prev_minute, prev_share = 0, 0.0
+    for minute, share in curve:
+        if minutes <= minute:
+            return prev_share + (share - prev_share) * (minutes - prev_minute) / (minute - prev_minute)
+        prev_minute, prev_share = minute, share
+    return 1.0
+
+
+def projected_session_volume(
+    session_volume: Optional[float],
+    curve_key: Optional[str],
+    session_open_utc: datetime,
+    session_close_utc: datetime,
+    data_through_utc: datetime,
+    coverage: Optional[float],
+) -> Optional[float]:
+    """Full-day volume in daily-bar units from the 5m volume so far; *coverage* is the ticker's 5m-bar total over its
+    daily-bar Volume (Yahoo's LSE 5m bars omit the closing auction, its US ones the extended-hours trades).
+    None while the session is too young for a verdict or no curve or coverage exists."""
+    if session_volume is None or curve_key is None or not coverage or coverage <= 0:
+        return None
+    session_seconds = (session_close_utc - session_open_utc).total_seconds()
+    if session_seconds <= 0:
+        return None
+    share = session_volume_share(curve_key, (data_through_utc - session_open_utc).total_seconds() / session_seconds)
+    if share < INTRADAY_VOLUME_MIN_SHARE:
+        return None
+    return session_volume / share / coverage

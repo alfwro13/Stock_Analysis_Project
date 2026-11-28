@@ -702,3 +702,21 @@ def test_resolve_live_price_floor_keeps_the_live_price_when_the_fallback_is_not_
     live_epoch, floor = 1_000_000.0, 1_010_000.0
     stamp = _utc_stamp(live_epoch + 60)
     assert db_helpers.resolve_live_price(186.99, live_epoch, 193.94, stamp, live_floor_epoch=floor) == (186.99, False)
+
+
+# ── intraday_volume_coverage ──────────────────────────────────────────────────
+
+@pytest.mark.db
+@pytest.mark.restore_tables("intraday_volume_coverage")
+def test_save_intraday_volume_coverage_upserts_and_drops_unscanned_tickers():
+    db_helpers.save_intraday_volume_coverage([("IVC_A", 0.8, 20), ("IVC_B", None, 4), ("IVC_GONE", 0.5, 20)], {"IVC_A", "IVC_B", "IVC_GONE"})
+    db_helpers.save_intraday_volume_coverage([("IVC_A", 0.9, 18)], {"IVC_A", "IVC_B"})
+    got = db_helpers.get_intraday_volume_coverage(["IVC_A", "IVC_B", "IVC_GONE", "IVC_NONE"])
+    assert got["IVC_A"][0] == 0.9
+    assert got["IVC_B"][0] is None
+    assert "IVC_GONE" not in got and "IVC_NONE" not in got
+    assert got["IVC_A"][1].tzinfo is not None
+
+
+def test_get_intraday_volume_coverage_empty_list_returns_empty_dict():
+    assert db_helpers.get_intraday_volume_coverage([]) == {}

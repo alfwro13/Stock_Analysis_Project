@@ -18,13 +18,23 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+import time_engine
 from db.database import create_account, get_connection, get_performance_cache
+from db.helpers import get_intraday_volume_coverage, save_intraday_volume_coverage
 from intraday_orchestrator import IntradayOrchestrator, format_currency, build_stock_url
 
-pytestmark = [pytest.mark.restore_tables("account_benchmark_tickers", "account_performance_cache", "alert_state", "asset_profiles", "stock_signals", "system_notifications", "yahoo_api_call_log", "yahoo_api_stats"), pytest.mark.usefixtures("offline_yahoo")]
+pytestmark = [pytest.mark.restore_tables("account_benchmark_tickers", "account_performance_cache", "alert_state", "asset_profiles", "intraday_volume_coverage", "stock_signals", "system_notifications", "yahoo_api_call_log", "yahoo_api_stats"), pytest.mark.usefixtures("offline_yahoo")]
 
 
 # ── format_currency ───────────────────────────────────────────────────────────
+
+@pytest.fixture(autouse=True)
+def _clear_coverage_attempts():
+    import intraday_orchestrator
+    intraday_orchestrator._coverage_attempted.clear()
+    yield
+    intraday_orchestrator._coverage_attempted.clear()
+
 
 class TestFormatCurrency:
 
@@ -261,9 +271,9 @@ class TestQuoteSettlementGating:
     @staticmethod
     def _hist_df():
         idx = pd.date_range(end=datetime.now(timezone.utc).date(), periods=25, freq="D")
-        return pd.DataFrame({"Close": [90.0 + i * 0.1 for i in range(25)]}, index=idx)
+        return pd.DataFrame({"Close": [90.0 + i * 0.1 for i in range(25)], "Volume": [10000.0] * 25}, index=idx)
 
-    def _run_with_ticker(self, tmp_path, ticker="VOD.L", currency="GBP", is_settled=False):
+    def _run_with_ticker(self, tmp_path, ticker="VOD.L", currency="GBP", is_settled=False, anomaly=False):
         conn = get_connection()
         conn.execute(
             "INSERT OR REPLACE INTO stock_signals (ticker, currency, company_name) VALUES (?, ?, ?)",
@@ -278,6 +288,7 @@ class TestQuoteSettlementGating:
         orchestrator.config.setdefault("SCHEDULING", {})["CRASH_ALERTS"] = {
             "ENABLED": True, "START_TIME": "00:00", "END_TIME": "23:59",
         }
+        orchestrator.config.setdefault("NOTIFICATIONS", {})["ANOMALY_ALERTS"] = {"ENABLED": anomaly}
 
         with (
             patch("intraday_orchestrator.HISTORICAL_DIR", tmp_path),
@@ -331,11 +342,39 @@ class TestQuoteSettlementGating:
 
     @pytest.mark.db
     def test_crash_evaluate_receives_todays_session_volume_and_its_projection(self, tmp_path):
-        with patch("crash_engine.CrashEngine.evaluate", return_value=None) as mock_evaluate:
+        with patch("crash_engine.CrashEngine.evaluate", return_value=None) as mock_evaluate, \
+             patch.object(IntradayOrchestrator, "_volume_coverage", return_value={"AAPL": 0.9}), \
+             patch.object(IntradayOrchestrator, "_projected_volume", return_value=12345.0) as mock_projected:
             self._run_with_ticker(tmp_path, ticker="AAPL", currency="USD", is_settled=True)
         session_volume, projected_volume = mock_evaluate.call_args.args[-2:]
         assert session_volume == 5000.0
-        assert projected_volume >= session_volume
+        assert projected_volume == 12345.0
+        assert mock_projected.call_args.args[1] == "NYSE"
+        assert mock_projected.call_args.args[4] == 0.9
+
+    @pytest.mark.db
+    def test_crash_evaluate_gets_no_projection_without_coverage(self, tmp_path):
+        with patch("crash_engine.CrashEngine.evaluate", return_value=None) as mock_evaluate:
+            self._run_with_ticker(tmp_path, ticker="AAPL", currency="USD", is_settled=True)
+        assert mock_evaluate.call_args.args[-2:] == (5000.0, None)
+
+    @pytest.mark.db
+    def test_anomaly_is_not_scored_while_projected_volume_is_none(self, tmp_path):
+        with patch("crash_engine.CrashEngine.evaluate", return_value=None), \
+             patch.object(IntradayOrchestrator, "_projected_volume", return_value=None), \
+             patch("anomaly_engine.AnomalyEngine.score", return_value=None) as mock_score:
+            self._run_with_ticker(tmp_path, ticker="AAPL", currency="USD", is_settled=True, anomaly=True)
+        mock_score.assert_not_called()
+
+    @pytest.mark.db
+    def test_anomaly_volume_feature_is_projected_volume_over_20d_mean(self, tmp_path):
+        with patch("crash_engine.CrashEngine.evaluate", return_value=None), \
+             patch.object(IntradayOrchestrator, "_projected_volume", return_value=25000.0), \
+             patch("anomaly_engine.AnomalyEngine.score", return_value=None) as mock_score:
+            self._run_with_ticker(tmp_path, ticker="AAPL", currency="USD", is_settled=True, anomaly=True)
+        mock_score.assert_called_once()
+        assert mock_score.call_args.args[0] == "AAPL"
+        assert mock_score.call_args.args[1][0] == pytest.approx(2.5)
 
 
 class TestAssetMetadataPeerGroupAndEtfName:
@@ -372,3 +411,115 @@ class TestAssetMetadataPeerGroupAndEtfName:
         assert meta["PEERG_ETF"]["long_name"] == "Invesco EQQQ NASDAQ-100 UCITS ETF"
         assert meta["PEERG_EQ"]["long_name"] is None
         dump.assert_called_once_with("PEERG_ETF")
+
+
+class TestVolumeCoverageFromBars:
+    """Yahoo's 5m bars omit the LSE closing auction and US extended-hours trades, so the ratio of their total to the daily bar's Volume scales the projection."""
+
+    @staticmethod
+    def _write_daily(tmp_path, ticker, days, volume):
+        idx = pd.DatetimeIndex([pd.Timestamp(d) for d in days])
+        pd.DataFrame({"Close": 1.0, "Volume": float(volume)}, index=idx).to_parquet(tmp_path / f"{ticker}.parquet", engine="pyarrow")
+
+    @staticmethod
+    def _bars(days, volumes=(100.0, 200.0)):
+        stamps = [pd.Timestamp(f"{d} 15:00") + pd.Timedelta(minutes=5 * i) for d in days for i in range(len(volumes))]
+        return pd.DataFrame({"Volume": list(volumes) * len(days)}, index=pd.DatetimeIndex(stamps))
+
+    @staticmethod
+    def _past_days(n):
+        today = time_engine.exchange_local_date("NYSE")
+        return [(today - pd.Timedelta(days=i)).strftime("%Y-%m-%d") for i in range(n, 0, -1)]
+
+    def test_ratio_of_bar_volume_to_daily_volume_excluding_todays_partial_session(self, tmp_path):
+        past = self._past_days(12)
+        today = time_engine.exchange_local_date("NYSE").strftime("%Y-%m-%d")
+        self._write_daily(tmp_path, "AAPL", past + [today], 600.0)
+        df5 = pd.concat([self._bars(past), self._bars([today], (50000.0,))])
+        with patch("intraday_orchestrator.HISTORICAL_DIR", tmp_path):
+            coverage, sessions = IntradayOrchestrator._coverage_from_bars("AAPL", df5, "NYSE")
+        assert coverage == pytest.approx(0.5)
+        assert sessions == 12
+
+    def test_only_the_latest_twenty_sessions_are_compared(self, tmp_path):
+        past = self._past_days(25)
+        self._write_daily(tmp_path, "AAPL", past, 600.0)
+        with patch("intraday_orchestrator.HISTORICAL_DIR", tmp_path):
+            _, sessions = IntradayOrchestrator._coverage_from_bars("AAPL", self._bars(past), "NYSE")
+        assert sessions == 20
+
+    def test_fewer_than_ten_matched_sessions_leave_the_ratio_null(self, tmp_path):
+        past = self._past_days(9)
+        self._write_daily(tmp_path, "AAPL", past, 600.0)
+        with patch("intraday_orchestrator.HISTORICAL_DIR", tmp_path):
+            assert IntradayOrchestrator._coverage_from_bars("AAPL", self._bars(past), "NYSE") == (None, 9)
+
+    def test_missing_daily_parquet_leaves_the_ratio_null(self, tmp_path):
+        with patch("intraday_orchestrator.HISTORICAL_DIR", tmp_path):
+            assert IntradayOrchestrator._coverage_from_bars("NOFILE", self._bars(self._past_days(12)), "NYSE") == (None, 0)
+
+
+class TestVolumeCoverageRefresh:
+    def _orch(self):
+        return IntradayOrchestrator()
+
+    @staticmethod
+    def _store(ticker, coverage, computed_at):
+        save_intraday_volume_coverage([(ticker, coverage, 20)], {ticker})
+        conn = get_connection()
+        try:
+            conn.execute("UPDATE intraday_volume_coverage SET computed_at = ? WHERE ticker = ?", (computed_at, ticker))
+            conn.commit()
+        finally:
+            conn.close()
+
+    @pytest.mark.db
+    def test_row_computed_after_the_last_settled_close_is_not_refetched(self):
+        self._store("VCR_FRESH", 0.8, datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"))
+        with patch("intraday_orchestrator.yahoo_engine.get_intraday", return_value={}) as fetch:
+            result = self._orch()._volume_coverage(["VCR_FRESH"], {"VCR_FRESH": {"currency": "USD"}})
+        assert result == {"VCR_FRESH": 0.8}
+        assert not any(c.kwargs.get("period") == "1mo" for c in fetch.call_args_list)
+
+    @pytest.mark.db
+    def test_stale_or_missing_row_is_refetched_and_saved(self):
+        self._store("VCR_OLD", 0.1, "2000-01-01 00:00:00")
+        df5 = pd.DataFrame({"Volume": [1.0]}, index=pd.DatetimeIndex(["2026-01-02 15:00"]))
+        with patch("intraday_orchestrator.yahoo_engine.get_intraday", return_value={"VCR_OLD": df5, "VCR_NEW": df5}) as fetch, \
+             patch.object(IntradayOrchestrator, "_coverage_from_bars", side_effect=[(0.7, 15), (None, 3)]) as cov:
+            result = self._orch()._volume_coverage(["VCR_OLD", "VCR_NEW"], {"VCR_OLD": {"currency": "USD"}, "VCR_NEW": {"currency": "USD"}})
+        fetch.assert_called_once_with(["VCR_OLD", "VCR_NEW"], period="1mo", interval="5m")
+        assert cov.call_count == 2
+        assert result == {"VCR_OLD": 0.7, "VCR_NEW": None}
+        saved = get_intraday_volume_coverage(["VCR_OLD", "VCR_NEW"])
+        assert saved["VCR_OLD"][0] == 0.7
+        assert saved["VCR_NEW"][0] is None
+        assert saved["VCR_OLD"][1] > datetime(2026, 1, 1, tzinfo=timezone.utc)
+
+    @pytest.mark.db
+    def test_empty_fetch_keeps_the_stored_value(self):
+        self._store("VCR_KEEP", 0.6, "2000-01-01 00:00:00")
+        with patch("intraday_orchestrator.yahoo_engine.get_intraday", return_value={"VCR_KEEP": pd.DataFrame()}):
+            result = self._orch()._volume_coverage(["VCR_KEEP"], {"VCR_KEEP": {"currency": "USD"}})
+        assert result == {"VCR_KEEP": 0.6}
+        assert get_intraday_volume_coverage(["VCR_KEEP"])["VCR_KEEP"][0] == 0.6
+
+    @pytest.mark.db
+    def test_ticker_with_no_bars_is_retried_only_at_the_next_settled_session(self):
+        first = datetime(2026, 6, 1, 20, 0, tzinfo=timezone.utc)
+        later = datetime(2026, 6, 2, 20, 0, tzinfo=timezone.utc)
+        meta = {"VCR_NONE": {"currency": "USD"}}
+        orch = self._orch()
+
+        def fetches(fetch):
+            return sum(1 for c in fetch.call_args_list if c.kwargs.get("period") == "1mo")
+
+        with patch("intraday_orchestrator.yahoo_engine.get_intraday", return_value={}) as fetch, \
+             patch("intraday_orchestrator.time_engine.last_settled_session_close_utc", return_value=first):
+            orch._volume_coverage(["VCR_NONE"], meta)
+            orch._volume_coverage(["VCR_NONE"], meta)
+            assert fetches(fetch) == 1
+        with patch("intraday_orchestrator.yahoo_engine.get_intraday", return_value={}) as fetch, \
+             patch("intraday_orchestrator.time_engine.last_settled_session_close_utc", return_value=later):
+            orch._volume_coverage(["VCR_NONE"], meta)
+            assert fetches(fetch) == 1
