@@ -138,6 +138,24 @@ class TestGetLeaderboard:
         assert losers[0]["ticker"] == T_A
         assert movers[0]["ticker"] == T_B  # 10% > 9% in absolute terms
 
+    def test_predicted_move_is_measured_from_the_band_close_not_the_current_price(self):
+        _seed_quant_signal(T_A, "2024-01-02", 100.0, 95.0, 105.0)
+        with patch("predicted_movers_engine.get_portfolio_tickers", return_value=[T_A]), \
+             patch("predicted_movers_engine.current_price_map", return_value={T_A: (106.0, "USD")}), \
+             patch("predicted_movers_engine.get_company_names", return_value={}):
+            results = get_leaderboard(scope=SCOPE_PORTFOLIO)
+        assert results[0]["predicted_move_pct"] == pytest.approx(0.0)
+        assert results[0]["current_price"] == 106.0
+
+    def test_non_positive_band_close_drops_row(self):
+        _seed_quant_signal(T_A, "2024-01-02", 0.0, 95.0, 105.0)
+        _seed_quant_signal(T_B, "2024-01-02", None, 95.0, 105.0)
+        with patch("predicted_movers_engine.get_portfolio_tickers", return_value=[T_A, T_B]), \
+             patch("predicted_movers_engine.current_price_map",
+                   return_value={T_A: (100.0, "USD"), T_B: (100.0, "USD")}), \
+             patch("predicted_movers_engine.get_company_names", return_value={}):
+            assert get_leaderboard(scope=SCOPE_PORTFOLIO) == []
+
     def test_missing_current_price_drops_row(self):
         _seed_quant_signal(T_C, "2024-01-02", 100.0, 95.0, 105.0)
         with patch("predicted_movers_engine.get_portfolio_tickers", return_value=[T_C]), \

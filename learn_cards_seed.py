@@ -2290,7 +2290,7 @@ CARDS = [
             "It only shows tickers that have already crashed",
             "It replaces the ML Quantile Price Bands with a simpler point forecast",
         ],
-        "explanation": """<p>The Market Reports leaders/laggards rank tickers by <strong>actual</strong> historical price movement — what already happened. <strong>Predicted Movers</strong> instead ranks by what the ML model currently <em>expects</em> to happen: the midpoint of the ML Quantile Price Band (Q10/Q90, a 10-trading-day-forward price range) versus the ticker's current price, expressed as a percentage move.</p>
+        "explanation": """<p>The Market Reports leaders/laggards rank tickers by <strong>actual</strong> historical price movement — what already happened. <strong>Predicted Movers</strong> instead ranks by what the ML model currently <em>expects</em> to happen: the midpoint of the ML Quantile Price Band (Q10/Q90, a 10-trading-day-forward price range) versus the close the band was built on, expressed as a percentage move.</p>
 <p>This is purely a new way of sorting and viewing data the app already computes every night — no new model, no new prediction. Gainers are the tickers with the highest predicted upside, Losers the lowest (most negative), and Movers the largest predicted move in either direction.</p>""",
     },
     {

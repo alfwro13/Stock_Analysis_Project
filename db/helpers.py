@@ -955,7 +955,7 @@ def get_first_close_on_or_after(conn, ticker: str, date: str) -> Optional[dict]:
 
 
 def get_latest_quantile_bands(tickers: list) -> list:
-    """Latest quant_signals row per ticker with a price_q10/price_q90 scored inside the ml_fresh_since() window; the one reader of the ML Quantile Price Band for Predicted Movers, Stable Shortlist, position sizing and /earnings-volatility."""
+    """Latest quant_signals row per ticker with a price_q10/price_q90 scored inside the ml_fresh_since() window and no newer close for that ticker; the one reader of the ML Quantile Price Band for Predicted Movers, Stable Shortlist, position sizing and /earnings-volatility."""
     if not tickers:
         return []
     fresh_since = ml_fresh_since()
@@ -974,6 +974,11 @@ def get_latest_quantile_bands(tickers: list) -> list:
                       WHERE qs2.ticker = qs.ticker
                         AND qs2.price_q10 IS NOT NULL AND qs2.price_q90 IS NOT NULL
                         AND qs2.quantile_scored_at >= ?
+                  )
+                  AND NOT EXISTS (
+                      SELECT 1 FROM quant_signals qs3
+                      WHERE qs3.ticker = qs.ticker AND qs3.date > qs.date
+                        AND qs3.close_price IS NOT NULL
                   )""",
             [*tickers, fresh_since, fresh_since],
         ).fetchall()

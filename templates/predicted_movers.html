@@ -7,7 +7,7 @@
 <p class="page-subtitle mb-4">
     Ranks tickers by ML-<strong>predicted</strong> forward price move — the midpoint of the
     <abbr title="10-trading-day-forward 10th/90th percentile price band from the quantile regression model.">ML Quantile Price Band</abbr>
-    versus the current price — not actual historical movement. Predictions are scored nightly;
+    versus the close it was built on — not actual historical movement. Predictions are scored nightly;
     see the <a href="/predicted-movers/accuracy">Prediction Accuracy</a> page for how reliable
     they've actually been. The two Stable Shortlist tabs turn the nightly rankings into slow-moving weekly lists.
 </p>
@@ -64,7 +64,7 @@
                             <th class="tm-th-blue tm-th-left">Ticker</th>
                             <th class="tm-th-muted tm-th-left">Company</th>
                             <th class="tm-th-muted tm-th-right">Current Price</th>
-                            <th class="tm-th-amber tm-th-right"><abbr title="Predicted move from current price to the quantile band midpoint, over the next ~10 trading days.">Predicted Move %</abbr></th>
+                            <th class="tm-th-amber tm-th-right"><abbr title="Predicted move from the close on the Quant Signals Date to the quantile band midpoint, over the ~10 trading days after it.">Predicted Move %</abbr></th>
                             <th class="tm-th-muted tm-th-right"><abbr title="10th percentile of the predicted 10-trading-day-forward price.">Q10</abbr></th>
                             <th class="tm-th-muted tm-th-right"><abbr title="90th percentile of the predicted 10-trading-day-forward price.">Q90</abbr></th>
                             <th class="tm-th-dimmed tm-th-right">Quant Signals Date</th>

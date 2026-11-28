@@ -5000,7 +5000,7 @@ Recomputes aligned price history for both tickers from parquet on demand — not
 
 ## 27. Predicted Movers
 
-Leaderboard ranking tickers by ML-predicted 10-trading-day forward price move (quantile regression band midpoint vs current price), a linked prediction-accuracy scorecard for Portfolio and Watchlist tickers, and the Stable Shortlist tabs. Portfolio and Watchlist are separate lists: a ticker that is both held and watched belongs to Portfolio only. See `assets/predicted_movers.md` for the leaderboard, scope and scoring-timeline reference and `assets/stable_shortlist.md` for the shortlists.
+Leaderboard ranking tickers by ML-predicted 10-trading-day forward price move (quantile regression band midpoint vs the close the band was built on), a linked prediction-accuracy scorecard for Portfolio and Watchlist tickers, and the Stable Shortlist tabs. Portfolio and Watchlist are separate lists: a ticker that is both held and watched belongs to Portfolio only. See `assets/predicted_movers.md` for the leaderboard, scope and scoring-timeline reference and `assets/stable_shortlist.md` for the shortlists.
 
 ### `GET /predicted-movers`
 
@@ -5012,7 +5012,7 @@ HTML page. Per-ticker prediction accuracy scorecard with a Portfolio/Watchlist t
 
 ### `GET /api/predicted-movers/leaderboard`
 
-Query params: `scope` (`portfolio` default, `watchlist` or `universe`; the `portfolio_watchlist` value is not accepted and returns 422), `sort` (`movers` default, or `gainers`/`losers`), `limit` (default `200`, max `1000`). Returns tickers ranked by predicted % move for `scope`, ordered per `sort`.
+Query params: `scope` (`portfolio` default, `watchlist` or `universe`; the `portfolio_watchlist` value is not accepted and returns 422), `sort` (`movers` default, or `gainers`/`losers`), `limit` (default `200`, max `1000`). Returns tickers ranked by predicted % move for `scope`, ordered per `sort`. `predicted_move_pct` is measured from `close_price` (the close on `quant_signals_date`), not from `current_price`. A ticker with a newer `quant_signals` close than its band has no band and is absent until re-scored.
 
 **Response**
 

@@ -546,7 +546,7 @@ def get_predicted_movers_leaderboard(
     sort: str = Query(default="movers", pattern=r"^(gainers|losers|movers)$"),
     limit: int = Query(default=200, ge=1, le=1000),
 ):
-    """Returns tickers ranked by ML-predicted 10-trading-day forward % move (quantile band midpoint vs current price) for `scope`, sorted by `sort`."""
+    """Returns tickers ranked by ML-predicted 10-trading-day forward % move (quantile band midpoint vs the close the band was built on) for `scope`, sorted by `sort`."""
     try:
         from predicted_movers_engine import get_leaderboard
         results = get_leaderboard(scope=scope, sort_mode=sort, limit=limit)
