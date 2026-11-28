@@ -1183,6 +1183,16 @@ def get_system_metrics():
             conn.close()
 
 
+@system_router.get("/system/fundamentals-freshness")
+def get_fundamentals_freshness():
+    try:
+        from universe_fundamentals_engine import fundamentals_freshness
+        return JSONResponse({"status": "success", **fundamentals_freshness()})
+    except Exception as e:
+        logger.error("Failed to compute fundamentals freshness: %s", e)
+        return _error_500(e)
+
+
 @system_router.get("/system/checks")
 def get_system_checks(request: Request):
     from system_check_engine import run_system_checks

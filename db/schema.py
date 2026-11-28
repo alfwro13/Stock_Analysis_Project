@@ -1538,6 +1538,18 @@ def init_db() -> None:
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_mcp_audit_log_logged_at ON mcp_audit_log (logged_at)")
 
         cursor.execute('''
+            CREATE TABLE IF NOT EXISTS fundamentals_refresh_runs (
+                id            INTEGER PRIMARY KEY AUTOINCREMENT,
+                started_at    TEXT NOT NULL,
+                finished_at   TEXT NOT NULL,
+                due           INTEGER,
+                refreshed     INTEGER,
+                stopped_early INTEGER NOT NULL DEFAULT 0,
+                rate_limits   INTEGER
+            )
+        ''')
+
+        cursor.execute('''
             CREATE TABLE IF NOT EXISTS nextcloud_talk_stats (
                 stat_date        TEXT PRIMARY KEY,
                 sent             INTEGER NOT NULL DEFAULT 0,

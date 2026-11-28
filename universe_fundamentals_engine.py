@@ -8,15 +8,15 @@ from typing import List, Optional
 
 from config import FUNDAMENTALS_DIR
 from constants import (
-    FUNDAMENTALS_MAX_AGE_DAYS, FUNDAMENTALS_REFRESH_DAYS, FUNDAMENTALS_REFRESH_MAX_RATE_LIMITS,
-    FUNDAMENTALS_REFRESH_SETTLE_SECONDS,
+    FUNDAMENTALS_FRESHNESS_LIST_MAX, FUNDAMENTALS_MAX_AGE_DAYS, FUNDAMENTALS_OVERDUE_DAYS, FUNDAMENTALS_REFRESH_DAYS,
+    FUNDAMENTALS_REFRESH_MAX_RATE_LIMITS, FUNDAMENTALS_REFRESH_SETTLE_SECONDS,
 )
 from yahoo_engine import yahoo_engine
 from db.database import get_connection, log_notification
-from db.helpers import get_portfolio_watchlist_tickers
+from db.helpers import get_latest_fundamentals_refresh_run, get_portfolio_watchlist_tickers, record_fundamentals_refresh_run
 from fundamentals_helpers import calculate_peter_lynch_peg, currency_safe_price_ratios, dividend_yield_fraction
 from profile_engine import load_blacklist
-from time_engine import parse_stored_utc
+from time_engine import fmt_stored_utc, parse_stored_utc
 from tools.network_engine import wait_for_yahoo_rate_limit_reset, yahoo_rate_limit_trips
 from universe_deep_sync_engine import _get_universe_target_tickers
 from utils import (
@@ -82,20 +82,24 @@ def _due_fundamentals_tickers(scope: set) -> list:
 
 def refresh_due_fundamentals() -> None:
     """Refetches every due dump ahead of the universe Quant Scan; never raises, and a ticker that fails stays due for the next run."""
+    started_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
     try:
         from quant_signals import QuantEngine
         scope = QuantEngine._scan_scope()
         due = _due_fundamentals_tickers(scope) if scope else []
     except Exception:
         logger.error("Fundamentals refresh: could not list the due dumps.", exc_info=True)
+        _record_refresh_run(started_at, None, None, False, None)
         return
     if not due:
         logger.info("Fundamentals refresh: nothing due.")
+        _record_refresh_run(started_at, 0, 0, False, 0)
         return
 
     logger.info("Fundamentals refresh: %s dump(s) due.", len(due))
     trips_at_start = trips_seen = yahoo_rate_limit_trips()
     refreshed = 0
+    stopped_early = False
     for ticker in due:
         try:
             _fetch_info(ticker)
@@ -108,6 +112,7 @@ def refresh_due_fundamentals() -> None:
         trips = yahoo_rate_limit_trips()
         if trips - trips_at_start >= FUNDAMENTALS_REFRESH_MAX_RATE_LIMITS:
             logger.warning("Fundamentals refresh stopped after %s Yahoo rate limits; the rest are retried next run.", trips - trips_at_start)
+            stopped_early = True
             break
         if trips != trips_seen:
             wait_for_yahoo_rate_limit_reset()
@@ -116,6 +121,101 @@ def refresh_due_fundamentals() -> None:
         else:
             time.sleep(0.4)
     logger.info("Fundamentals refresh: %s of %s due dump(s) refreshed.", refreshed, len(due))
+    _record_refresh_run(started_at, len(due), refreshed, stopped_early, yahoo_rate_limit_trips() - trips_at_start)
+
+
+def _record_refresh_run(started_at: str, due: Optional[int], refreshed: Optional[int], stopped_early: bool, rate_limits: Optional[int]) -> None:
+    try:
+        record_fundamentals_refresh_run(started_at, due, refreshed, stopped_early, rate_limits)
+    except Exception:
+        logger.error("Fundamentals refresh: could not record the run.", exc_info=True)
+
+
+_FRESHNESS_GROUPS = (
+    ("portfolio_watchlist", "Portfolio & Watchlist"),
+    ("index", "Index universe (others)"),
+    ("other", "Other scan scope"),
+)
+_FRESHNESS_BUCKETS = ("current", "due", "overdue", "expired", "no_dump")
+_STATUS_RANK = {"green": 0, "amber": 1, "red": 2}
+
+
+def _freshness_bucket(age: Optional[timedelta]) -> str:
+    if age is None:
+        return "no_dump"
+    if age <= timedelta(days=FUNDAMENTALS_REFRESH_DAYS):
+        return "current"
+    if age <= timedelta(days=FUNDAMENTALS_OVERDUE_DAYS):
+        return "due"
+    if age <= timedelta(days=FUNDAMENTALS_MAX_AGE_DAYS):
+        return "overdue"
+    return "expired"
+
+
+def _freshness_status(counts: dict, missing_counts: bool) -> str:
+    if counts["expired"] or (missing_counts and counts["no_dump"]):
+        return "red"
+    return "amber" if counts["overdue"] else "green"
+
+
+def fundamentals_freshness() -> dict:
+    """Dump-age buckets for the tickers the refresh would fetch, grouped like its own due list: other-scope tickers get no missing dump fetched, so their No dump is neutral."""
+    from quant_signals import QuantEngine
+    scope = QuantEngine._scan_scope()
+    blacklist = load_blacklist()
+    ignored = ignored_tickers_set()
+
+    def fetchable(tickers) -> set:
+        return {
+            normalize_ticker(t) for t in tickers
+            if t not in blacklist and not is_excluded_from_yahoo_fetch(t, ignored)
+        }
+
+    portfolio_watchlist = fetchable(get_portfolio_watchlist_tickers())
+    index = fetchable(_get_universe_target_tickers(freetrade_firewall=False)) - portfolio_watchlist
+    other = fetchable(scope or ()) - portfolio_watchlist - index
+    members = {"portfolio_watchlist": portfolio_watchlist, "index": index, "other": other}
+
+    rows, attention = [], []
+    total = dict.fromkeys(_FRESHNESS_BUCKETS, 0)
+    total_status = "green"
+    for key, label in _FRESHNESS_GROUPS:
+        counts = dict.fromkeys(_FRESHNESS_BUCKETS, 0)
+        for ticker in members[key]:
+            path = contained_ticker_path(FUNDAMENTALS_DIR, ticker, ".json")
+            age = fundamentals_dump_age(path) if path is not None and os.path.exists(path) else None
+            bucket = _freshness_bucket(age)
+            counts[bucket] += 1
+            if bucket in ("overdue", "expired") or (bucket == "no_dump" and key != "other"):
+                attention.append({
+                    "ticker": ticker, "group": label, "state": bucket,
+                    "age_days": round(age / timedelta(days=1), 1) if age is not None else None,
+                })
+        status = _freshness_status(counts, missing_counts=key != "other")
+        rows.append({"key": key, "label": label, "tickers": len(members[key]), **counts, "status": status})
+        for bucket in _FRESHNESS_BUCKETS:
+            total[bucket] += counts[bucket]
+        if _STATUS_RANK[status] > _STATUS_RANK[total_status]:
+            total_status = status
+    rows.append({"key": "total", "label": "Total", "tickers": sum(len(m) for m in members.values()), **total, "status": total_status})
+
+    attention.sort(key=lambda r: r["ticker"])
+    attention.sort(key=lambda r: float("inf") if r["age_days"] is None else r["age_days"], reverse=True)
+    last_run = get_latest_fundamentals_refresh_run()
+    if last_run is not None:
+        last_run["finished_display"] = fmt_stored_utc(last_run["finished_at"])
+    return {
+        "rows": rows,
+        "attention": attention[:FUNDAMENTALS_FRESHNESS_LIST_MAX],
+        "attention_total": len(attention),
+        "scope_available": scope is not None,
+        "thresholds": {
+            "refresh_days": FUNDAMENTALS_REFRESH_DAYS,
+            "overdue_days": FUNDAMENTALS_OVERDUE_DAYS,
+            "max_age_days": FUNDAMENTALS_MAX_AGE_DAYS,
+        },
+        "last_run": last_run,
+    }
 
 
 def _compute_fundamental_score(info: dict) -> tuple:

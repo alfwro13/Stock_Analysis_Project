@@ -10,7 +10,7 @@ import pandas as pd
 import pytest
 
 from constants import (
-    FUNDAMENTALS_MAX_AGE_DAYS, FUNDAMENTALS_REFRESH_DAYS, FUNDAMENTALS_REFRESH_MAX_RATE_LIMITS,
+    FUNDAMENTALS_FRESHNESS_LIST_MAX, FUNDAMENTALS_MAX_AGE_DAYS, FUNDAMENTALS_OVERDUE_DAYS, FUNDAMENTALS_REFRESH_DAYS, FUNDAMENTALS_REFRESH_MAX_RATE_LIMITS,
     FUNDAMENTALS_REFRESH_SETTLE_SECONDS,
 )
 from db import database as _db
@@ -19,7 +19,7 @@ from universe_fundamentals_engine import (
     _upsert_fundamentals,
 )
 
-pytestmark = pytest.mark.restore_tables("stock_signals")
+pytestmark = pytest.mark.restore_tables("fundamentals_refresh_runs", "stock_signals")
 
 
 # ---------------------------------------------------------------------------
@@ -547,6 +547,156 @@ class TestDueFundamentalsTickers:
         assert sorted(due) == ["HELD", "INDEXED"]
 
 
+class TestFreshnessBucket:
+    @pytest.mark.parametrize("days, bucket", [
+        (0, "current"),
+        (FUNDAMENTALS_REFRESH_DAYS - 0.01, "current"),
+        (FUNDAMENTALS_REFRESH_DAYS, "current"),
+        (FUNDAMENTALS_REFRESH_DAYS + 0.01, "due"),
+        (FUNDAMENTALS_OVERDUE_DAYS, "due"),
+        (FUNDAMENTALS_OVERDUE_DAYS + 0.01, "overdue"),
+        (FUNDAMENTALS_MAX_AGE_DAYS, "overdue"),
+        (FUNDAMENTALS_MAX_AGE_DAYS + 0.01, "expired"),
+        (None, "no_dump"),
+    ])
+    def test_boundaries(self, days, bucket):
+        from universe_fundamentals_engine import _freshness_bucket
+
+        assert _freshness_bucket(None if days is None else timedelta(days=days)) == bucket
+
+
+class TestFundamentalsFreshness:
+    @pytest.fixture
+    def freshness(self, tmp_path):
+        """fundamentals_freshness with its group sources patched; the dumps live in tmp_path."""
+        import universe_fundamentals_engine as engine
+
+        sources = SimpleNamespace(
+            pw=[], index=[], scope={"X"}, blacklist=set(), ignored=set(), engine=engine, dir=tmp_path,
+        )
+
+        def call():
+            with patch.object(engine, "FUNDAMENTALS_DIR", tmp_path), \
+                 patch.object(engine, "get_portfolio_watchlist_tickers", side_effect=lambda: sources.pw), \
+                 patch.object(engine, "_get_universe_target_tickers", side_effect=lambda **_: sources.index), \
+                 patch("quant_signals.QuantEngine._scan_scope", side_effect=lambda: sources.scope), \
+                 patch.object(engine, "load_blacklist", side_effect=lambda: sources.blacklist), \
+                 patch.object(engine, "ignored_tickers_set", side_effect=lambda: sources.ignored):
+                return engine.fundamentals_freshness()
+
+        sources.call = call
+        return sources
+
+    @staticmethod
+    def _row(result, key):
+        return next(r for r in result["rows"] if r["key"] == key)
+
+    def test_groups_count_each_ticker_once_and_drop_blacklisted_and_ignored(self, freshness):
+        freshness.pw = ["HELD", "BOTH", "BLACK"]
+        freshness.index = ["BOTH", "IDX", "IGN"]
+        freshness.scope = {"HELD", "BOTH", "IDX", "OTHER", "OTHER2", "BLACK", "IGN"}
+        freshness.blacklist = {"BLACK"}
+        freshness.ignored = {"IGN"}
+        for ticker in ("HELD", "BOTH", "IDX", "OTHER", "OTHER2"):
+            _write_aged_dump(freshness.dir, ticker, {}, 1)
+
+        result = freshness.call()
+
+        assert [(r["key"], r["tickers"], r["current"]) for r in result["rows"]] == [
+            ("portfolio_watchlist", 2, 2), ("index", 1, 1), ("other", 2, 2), ("total", 5, 5),
+        ]
+        assert result["scope_available"] is True
+        assert result["attention"] == []
+        assert result["thresholds"] == {
+            "refresh_days": FUNDAMENTALS_REFRESH_DAYS,
+            "overdue_days": FUNDAMENTALS_OVERDUE_DAYS,
+            "max_age_days": FUNDAMENTALS_MAX_AGE_DAYS,
+        }
+
+    def test_status_per_row_and_the_total_takes_the_worst(self, freshness):
+        freshness.pw = ["PWOK"]
+        freshness.index = ["IDXOVER"]
+        freshness.scope = {"PWOK", "IDXOVER", "OTHERNONE"}
+        _write_aged_dump(freshness.dir, "PWOK", {}, 1)
+        _write_aged_dump(freshness.dir, "IDXOVER", {}, FUNDAMENTALS_OVERDUE_DAYS + 1)
+
+        result = freshness.call()
+
+        assert self._row(result, "portfolio_watchlist")["status"] == "green"
+        assert self._row(result, "index")["status"] == "amber"
+        other = self._row(result, "other")
+        assert (other["no_dump"], other["status"]) == (1, "green")
+        assert self._row(result, "total")["status"] == "amber"
+        assert self._row(result, "total")["no_dump"] == 1
+
+    def test_a_portfolio_ticker_without_a_dump_is_red_and_so_is_the_total(self, freshness):
+        freshness.pw = ["HELD"]
+        freshness.scope = {"HELD"}
+
+        result = freshness.call()
+
+        assert self._row(result, "portfolio_watchlist")["status"] == "red"
+        assert self._row(result, "total")["status"] == "red"
+
+    def test_an_expired_dump_in_the_other_row_is_red(self, freshness):
+        freshness.scope = {"OLD"}
+        _write_aged_dump(freshness.dir, "OLD", {}, FUNDAMENTALS_MAX_AGE_DAYS + 1)
+
+        result = freshness.call()
+
+        assert self._row(result, "other")["expired"] == 1
+        assert self._row(result, "other")["status"] == "red"
+
+    def test_attention_lists_missing_first_then_oldest_and_leaves_out_other_missing(self, freshness):
+        freshness.pw = ["PWMISSING", "PWOVER"]
+        freshness.index = ["IDXMISSING", "IDXEXPIRED"]
+        freshness.scope = {"PWMISSING", "PWOVER", "IDXMISSING", "IDXEXPIRED", "OTHERMISSING", "OTHEROVER", "FINE"}
+        _write_aged_dump(freshness.dir, "PWOVER", {}, FUNDAMENTALS_OVERDUE_DAYS + 2)
+        _write_aged_dump(freshness.dir, "IDXEXPIRED", {}, FUNDAMENTALS_MAX_AGE_DAYS + 5)
+        _write_aged_dump(freshness.dir, "OTHEROVER", {}, FUNDAMENTALS_OVERDUE_DAYS + 4)
+        _write_aged_dump(freshness.dir, "FINE", {}, 1)
+
+        result = freshness.call()
+
+        listed = [(a["ticker"], a["state"]) for a in result["attention"]]
+        assert sorted(listed[:2]) == [("IDXMISSING", "no_dump"), ("PWMISSING", "no_dump")]
+        assert listed[2:] == [("IDXEXPIRED", "expired"), ("OTHEROVER", "overdue"), ("PWOVER", "overdue")]
+        assert all(a["age_days"] is None for a in result["attention"][:2])
+        assert result["attention"][2]["age_days"] == pytest.approx(FUNDAMENTALS_MAX_AGE_DAYS + 5, abs=0.1)
+        assert result["attention_total"] == 5
+
+    def test_attention_is_capped_but_its_total_is_not(self, freshness):
+        freshness.pw = [f"T{i}" for i in range(FUNDAMENTALS_FRESHNESS_LIST_MAX + 3)]
+        freshness.scope = set(freshness.pw)
+
+        result = freshness.call()
+
+        assert len(result["attention"]) == FUNDAMENTALS_FRESHNESS_LIST_MAX
+        assert result["attention_total"] == FUNDAMENTALS_FRESHNESS_LIST_MAX + 3
+
+    def test_without_a_scan_scope_the_other_row_is_empty(self, freshness):
+        freshness.pw = ["HELD"]
+        freshness.scope = None
+        _write_aged_dump(freshness.dir, "HELD", {}, 1)
+
+        result = freshness.call()
+
+        assert result["scope_available"] is False
+        assert self._row(result, "other")["tickers"] == 0
+        assert self._row(result, "portfolio_watchlist")["tickers"] == 1
+
+    def test_last_run_is_the_latest_recorded_run_with_a_display_time(self, freshness):
+        from db.helpers import get_latest_fundamentals_refresh_run, record_fundamentals_refresh_run
+
+        record_fundamentals_refresh_run("2026-01-01 00:00:00", 4, 3, True, 2)
+        result = freshness.call()
+
+        assert result["last_run"]["due"] == 4
+        assert result["last_run"]["stopped_early"] is True
+        assert result["last_run"]["finished_display"]
+        assert result["last_run"]["finished_at"] == get_latest_fundamentals_refresh_run()["finished_at"]
+
+
 class TestRefreshDueFundamentals:
     @pytest.fixture
     def run(self):
@@ -642,6 +792,65 @@ class TestRefreshDueFundamentals:
         run.due.assert_not_called()
         run.fetch.assert_not_called()
         run.sleep.assert_not_called()
+
+
+    def test_a_run_with_nothing_due_is_recorded_as_empty(self, run):
+        from db.helpers import get_latest_fundamentals_refresh_run
+
+        run.due.return_value = []
+        run.engine.refresh_due_fundamentals()
+
+        row = get_latest_fundamentals_refresh_run()
+        assert (row["due"], row["refreshed"], row["rate_limits"], row["stopped_early"]) == (0, 0, 0, False)
+        assert row["started_at"] <= row["finished_at"]
+
+    def test_a_failed_listing_is_recorded_with_null_counts(self, run):
+        from db.helpers import get_latest_fundamentals_refresh_run
+
+        run.due.side_effect = OSError("unreadable")
+        run.engine.refresh_due_fundamentals()
+
+        row = get_latest_fundamentals_refresh_run()
+        assert (row["due"], row["refreshed"], row["rate_limits"], row["stopped_early"]) == (None, None, None, False)
+
+    def test_a_complete_run_is_recorded_with_its_counts(self, run, tmp_path):
+        from db.helpers import get_latest_fundamentals_refresh_run
+
+        def fetch(ticker):
+            if ticker == "CCC":
+                raise OSError("disk full")
+            _write_aged_dump(tmp_path, ticker, {}, 0)
+
+        run.fetch.side_effect = fetch
+        with patch.object(run.engine, "FUNDAMENTALS_DIR", tmp_path):
+            run.engine.refresh_due_fundamentals()
+
+        row = get_latest_fundamentals_refresh_run()
+        assert (row["due"], row["refreshed"], row["rate_limits"], row["stopped_early"]) == (4, 3, 0, False)
+
+    def test_a_run_that_stops_at_the_rate_limit_ceiling_is_recorded_as_stopped_early(self, run, tmp_path):
+        from db.helpers import get_latest_fundamentals_refresh_run
+
+        def fetch(ticker):
+            run.state["trips"] += 1
+            _write_aged_dump(tmp_path, ticker, {}, 0)
+
+        run.fetch.side_effect = fetch
+        with patch.object(run.engine, "FUNDAMENTALS_DIR", tmp_path):
+            run.engine.refresh_due_fundamentals()
+
+        row = get_latest_fundamentals_refresh_run()
+        assert row["due"] == 4
+        assert row["stopped_early"] is True
+        assert row["rate_limits"] == FUNDAMENTALS_REFRESH_MAX_RATE_LIMITS
+        assert row["refreshed"] == FUNDAMENTALS_REFRESH_MAX_RATE_LIMITS
+
+    def test_a_failure_to_record_the_run_never_raises(self, run, caplog):
+        with patch.object(run.engine, "record_fundamentals_refresh_run", side_effect=OSError("locked")), \
+             caplog.at_level("ERROR", logger="universe_fundamentals_engine"):
+            run.engine.refresh_due_fundamentals()
+
+        assert "could not record the run" in caplog.text
 
 
 class TestUpsertFundamentalsLeavesTheBarPrice:

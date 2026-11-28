@@ -2279,6 +2279,37 @@ Returns a comprehensive diagnostic snapshot of the system: universe coverage, ML
 
 ---
 
+### `GET /api/system/fundamentals-freshness`
+
+Session-authenticated and read-only. Feeds the Fundamentals Freshness table in Settings → System Diagnostics: the age of the Yahoo fundamentals dumps (`data/fundamentals/*.json`, by file modification time) for the tickers the fundamentals refresh would fetch. Blacklisted, ignored and Yahoo-excluded tickers are left out.
+
+```json
+{
+  "status": "success",
+  "rows": [
+    {"key": "portfolio_watchlist", "label": "Portfolio & Watchlist", "tickers": 120, "current": 110, "due": 8, "overdue": 1, "expired": 0, "no_dump": 1, "status": "red"}
+  ],
+  "attention": [{"ticker": "ABC", "group": "Index universe (others)", "state": "overdue", "age_days": 14}],
+  "attention_total": 1,
+  "scope_available": true,
+  "thresholds": {"refresh_days": 6, "overdue_days": 10, "max_age_days": 21},
+  "last_run": {"started_at": "2026-01-01 02:10:00", "finished_at": "2026-01-01 02:40:00", "due": 300, "refreshed": 298, "stopped_early": false, "rate_limits": 0, "finished_display": "2026-01-01 02:40"}
+}
+```
+
+| Field | Description |
+|---|---|
+| `rows` | One object per row: Portfolio & Watchlist, Index universe (others), Other scan scope, Total. `current` is a dump up to `refresh_days` old, `due` up to `overdue_days`, `overdue` up to `max_age_days`, `expired` older (figures hidden from every reader), `no_dump` has no file. `status` is `red` (any `expired`, or `no_dump` in the first two rows), `amber` (any `overdue`) or `green`; `no_dump` in Other scan scope is by design and never changes its status |
+| `attention` | Tickers needing attention: missing dumps in the first two rows first, then overdue/expired, oldest first; at most `FUNDAMENTALS_FRESHNESS_LIST_MAX` (200) entries. `age_days` is null for a missing dump |
+| `attention_total` | Number of tickers needing attention before the list cap |
+| `scope_available` | `false` when the scan scope could not be listed |
+| `thresholds` | `FUNDAMENTALS_REFRESH_DAYS`, `FUNDAMENTALS_OVERDUE_DAYS`, `FUNDAMENTALS_MAX_AGE_DAYS` |
+| `last_run` | Latest row of `fundamentals_refresh_runs`, or `null` before the first run. `refreshed` is `null` with `due` when the run could not list due dumps |
+
+File age shows when a dump was written, not whether Yahoo's figures changed.
+
+---
+
 ### `GET /api/system/checks`
 
 Returns the current list of active system-health warnings and errors detected by the System Check Engine. Called on every Settings page load to populate the top-of-page banner.
@@ -2657,6 +2688,7 @@ Sends a test insider trading alert via Nextcloud Talk.
 | `GET` | `/api/ui-theme.css` | Dynamic font-size CSS variables |
 | `GET` | `/api/system/metrics` | System diagnostic data |
 | `GET` | `/api/system/checks` | Active scheduling health warnings/errors |
+| `GET` | `/api/system/fundamentals-freshness` | Age of the stored Yahoo fundamentals dumps by scope group, tickers needing attention, last refresh result |
 | `GET` | `/api/system/active-jobs` | Currently executing scheduler jobs (busy indicator) |
 | `GET` | `/api/system/scheduler-jobs/{job_id}/runs` | Latest 20 scheduled/manual executions for a scheduler job |
 | `POST` | `/api/system/git-pull` | Pull latest code from git |

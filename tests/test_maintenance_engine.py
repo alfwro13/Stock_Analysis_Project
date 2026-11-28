@@ -28,7 +28,7 @@ from constants import PENSION_BENCHMARK_WATCHLIST_NOTE, PENSION_BENCHMARK_WATCHL
 from db.account_store import get_watchlist_account, get_watchlist_items, remove_watchlist_ticker
 from db.helpers import add_ticker_note, delete_ticker_note, get_ticker_notes
 
-pytestmark = pytest.mark.restore_tables("market_pulse_cache")
+pytestmark = pytest.mark.restore_tables("fundamentals_refresh_runs", "market_pulse_cache")
 
 
 # ── helpers ───────────────────────────────────────────────────────────────────
@@ -382,6 +382,45 @@ class TestPruneNextcloudTalkStats:
     def test_a_database_error_is_logged_and_does_not_stop_maintenance(self):
         with patch("maintenance_engine.prune_nextcloud_talk_stats", side_effect=RuntimeError("locked")):
             _engine().prune_nextcloud_talk_stats()
+
+
+# ── prune_fundamentals_refresh_runs ───────────────────────────────────────────
+
+class TestPruneFundamentalsRefreshRuns:
+    @staticmethod
+    def _stamp(days_ago: int) -> str:
+        return (datetime.now(timezone.utc) - timedelta(days=days_ago)).strftime("%Y-%m-%d %H:%M:%S")
+
+    def test_prunes_runs_older_than_the_retention_and_keeps_the_rest(self):
+        from constants import FUNDAMENTALS_REFRESH_RUNS_RETENTION_DAYS as keep
+
+        old, recent = self._stamp(keep + 1), self._stamp(keep - 1)
+        conn = None
+        try:
+            conn = _conn()
+            conn.executemany(
+                "INSERT INTO fundamentals_refresh_runs (started_at, finished_at, due, refreshed, stopped_early, rate_limits) VALUES (?, ?, 3, 3, 0, 0)",
+                [(old, old), (recent, recent)],
+            )
+            conn.commit()
+        finally:
+            if conn:
+                conn.close()
+
+        _engine().prune_fundamentals_refresh_runs()
+
+        conn = None
+        try:
+            conn = _conn()
+            remaining = [r[0] for r in conn.execute("SELECT finished_at FROM fundamentals_refresh_runs")]
+        finally:
+            if conn:
+                conn.close()
+        assert remaining == [recent]
+
+    def test_a_database_error_is_logged_and_does_not_stop_maintenance(self):
+        with patch("maintenance_engine.prune_fundamentals_refresh_runs", side_effect=RuntimeError("locked")):
+            _engine().prune_fundamentals_refresh_runs()
 
 
 # ── prune_pulse_cache ─────────────────────────────────────────────────────────
