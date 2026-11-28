@@ -40,7 +40,7 @@ _CRITERIA = {
     "mean_reversion": f"Long-term uptrend (above the 200-day average) with RSI at or below {MEAN_REVERSION_DEFAULT_MAX_RSI:g}; most oversold first",
     "dividend_harvest": f"Dividend yield at least {DIVIDEND_HARVEST_DEFAULT_MIN_YIELD:.0%} and composite score at least {DIVIDEND_HARVEST_DEFAULT_MIN_SCORE} with a known ex-dividend date; soonest ex-dividend first",
     "sector_relative_momentum": "Return over the window against the median of the same sector's other stocks (same currency, at least 5 peers), strongest first; unscored tickers are left out",
-    "predicted_movers": "Ranking by the ML model's 10-trading-day forward move: the midpoint of its Q10-Q90 price band against the current price, over the whole universe",
+    "predicted_movers": "Ranking by the ML model's 10-trading-day forward move: the midpoint of its Q10-Q90 price band against the close the band was built on (quant_signals_date), over the whole universe",
 }
 
 _FIELDS = {
@@ -51,7 +51,7 @@ _FIELDS = {
     "mean_reversion": ("close_price", "rsi_14", "sma_200", "distance_from_200d_pct"),
     "dividend_harvest": ("close_price", "dividend_yield", "ex_dividend_date", "composite_score", "ml_confidence_score"),
     "sector_relative_momentum": ("relative_return_pp", "own_return", "peer_return", "rank", "percentile", "cohort_size", "window_sessions", "as_of_date"),
-    "predicted_movers": ("current_price", "price_q10", "price_q90", "predicted_move_pct", "quant_signals_date"),
+    "predicted_movers": ("current_price", "close_price", "price_q10", "price_q90", "predicted_move_pct", "quant_signals_date"),
 }
 
 _UNITS = {

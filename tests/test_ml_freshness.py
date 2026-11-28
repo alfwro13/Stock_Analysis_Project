@@ -292,13 +292,25 @@ class TestQuantileBandsBoundAge:
     def test_a_newer_row_without_a_band_does_not_hide_a_fresh_older_band(self):
         _seed_latest_row("MLFRESH_1", _utc(1), _utc(0.5))
         conn = _conn()
-        conn.execute("INSERT INTO quant_signals (ticker, date, close_price) VALUES ('MLFRESH_1', '2099-01-02', 101.0)")
+        conn.execute("INSERT INTO quant_signals (ticker, date, close_price) VALUES ('MLFRESH_1', '2099-01-02', NULL)")
         conn.commit()
         conn.close()
 
         rows = db_helpers.get_latest_quantile_bands(["MLFRESH_1"])
 
         assert [(r["date"], r["price_q10"]) for r in rows] == [("2099-01-01", 90.0)]
+
+    def test_a_band_is_dropped_once_a_newer_row_has_a_close(self):
+        _seed_latest_row("MLFRESH_1", _utc(1), _utc(0.5))
+        _seed_latest_row("MLFRESH_2", _utc(1), _utc(0.5))
+        conn = _conn()
+        conn.execute("INSERT INTO quant_signals (ticker, date, close_price) VALUES ('MLFRESH_1', '2099-01-02', 101.0)")
+        conn.commit()
+        conn.close()
+
+        rows = db_helpers.get_latest_quantile_bands(["MLFRESH_1", "MLFRESH_2"])
+
+        assert [r["ticker"] for r in rows] == ["MLFRESH_2"]
 
     def test_an_old_band_is_not_resurrected_by_an_older_fresh_looking_row(self):
         _seed_latest_row("MLFRESH_1", _utc(1), _utc(30))

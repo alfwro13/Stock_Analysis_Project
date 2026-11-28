@@ -55,9 +55,7 @@ def get_leaderboard(
     sort_mode: str = SORT_MOVERS,
     limit: int = 200,
 ) -> list[dict]:
-    """Live, on-demand ranking by ML-predicted 10-trading-day forward % move — no persisted
-    results table, this is recomputed on every call since it's a cheap read over
-    already-computed quant_signals columns."""
+    """Live ranking by the ML-predicted 10-trading-day % move from the band's own close; the live price would count the move since that close as predicted upside."""
     tickers = _get_scope_tickers(scope)
     if not tickers:
         return []
@@ -75,9 +73,12 @@ def get_leaderboard(
         price_info = priced.get(ticker)
         if not price_info or not price_info[0]:
             continue
+        close_price = row["close_price"]
+        if not close_price or close_price <= 0:
+            continue
         current_price, currency = price_info
         predicted_mid = (row["price_q10"] + row["price_q90"]) / 2.0
-        predicted_move_pct = (predicted_mid - current_price) / current_price * 100.0
+        predicted_move_pct = (predicted_mid - close_price) / close_price * 100.0
         results.append({
             "ticker": ticker,
             "company_name": company_names.get(ticker),

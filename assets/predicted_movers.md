@@ -1,8 +1,8 @@
 # Predicted Movers
 
 Predicted Movers ranks tickers by ML-**predicted** forward price move — the midpoint of the
-10-trading-day-forward quantile regression price band (`price_q10`/`price_q90`) versus current
-price — as opposed to the Relative Strength Leaders report (`/relative-strength-leaders`), which
+10-trading-day-forward quantile regression price band (`price_q10`/`price_q90`) versus the close
+the band was built on (`quant_signals_date`) — as opposed to the Relative Strength Leaders report (`/relative-strength-leaders`), which
 ranks by *actual* historical movement. A second, linked page tracks how reliable those
 predictions have actually been. The page also hosts the two **Stable Shortlist** tabs (weekly,
 slow-moving lists — see `assets/stable_shortlist.md`).
@@ -75,12 +75,16 @@ do not appear on the accuracy page.
 1. Resolve scope tickers.
 2. Pull each ticker's **latest** `quant_signals` row with non-null `price_q10`/`price_q90` scored
    inside the `db.helpers.ml_fresh_since()` window (`quantile_scored_at`; the same inline "latest row per ticker" correlated-subquery idiom used throughout the codebase —
-   `ml_inference_engine.py`, `pages/page_routes.py`, `market_pulse.py`).
-3. Resolve current price via `accounts.accounts_engine.current_price_map()` (AGENTS.md rule 16 — never
-   re-derive current price from `quant_signals.close_price`, which is the price *at prediction
-   time*, not now). Rows with no resolvable current price are dropped.
+   `ml_inference_engine.py`, `pages/page_routes.py`, `market_pulse.py`) through
+   `db.helpers.get_latest_quantile_bands()`, which drops a ticker whose latest `quant_signals` row is
+   newer than the band's (the band is superseded until the ticker is re-scored; thin or late LSE bars
+   stay unscored and have no band until then).
+3. Resolve current price via `accounts.accounts_engine.current_price_map()` (AGENTS.md rule 16), shown
+   as the Current Price column only. Rows with no resolvable current price or no positive
+   `quant_signals.close_price` are dropped.
 4. `predicted_mid = (price_q10 + price_q90) / 2`; `predicted_move_pct = (predicted_mid -
-   current_price) / current_price * 100`.
+   close_price) / close_price * 100`, measured from the band's own close because the live price would
+   count the move since that close as predicted upside.
 5. Sort: **Gainers** — highest `predicted_move_pct`. **Losers** — lowest (most negative).
    **Movers** (default) — highest `abs(predicted_move_pct)`.
 
