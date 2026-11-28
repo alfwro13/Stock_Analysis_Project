@@ -2156,6 +2156,22 @@ def test_tickers_needing_refresh_includes_stale_ticker_during_premarket(monkeypa
     assert "ZZPREMARKETREF" in stale
 
 
+@pytest.mark.db
+@pytest.mark.parametrize("row_offset, expected", [(-600, True), (600, False)])
+def test_tickers_needing_refresh_close_capture_for_closed_exchange_while_lse_open(monkeypatch, row_offset, expected):
+    from datetime import datetime, timedelta, timezone
+
+    last_close = datetime.now(timezone.utc) - timedelta(hours=2)
+    msh = accounts_engine.market_session_helpers
+    monkeypatch.setattr(msh, "get_exchange_session_state", lambda exchange: "open" if exchange == "LSE" else "closed")
+    monkeypatch.setattr(msh, "is_quote_settled", lambda exchange, include_premarket=False: exchange == "LSE")
+    monkeypatch.setattr(msh, "is_trading_session", lambda exchange: exchange == "LSE")
+    monkeypatch.setattr(msh, "last_settled_session_close_utc", lambda exchange: last_close)
+    _seed_market_pulse("ZZCLOSECAP.SW", 100.0, last_close.timestamp() + row_offset)
+
+    assert (accounts_engine.tickers_needing_refresh(["ZZCLOSECAP.SW"], 60) == ["ZZCLOSECAP.SW"]) is expected
+
+
 def _force_session_state(monkeypatch, states):
     monkeypatch.setattr(accounts_engine.market_session_helpers, "get_exchange_session_state", lambda exchange: states[exchange])
     monkeypatch.setattr(accounts_engine.market_session_helpers, "is_quote_settled", lambda exchange, include_premarket=False: states[exchange] == "open")

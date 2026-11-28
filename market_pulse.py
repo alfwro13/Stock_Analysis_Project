@@ -171,6 +171,7 @@ def registry_tickers_needing_refresh(tickers: List[str], max_age_seconds: int = 
     registry_exchange_map = build_registry_exchange_map()
     registry_future_tickers = build_registry_future_tickers()
     exchange_state_memo: Dict[Any, bool] = {}
+    session_memo: Dict[Any, tuple] = {}
     now = time.time()
     stale = []
     for t in tickers:
@@ -179,7 +180,7 @@ def registry_tickers_needing_refresh(tickers: List[str], max_age_seconds: int = 
             continue
         if now - last_updated_map[t] <= max_age_seconds:
             continue
-        if is_ticker_quote_settled(t, registry_exchange_map=registry_exchange_map, registry_future_tickers=registry_future_tickers, exchange_state_memo=exchange_state_memo):
+        if is_ticker_quote_settled(t, registry_exchange_map=registry_exchange_map, registry_future_tickers=registry_future_tickers, exchange_state_memo=exchange_state_memo, cached_epoch=last_updated_map[t], session_memo=session_memo):
             stale.append(t)
     return stale
 
@@ -389,6 +390,7 @@ def get_cached_pulse_from_db(asset_tickers: List[str], refresh_rate: int) -> Dic
     db_map: Dict[str, Any] = {row['ticker']: row for row in rows}
     judge = QuoteSessionJudge(requested_assets, registry_exchange_map)
     exchange_state_memo: Dict[Any, bool] = {}
+    session_memo: Dict[Any, tuple] = {}
 
     for t in all_tickers:
         registry_row = registry_by_ticker.get(t)
@@ -402,7 +404,7 @@ def get_cached_pulse_from_db(asset_tickers: List[str], refresh_rate: int) -> Dic
             age = current_time - row['last_updated']
             has_data = row['last_updated'] > 0 and row['price'] != 0.0
             market_open, floor = judge.session(t, equity_currency_map.get(t))
-            settled = is_ticker_quote_settled(t, equity_currency_map.get(t, ''), registry_exchange_map, registry_future_tickers, exchange_state_memo)
+            settled = is_ticker_quote_settled(t, equity_currency_map.get(t, ''), registry_exchange_map, registry_future_tickers, exchange_state_memo, row['last_updated'], session_memo)
             needs_refresh: bool = False if not settled else (not has_data or age > int(refresh_rate))
             fallback = fallback_price_map.get(t)
             price, used_fallback = resolve_live_price(

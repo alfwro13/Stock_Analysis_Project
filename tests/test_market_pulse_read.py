@@ -136,7 +136,7 @@ class TestSelectActivePulseTickers:
 
 class TestGetCachedPulseFromDb:
     def teardown_method(self):
-        _clear(ASSET_TICKER, INDEX_TICKER)
+        _clear(ASSET_TICKER, INDEX_TICKER, "NESN.SW")
 
     def test_known_index_ticker_lands_in_indexes(self):
         """Forces static mode so this test exercises the plain seeded index-ticker set,
@@ -173,6 +173,30 @@ class TestGetCachedPulseFromDb:
             result = _mp.get_cached_pulse_from_db([ASSET_TICKER], refresh_rate=60)
         asset = next(r for r in result["assets"] if r["ticker"] == ASSET_TICKER)
         assert asset["is_stale"] is True
+
+    def test_closed_exchange_row_predating_last_close_needs_refresh(self):
+        last_close = datetime.now(timezone.utc) - timedelta(hours=2)
+        _seed_pulse("NESN.SW", last_updated=last_close.timestamp() - 600)
+        with patch("market_pulse.is_trading_session", return_value=False), \
+             patch("market_session_helpers.is_quote_settled", return_value=False), \
+             patch("market_session_helpers.get_exchange_session_state", return_value="closed"), \
+             patch("market_session_helpers.is_trading_session", return_value=False), \
+             patch("market_session_helpers.last_settled_session_close_utc", return_value=last_close):
+            result = _mp.get_cached_pulse_from_db(["NESN.SW"], refresh_rate=60)
+        asset = next(r for r in result["assets"] if r["ticker"] == "NESN.SW")
+        assert asset["needs_refresh"] is True
+
+    def test_closed_exchange_row_postdating_last_close_does_not_need_refresh(self):
+        last_close = datetime.now(timezone.utc) - timedelta(hours=2)
+        _seed_pulse("NESN.SW", last_updated=last_close.timestamp() + 600)
+        with patch("market_pulse.is_trading_session", return_value=False), \
+             patch("market_session_helpers.is_quote_settled", return_value=False), \
+             patch("market_session_helpers.get_exchange_session_state", return_value="closed"), \
+             patch("market_session_helpers.is_trading_session", return_value=False), \
+             patch("market_session_helpers.last_settled_session_close_utc", return_value=last_close):
+            result = _mp.get_cached_pulse_from_db(["NESN.SW"], refresh_rate=60)
+        asset = next(r for r in result["assets"] if r["ticker"] == "NESN.SW")
+        assert asset["needs_refresh"] is False
 
     def test_missing_cache_entry_produces_stale_sentinel(self):
         _clear(ASSET_TICKER)
@@ -605,6 +629,55 @@ class TestIsTickerQuoteSettled:
             )
         mock_settled.assert_called_once_with("NYSE", include_premarket=False)
 
+    def test_close_capture_true_when_cached_row_predates_last_close(self):
+        last_close = datetime.now(timezone.utc) - timedelta(hours=2)
+        with patch("market_session_helpers.is_quote_settled", return_value=False), \
+             patch("market_session_helpers.get_exchange_session_state", return_value="closed"), \
+             patch("market_session_helpers.is_trading_session", return_value=False), \
+             patch("market_session_helpers.last_settled_session_close_utc", return_value=last_close):
+            assert _ms.is_ticker_quote_settled("NESN.SW", cached_epoch=last_close.timestamp() - 600) is True
+
+    def test_close_capture_false_when_cached_row_postdates_last_close(self):
+        last_close = datetime.now(timezone.utc) - timedelta(hours=2)
+        with patch("market_session_helpers.is_quote_settled", return_value=False), \
+             patch("market_session_helpers.get_exchange_session_state", return_value="closed"), \
+             patch("market_session_helpers.is_trading_session", return_value=False), \
+             patch("market_session_helpers.last_settled_session_close_utc", return_value=last_close):
+            assert _ms.is_ticker_quote_settled("NESN.SW", cached_epoch=last_close.timestamp() + 600) is False
+
+    def test_close_capture_off_without_cached_epoch(self):
+        last_close = datetime.now(timezone.utc) - timedelta(hours=2)
+        with patch("market_session_helpers.is_quote_settled", return_value=False), \
+             patch("market_session_helpers.get_exchange_session_state", return_value="closed"), \
+             patch("market_session_helpers.last_settled_session_close_utc", return_value=last_close) as mock_close:
+            assert _ms.is_ticker_quote_settled("NESN.SW") is False
+        mock_close.assert_not_called()
+
+    def test_settled_exchange_is_true_regardless_of_cached_epoch(self):
+        last_close = datetime.now(timezone.utc) - timedelta(hours=2)
+        with patch("market_session_helpers.is_quote_settled", return_value=True), \
+             patch("market_session_helpers.is_trading_session", return_value=True), \
+             patch("market_session_helpers.last_settled_session_close_utc", return_value=last_close):
+            assert _ms.is_ticker_quote_settled("NESN.SW", cached_epoch=last_close.timestamp() + 600) is True
+
+    def test_session_memo_looks_up_last_close_once_per_exchange(self):
+        last_close = datetime.now(timezone.utc) - timedelta(hours=2)
+        exchanges = {"NESN.SW": "SIX", "ROG.SW": "SIX"}
+        session_memo = {}
+        with patch("market_session_helpers.is_quote_settled", return_value=False), \
+             patch("market_session_helpers.get_exchange_session_state", return_value="closed"), \
+             patch("market_session_helpers.is_trading_session", return_value=False), \
+             patch("market_session_helpers.last_settled_session_close_utc", return_value=last_close) as mock_close:
+            results = [
+                _ms.is_ticker_quote_settled(
+                    t, registry_exchange_map=exchanges, registry_future_tickers=set(),
+                    cached_epoch=last_close.timestamp() - 600, session_memo=session_memo,
+                )
+                for t in exchanges
+            ]
+        assert results == [True, True]
+        mock_close.assert_called_once_with("SIX")
+
 
 class TestIsTickerQuoteSettledForReportedSessions:
     """FX, futures and rates are judged by the window Yahoo reports for them (instrument_sessions), not by an exchange resolved from HOME_EXCHANGE or the registry currency."""
@@ -759,6 +832,16 @@ class TestRegistryTickersNeedingRefresh:
             mock_settled.assert_called_once_with("LSE", include_premarket=False)
         finally:
             _clear(*shared)
+
+    def test_closed_exchange_row_predating_last_close_is_included_once(self):
+        last_close = datetime.now(timezone.utc) - timedelta(hours=2)
+        _seed_pulse("^FTSE", last_updated=last_close.timestamp() - 3600)
+        _seed_pulse("^GSPC", last_updated=last_close.timestamp() + 3600)
+        with patch("market_session_helpers.is_quote_settled", return_value=False), \
+             patch("market_session_helpers.get_exchange_session_state", return_value="closed"), \
+             patch("market_session_helpers.is_trading_session", return_value=False), \
+             patch("market_session_helpers.last_settled_session_close_utc", return_value=last_close):
+            assert _mp.registry_tickers_needing_refresh(["^FTSE", "^GSPC"], max_age_seconds=60) == ["^FTSE"]
 
 
 # ── is_price_fresh (shared helper) ────────────────────────────────────────────

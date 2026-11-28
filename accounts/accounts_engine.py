@@ -916,6 +916,7 @@ def tickers_needing_refresh(tickers: list, refresh_rate: int, extended_hours_onl
     registry_exchange_map = market_session_helpers.build_registry_exchange_map()
     registry_future_tickers = market_session_helpers.build_registry_future_tickers()
     exchange_state_memo: dict = {}
+    session_memo: dict = {}
     extended_memo: dict = {}
     stale = []
     for t in tickers:
@@ -927,7 +928,7 @@ def tickers_needing_refresh(tickers: list, refresh_rate: int, extended_hours_onl
                 extended_memo[exchange] = market_session_helpers.is_extended_session(exchange)
             if not extended_memo[exchange]:
                 continue
-        if t in cache_map and not market_session_helpers.is_ticker_quote_settled(t, currency_map.get(t, ""), registry_exchange_map, registry_future_tickers, exchange_state_memo):
+        if t in cache_map and not market_session_helpers.is_ticker_quote_settled(t, currency_map.get(t, ""), registry_exchange_map, registry_future_tickers, exchange_state_memo, cache_map[t], session_memo):
             logger.debug("Refresh skipped for %s — quote not yet settled since open.", t)
             continue
         stale.append(t)
