@@ -31,10 +31,9 @@ from notification_engine import notify
 from accounts.portfolio_metrics_engine import queue_portfolio_totals_refresh
 from ml_backfill_engine import run_historical_backfill
 from ml_inference_engine import alert_unscored_holdings, update_daily_ml_predictions, score_quantile_predictions
-from ml_training_process import run_training_child
+from job_process import ChildJobFailed, run_child_job
 from quant_engine import run_daily_quant_scan
 from quant_signals import QuantEngine
-from risk_engine import update_all_tail_risks
 from sentiment_engine import run_nextcloud_alert
 from system_check_engine import run_system_checks
 from treasury_auction_engine import check_auction_results
@@ -102,12 +101,12 @@ def resume_interrupted_scans() -> None:
         dispatched = True
 
     # Resume tail risk scans only when the parent quant scan already completed; if the quant scan is
-    # itself IN_PROGRESS its resume will call update_all_tail_risks at its end.
+    # itself IN_PROGRESS its resume runs the Tail Risk scan at its end.
     if today_states.get('daily') != 'IN_PROGRESS' and today_states.get('tail_risk_daily') == 'IN_PROGRESS':
         logger.info("Startup: detected interrupted Tail Risk (daily) — resuming immediately.")
         log_sched_notification("Info", "Resuming interrupted Tail Risk (daily) scan after restart.")
         def _run_daily_tr():
-            update_all_tail_risks(DataEngine().get_all_tickers(), scan_type='tail_risk_daily')
+            run_tail_risk_scan(DataEngine().get_all_tickers(), scan_type='tail_risk_daily')
         _threading.Thread(target=_run_daily_tr, daemon=True).start()
         dispatched = True
 
@@ -115,7 +114,7 @@ def resume_interrupted_scans() -> None:
         logger.info("Startup: detected interrupted Tail Risk (universe) — resuming immediately.")
         log_sched_notification("Info", "Resuming interrupted Tail Risk (universe) scan after restart.")
         def _run_universe_tr():
-            update_all_tail_risks(get_universe_tickers(), scan_type='tail_risk_universe')
+            run_tail_risk_scan(get_universe_tickers(), scan_type='tail_risk_universe')
         _threading.Thread(target=_run_universe_tr, daemon=True).start()
         dispatched = True
 
@@ -356,6 +355,15 @@ def run_sentiment_scan():
         _mark_job_done(job_label("sentiment_scan_job"))
         record_job_run('sentiment_scan_job')
 
+def run_tail_risk_scan(tickers: list, scan_type: str | None = None) -> None:
+    """A failed child is reported here so the steps after it in the calling chain still run."""
+    try:
+        run_child_job("tail_risk_scan", tickers=tickers, scan_type=scan_type)
+    except ChildJobFailed as e:
+        logger.error("Tail Risk (VaR) Scan failed: %s", e)
+        log_sched_notification("Error", f"Tail Risk (VaR) Scan failed: {e}")
+
+
 def run_overnight_quant_scan():
     """Portfolio + watchlist resumable quant scan followed by tail-risk computation."""
     _mark_job_started(job_label("overnight_quant_scan_job"))
@@ -366,7 +374,7 @@ def run_overnight_quant_scan():
         all_tickers = engine.get_all_tickers()
         run_daily_quant_scan(all_tickers)
         logger.info("Overnight tail risk computation initiated.")
-        update_all_tail_risks(all_tickers, scan_type='tail_risk_daily')
+        run_tail_risk_scan(all_tickers, scan_type='tail_risk_daily')
         logged = log_near_earnings_predictions(all_tickers)
         resolved = backfill_earnings_drift_outcomes()
         logger.info("Earnings Drift: logged/refreshed %d, resolved %d outcomes.", logged, resolved)
@@ -461,7 +469,7 @@ def run_weekend_universe_routine():
         if all_tickers:
             run_daily_quant_scan(all_tickers, scan_type='universe')
             logger.info("Universe Technicals complete. Proceeding to heavy metric crunch (VaR, Sentiment)...")
-            update_all_tail_risks(all_tickers, scan_type='tail_risk_universe')
+            run_tail_risk_scan(all_tickers, scan_type='tail_risk_universe')
             update_all_sentiment(all_tickers)
             run_historical_backfill(tickers=all_tickers)
         else:
@@ -544,7 +552,7 @@ def run_ml_training():
     try:
         log_sched_notification("Scheduler", "Started ML Global Training...")
         logger.info("ML Global Training initiated.")
-        run_training_child()
+        run_child_job("global_model_training")
         logger.info("ML Global Training complete.")
         log_sched_notification("Success", "ML Global Training completed successfully.")
     except Exception as e:

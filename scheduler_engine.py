@@ -1359,7 +1359,7 @@ from scheduler_jobs import (
     resume_interrupted_scans,
     trigger_sentiment_report, run_intraday_orchestrator, run_maintenance_engine,
     run_earnings_alert_job, run_insider_alert_job, run_update_pipeline, run_ghostfolio_sync, run_freetrade_sync,
-    run_sentiment_scan, run_overnight_quant_scan, run_weekend_earnings_scan,
+    run_sentiment_scan, run_tail_risk_scan, run_overnight_quant_scan, run_weekend_earnings_scan,
     run_weekend_universe_routine, run_index_scraper, run_fundamentals_profiler,
     run_universe_deep_sync_job, run_ml_backfill, run_ml_training, run_ml_inference,
     run_macro_calendar_update, run_central_bank_nlp_check, run_macro_data_update, run_macro_model_training_job,

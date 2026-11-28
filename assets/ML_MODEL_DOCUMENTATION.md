@@ -169,7 +169,7 @@ LEFT JOIN stock_signals ss ON qs.ticker = ss.ticker
 | `ml_features.py` | — (shared) | Model/feature-stats/quantile file paths, `FEATURE_COLS`, `SECTOR_MAP`, fundamental bounds, `cross_sectional_zscore`, fundamental winsorize/impute, `build_model_features`, and the `TRAINING_HISTORY_QUERY` / `LATEST_FEATURES_QUERY` SQL |
 | `ml_backfill_engine.py` | Historical Data Backfill & Sync | SPY benchmark, target-ticker selection, `run_historical_backfill`, `rebuild_quant_history` |
 | `ml_training_engine.py` | Global Model Training (Walk-Forward) | `train_global_ml_model` (classifier), `train_quantile_models` (Q10/Q90); each returns `False` when training did not finish |
-| `ml_training_process.py` | Global Model Training (Walk-Forward) | `run_training_child` (the web process's supervisor: starts the child, relays its log, watchdog), `child_main` (the child's entry point) |
+| `job_process.py` | Global Model Training (Walk-Forward), Tail Risk (VaR) Scan | `run_child_job(job, **kwargs)` (the web process's supervisor: starts the child, relays its log, watchdog, one heavy child at a time), `CHILD_JOBS` (the registry of child entry points), `ChildJobFailed` |
 | `ml_inference_engine.py` | Daily ML Inference | `update_daily_ml_predictions`, `score_quantile_predictions` |
 
 Classifier training, quantile training, classifier inference and quantile scoring all call `ml_features.build_model_features()` (derived columns, fundamental winsorize/impute, inf-to-NaN, per-date cross-sectional z-scores) and read their rows through the two shared queries, so train and serve cannot drift apart. Training computes its feature statistics from the raw columns the builder leaves in place.
@@ -647,29 +647,29 @@ Training runs outside the web process because a long-lived web process holds sev
 GB, so a memory-hungry history load inside it can make the kernel OOM-kill the dashboard.
 
 `scheduler_jobs.run_ml_training()` and the manual `POST /api/ml/trigger-training`
-call `ml_training_process.run_training_child()`, which starts a fresh
-interpreter (`sys.executable -c ... child_main()`, not a fork of the large web process)
+call `job_process.run_child_job()` for the Global Model Training (Walk-Forward) entry of `CHILD_JOBS`, which starts a fresh
+interpreter (`sys.executable -c ...`, request passed as JSON on stdin, not a fork of the large web process)
 that runs `train_global_ml_model()` and then `train_quantile_models()`. A step that
 fails does not stop the other. Consequences:
 
 * The child's memory goes back to the OS when it exits, and the training stack
   (xgboost, scikit-learn) is imported only there.
-* The child writes `/proc/self/oom_score_adj` = `constants.ML_TRAINING_CHILD_OOM_SCORE_ADJ`
+* The child writes `/proc/self/oom_score_adj` = `constants.CHILD_JOB_OOM_SCORE_ADJ`
   (1000), so if the kernel does run out of memory it picks the child, not the
   web process (raising the score needs no privilege). If the write fails the child
   logs a warning and trains anyway.
 * Its log lines (`LEVEL|logger|message`, newlines escaped by `SafeFormatter`) are read
   by the web process and re-emitted through its own loggers, so `app.log` shows them
   in one place. A line without that prefix (a traceback, a library warning) is logged
-  at INFO as `training child: ...`.
+  at INFO as `<label> child: ...`.
 * **Memory guards.** The classifier and quantile steps abort below
   `constants.ML_TRAINING_ABORT_AVAILABLE_GB` (0.75 GB) before loading. Both steps check
   again **after** the history load (`_enough_memory_after_load`) against
   `ML_TRAINING_POST_LOAD_MIN_AVAILABLE_GB` (1.5 GB), because the child still grows by
   about 1.2 GB between the load (about 1 GB resident) and its peak of about 2.1 GB, and
   abort with an Error notification. While the child runs, the web process samples the host's
-  available RAM (`memory_helpers.available_mib()`) every `ML_TRAINING_WATCHDOG_POLL_SECONDS` (2 s)
-  and kills the child below `ML_TRAINING_WATCHDOG_MIN_AVAILABLE_MIB` (300 MiB), ahead of
+  available RAM (`memory_helpers.available_mib()`) every `CHILD_JOB_WATCHDOG_POLL_SECONDS` (2 s)
+  and kills the child below `CHILD_JOB_WATCHDOG_MIN_AVAILABLE_MIB` (300 MiB), ahead of
   the kernel. A single allocation larger than the headroom can still reach the kernel first.
   The Success notification of each step ends with `Peak RSS N MiB` (the child's own kernel
   high-water mark, `VmHWM`), and the supervisor logs `Global Model Training child finished: exit code
@@ -678,13 +678,14 @@ fails does not stop the other. Consequences:
   between two polls is still counted. Tune the thresholds from those figures.
 * **Outcome.** The child exits 0 when both steps finished and `EXIT_STEP_FAILED` (3)
   when one returned `False`. Any non-zero exit (a step failure, a watchdog kill, a
-  signal, a crash) raises `TrainingFailed`, so the scheduled job reports
+  signal, a crash) raises `ChildJobFailed`, so the scheduled job reports
   `ML Global Training failed: <reason>` (run history: error) instead of "completed
   successfully".
 * **Unit setting.** systemd's default `OOMPolicy=stop` stops the whole service when
   the kernel kills any process in its cgroup, including this child. Set
   `OOMPolicy=continue` on the service (README, "Running as a Background Service")
   or a child kill that beats the watchdog still restarts the dashboard.
+* **One heavy child at a time.** A process-wide lock in `job_process` lets one child run at once (training or Tail Risk (VaR) Scan). A second one waits and logs `<label> child waits for the running <label> child to finish.`
 * A child started by a service stop or restart is killed with the rest of the
   cgroup (`KillMode=control-group`); the web process also kills it if its own
   supervising thread fails.

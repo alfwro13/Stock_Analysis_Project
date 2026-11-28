@@ -2011,20 +2011,20 @@ def test_bg_execute_ml_inference_runs_quantile_scoring_too():
 def test_bg_execute_ml_training_runs_the_same_child_process_as_the_scheduled_job():
     """The manual "Run Training Now" trigger must match the scheduled ml_training_job: one child
     process that trains the classifier and then the quantile models (the missing-second-call
-    pattern of bg_execute_ml_inference, found in the 2026-07-10 audit pass)."""
+    pattern of bg_execute_ml_inference)."""
     import api.routes_triggers
 
-    with patch("api.routes_triggers.run_training_child") as mock_child:
+    with patch("api.routes_triggers.run_child_job") as mock_child:
         api.routes_triggers.bg_execute_ml_training()
 
-    mock_child.assert_called_once_with()
+    mock_child.assert_called_once_with("global_model_training")
 
 
 def test_bg_execute_ml_training_reports_a_failed_child_as_an_error():
     import api.routes_triggers
-    from ml_training_process import TrainingFailed
+    from job_process import ChildJobFailed
 
-    with patch("api.routes_triggers.run_training_child", side_effect=TrainingFailed("exited with code 7")), \
+    with patch("api.routes_triggers.run_child_job", side_effect=ChildJobFailed("exited with code 7")), \
             patch("api.routes_triggers.log_sched_notification") as notify:
         api.routes_triggers.bg_execute_ml_training()
 

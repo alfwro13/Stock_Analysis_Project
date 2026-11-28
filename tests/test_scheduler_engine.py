@@ -530,7 +530,7 @@ class TestResumeInterruptedScans:
     def test_tail_risk_daily_in_progress_dispatches_when_daily_completed(self):
         _seed_scan_state('daily', 'COMPLETED')
         _seed_scan_state('tail_risk_daily', 'IN_PROGRESS', last_ticker='AAPL')
-        with patch("scheduler_jobs.update_all_tail_risks") as mock_fn:
+        with patch("scheduler_jobs.run_tail_risk_scan") as mock_fn:
             resume_interrupted_scans()
             _wait_for_call(mock_fn)
             mock_fn.assert_called_once()
@@ -543,7 +543,7 @@ class TestResumeInterruptedScans:
         _seed_scan_state('tail_risk_daily', 'IN_PROGRESS', last_ticker='AAPL')
         with (
             patch("scheduler_jobs.run_overnight_quant_scan"),
-            patch("scheduler_jobs.update_all_tail_risks") as mock_tr,
+            patch("scheduler_jobs.run_tail_risk_scan") as mock_tr,
         ):
             resume_interrupted_scans()
             import time; time.sleep(0.1)
@@ -552,7 +552,7 @@ class TestResumeInterruptedScans:
     def test_tail_risk_universe_in_progress_dispatches_when_universe_completed(self):
         _seed_scan_state('universe', 'COMPLETED')
         _seed_scan_state('tail_risk_universe', 'IN_PROGRESS', last_ticker='VOD.L')
-        with patch("scheduler_jobs.update_all_tail_risks") as mock_fn:
+        with patch("scheduler_jobs.run_tail_risk_scan") as mock_fn:
             resume_interrupted_scans()
             _wait_for_call(mock_fn)
             mock_fn.assert_called_once()
@@ -562,7 +562,7 @@ class TestResumeInterruptedScans:
     def test_tail_risk_daily_completed_does_not_redispatch(self):
         _seed_scan_state('daily', 'COMPLETED')
         _seed_scan_state('tail_risk_daily', 'COMPLETED')
-        with patch("scheduler_jobs.update_all_tail_risks") as mock_fn:
+        with patch("scheduler_jobs.run_tail_risk_scan") as mock_fn:
             resume_interrupted_scans()
             import time; time.sleep(0.05)
             mock_fn.assert_not_called()
@@ -1209,24 +1209,24 @@ class TestCanonicalJobNames:
         """The Active-Jobs panel must show the canonical label, not a code-style literal."""
         captured = {}
 
-        def _fake_training():
+        def _fake_training(job):
             captured.update(get_active_jobs())
 
-        with patch("scheduler_jobs.run_training_child", _fake_training):
+        with patch("scheduler_jobs.run_child_job", _fake_training):
             _sched_module.run_ml_training()
         assert "Global Model Training (Walk-Forward)" in captured
         assert "ML Global Training" not in captured
 
     def test_training_runner_reports_success_only_when_the_child_finished(self):
-        with patch("scheduler_jobs.run_training_child") as child, patch("scheduler_engine.notify") as notify:
+        with patch("scheduler_jobs.run_child_job") as child, patch("scheduler_engine.notify") as notify:
             _sched_module.run_ml_training()
-        child.assert_called_once()
+        child.assert_called_once_with("global_model_training")
         assert [c.args[1] for c in notify.call_args_list] == ["Scheduler", "Success"]
 
     def test_training_runner_records_a_failed_child_as_an_error_not_a_success(self):
-        from ml_training_process import TrainingFailed
+        from job_process import ChildJobFailed
 
-        with patch("scheduler_jobs.run_training_child", side_effect=TrainingFailed("the training process was killed (signal 9)")), \
+        with patch("scheduler_jobs.run_child_job", side_effect=ChildJobFailed("the training process was killed (signal 9)")), \
                 patch("scheduler_engine.notify") as notify:
             run_manual_job("ml_training_job", _sched_module.run_ml_training)
         row = get_job_run_history("ml_training_job")[0]

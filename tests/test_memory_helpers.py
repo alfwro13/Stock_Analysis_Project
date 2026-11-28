@@ -1,6 +1,7 @@
 """Process Memory Telemetry: the sampler, its scheduled runner, the per-job memory line and the diagnostics payload."""
 import logging
 import sys
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -112,6 +113,37 @@ def test_job_memory_line_is_written_when_rss_moves_by_the_threshold(monkeypatch,
         memory_helpers.log_job_memory("growing_job", 1000.0, 0.2)
     (line,) = _memory_lines(caplog)
     assert "growing_job" in line and f"(+{MEMORY_JOB_LOG_MIN_DELTA_MIB})" in line
+
+
+def test_job_memory_trims_the_heap_above_the_threshold_and_logs_the_trimmed_rss(monkeypatch, caplog):
+    readings = iter([1200.0, 900.0])
+    monkeypatch.setattr(memory_helpers, "rss_mib", lambda: next(readings))
+    trim = MagicMock(return_value=1)
+    monkeypatch.setattr(memory_helpers, "_MALLOC_TRIM", trim)
+    with caplog.at_level(logging.INFO, logger="memory_helpers"):
+        memory_helpers.log_job_memory("slow_job", 1000.0, MEMORY_JOB_LOG_MIN_SECONDS)
+    trim.assert_called_once_with(0)
+    (line,) = _memory_lines(caplog)
+    assert "rss 1000 -> 1200 MiB (+200), 900 MiB after trim" in line
+
+
+def test_job_memory_does_not_trim_below_the_threshold(monkeypatch, caplog):
+    _fake_rss(monkeypatch, 1000.0)
+    trim = MagicMock()
+    monkeypatch.setattr(memory_helpers, "_MALLOC_TRIM", trim)
+    with caplog.at_level(logging.INFO, logger="memory_helpers"):
+        memory_helpers.log_job_memory("quick_job", 1000.0, MEMORY_JOB_LOG_MIN_SECONDS - 0.1)
+    trim.assert_not_called()
+    assert _memory_lines(caplog) == []
+
+
+def test_job_memory_line_says_n_a_when_malloc_trim_is_unavailable(monkeypatch, caplog):
+    _fake_rss(monkeypatch, 1000.0)
+    monkeypatch.setattr(memory_helpers, "_MALLOC_TRIM", None)
+    with caplog.at_level(logging.INFO, logger="memory_helpers"):
+        memory_helpers.log_job_memory("slow_job", 1000.0, MEMORY_JOB_LOG_MIN_SECONDS)
+    (line,) = _memory_lines(caplog)
+    assert "n/a MiB after trim" in line
 
 
 def test_tracked_job_logs_memory_for_a_slow_job_and_stays_clean_after(monkeypatch, caplog):

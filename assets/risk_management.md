@@ -39,6 +39,8 @@ Executing this heavy data fetch across 4,000+ US Equities would:
 
 Because tail-risk is integrated directly into the core Quantitative Engine, calculating VaR and CVaR requires running a Daily Quant Scan.
 
+Multi-ticker Tail Risk (VaR) Scans (the Daily Quant Screener (Portfolio & Watchlist), the weekend universe routine, scans resumed on startup and the manual quant-scan trigger) run `risk_engine.update_all_tail_risks` in a child process (`job_process.run_child_job`), because a universe-wide scan can grow the web process by several GiB; in a child that memory returns to the OS and a memory kill cannot take the web server down. A failed or killed child is reported as a `Tail Risk (VaR) Scan failed: <reason>` Error notification (`scheduler_jobs.run_tail_risk_scan`) and the rest of the job continues. Single-ticker refreshes run the calculation in the web process.
+
 #### Option A: Run via the Web GUI (Recommended)
 If you have just added a new stock to your Ghostfolio or Watchlist and want to populate its risk metrics immediately:
 1. Open the Dashboard and navigate to the **⚙️ Settings** tab.

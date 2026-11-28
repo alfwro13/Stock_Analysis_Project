@@ -7,6 +7,7 @@ Covers:
                           only when there are tickers to process.
   • run_overnight_quant_scan() — wires earnings_vol_engine.log_near_earnings_predictions()
                                   and backfill_earnings_drift_outcomes() into the existing job.
+  • run_tail_risk_scan() — runs the scan in a child process and reports a failed child as an Error notification without raising.
   • run_weekend_earnings_scan() / _schedule_earnings_vol_retry() / _run_earnings_vol_retry_job()
     — one-off retry for tickers the main scan couldn't reach (Yahoo fetch failures).
 """
@@ -56,12 +57,35 @@ class TestRunMlInferenceWiresPredictedMovers:
         mock_log.assert_not_called()
 
 
+class TestRunTailRiskScan:
+    def test_passes_tickers_and_scan_type_to_the_child(self):
+        with patch("scheduler_jobs.run_child_job") as child:
+            scheduler_jobs.run_tail_risk_scan(["AAPL", "VOD.L"], scan_type="tail_risk_daily")
+
+        child.assert_called_once_with("tail_risk_scan", tickers=["AAPL", "VOD.L"], scan_type="tail_risk_daily")
+
+    def test_scan_type_defaults_to_none(self):
+        with patch("scheduler_jobs.run_child_job") as child:
+            scheduler_jobs.run_tail_risk_scan(["AAPL"])
+
+        child.assert_called_once_with("tail_risk_scan", tickers=["AAPL"], scan_type=None)
+
+    def test_a_failed_child_is_notified_as_an_error_and_not_raised(self):
+        from job_process import ChildJobFailed
+
+        with patch("scheduler_jobs.run_child_job", side_effect=ChildJobFailed("the Tail Risk (VaR) Scan process was killed (signal 9)")), \
+             patch("scheduler_jobs.log_sched_notification") as notify:
+            scheduler_jobs.run_tail_risk_scan(["AAPL"])
+
+        notify.assert_called_once_with("Error", "Tail Risk (VaR) Scan failed: the Tail Risk (VaR) Scan process was killed (signal 9)")
+
+
 class TestRunOvernightQuantScanWiresEarningsDrift:
     def test_calls_log_near_earnings_and_backfill(self):
         call_order = []
         with patch("scheduler_jobs.DataEngine") as mock_engine_cls, \
              patch("scheduler_jobs.run_daily_quant_scan"), \
-             patch("scheduler_jobs.update_all_tail_risks"), \
+             patch("scheduler_jobs.run_tail_risk_scan"), \
              patch("scheduler_jobs.log_near_earnings_predictions",
                    side_effect=lambda tickers: call_order.append("log") or 0) as mock_log, \
              patch("scheduler_jobs.backfill_earnings_drift_outcomes",
