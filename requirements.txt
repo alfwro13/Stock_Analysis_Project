@@ -1,6 +1,6 @@
 pip>=26.3
 pytest>=9.2.0
-packaging>=26.3
+packaging>=26.4
 fastapi==0.165.0
 starlette>=1.10.0
 python-dotenv>=1.2.4
