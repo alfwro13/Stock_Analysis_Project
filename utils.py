@@ -378,6 +378,15 @@ def has_cached_fundamentals(ticker: Optional[str]) -> bool:
     return path is not None and os.path.exists(path)
 
 
+def save_fundamentals_dump(ticker: Optional[str], info: Optional[dict]) -> bool:
+    """The one writer of `data/fundamentals/{ticker}.json`: only an answer carrying `quoteType` replaces the dump, because the file date is its age and a near-empty Yahoo answer must not reset it."""
+    path = _fundamentals_dump_path(ticker)
+    if path is None or not info or not info.get("quoteType"):
+        return False
+    write_text_atomic(path, json.dumps(info, default=str))
+    return True
+
+
 def fundamentals_dump_age(path: Any) -> timedelta:
     return datetime.now(timezone.utc) - datetime.fromtimestamp(os.path.getmtime(path), timezone.utc)
 
