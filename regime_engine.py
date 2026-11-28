@@ -15,7 +15,7 @@ from sentiment_engine import get_latest_fear_greed
 from utils import write_parquet_atomic
 from yahoo_engine import yahoo_engine
 from constants import (
-    MACRO_HMM_N_ITER, MACRO_HMM_N_STATES, REGIME_CRASH_VOL, REGIME_VOLATILE_VOL,
+    MACRO_HMM_N_ITER, MACRO_HMM_N_STATES, MACRO_HMM_STATE_MAX_AGE_DAYS, REGIME_CRASH_VOL, REGIME_VOLATILE_VOL,
     HMM_CACHE_MAX_ABS_LOG_RETURN, HMM_CACHE_MAX_GAP_DAYS, HMM_CACHE_MIN_ROWS, HMM_MIN_STATE_FRACTION,
     IF_STRESS_N_ESTIMATORS, IF_STRESS_CONTAMINATION, IF_STRESS_MIN_ROWS,
     IF_STRESS_VOL_WINDOW, IF_STRESS_ALERT_THRESHOLD, IF_STRESS_ALERT_DAYS,
@@ -476,13 +476,13 @@ def _classify_regime(
 
     # Stagflation: persistent inflation + financial stress or negative real yield
     if us_cpi is not None and us_cpi > 4.0:
-        if (us_hy_spread is not None and us_hy_spread > 500) or \
+        if (us_hy_spread is not None and us_hy_spread > 5.0) or \
                 (us_real_yield is not None and us_real_yield < 0):
             return "Stagflation"
 
     # Contraction: inverted yield curve + recession-mode HMM or blown spreads
     if inverted:
-        if ai_hmm_state == 2 or (us_hy_spread is not None and us_hy_spread > 600):
+        if ai_hmm_state == 2 or (us_hy_spread is not None and us_hy_spread > 6.0):
             return "Contraction"
 
     # Late Cycle: flattening curve with elevated CPI
@@ -518,7 +518,12 @@ def classify_macro_regime() -> None:
         us_hy_spread = ind_row['us_high_yield_spread']
         us_real_yield = ind_row['us_real_yield_10y']
 
-        cursor.execute("SELECT ai_hmm_state FROM market_regimes ORDER BY date DESC LIMIT 1")
+        # Nightly macro inference stamps the newest row at its run; rows written after it (same day or later) carry no state of their own.
+        cursor.execute(
+            "SELECT ai_hmm_state FROM market_regimes WHERE ai_hmm_state IS NOT NULL "
+            "AND date >= (SELECT date(MAX(date), ?) FROM market_regimes) ORDER BY date DESC LIMIT 1",
+            (f"-{MACRO_HMM_STATE_MAX_AGE_DAYS} days",),
+        )
         hmm_row = cursor.fetchone()
         ai_hmm_state = hmm_row['ai_hmm_state'] if hmm_row and hmm_row['ai_hmm_state'] is not None else None
 

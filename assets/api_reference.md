@@ -822,7 +822,7 @@ Full one-time initialisation sequence:
 5. Train the XGBoost volatility magnitude model
 6. Run inference for today's date
 
-Steps 3–5 persist their trained models to `models/macro_hmm.joblib`, `models/macro_rf.joblib`, and `models/macro_xgb.joblib`; `MacroAIEngine.__init__` loads them back on every subsequent instantiation (including inside `/macro/run-pipeline`, which otherwise builds a fresh instance with only the persisted models). Steps 4 and 5 train on stored calendar rows only (see `MacroAIEngine` in `assets/db_schema_and_architecture.md`): with fewer than 10 usable rows the step is skipped and its persisted model is deleted, and inference then leaves the upcoming events unscored.
+Training and inference share the Settings "Run Now" sequence below; the Macroeconomic Automation Schedulers (Model Training) job repeats steps 3–5 weekly (see `assets/db_schema_and_architecture.md`). Steps 3–5 persist their trained models to `models/macro_hmm.joblib`, `models/macro_rf.joblib`, and `models/macro_xgb.joblib`; `MacroAIEngine.__init__` loads them back on every subsequent instantiation (including inside `/macro/run-pipeline`, which otherwise builds a fresh instance with only the persisted models). Steps 4 and 5 train on stored calendar rows only (see `MacroAIEngine` in `assets/db_schema_and_architecture.md`): with fewer than 10 usable rows the step is skipped and its persisted model is deleted, and inference then leaves the upcoming events unscored.
 
 Only needs to be run once. Runs asynchronously — may take 5–15 minutes.
 
@@ -885,8 +885,8 @@ stored 4 to 10 days back (the writer stores `NULL`, never `0.0` or a Treasury-ba
 Standard macro update (after initialisation is complete):
 1. Sync macro calendar events and fill the actuals of released events
 2. Refresh FRED and UK macro indicators
-3. Retrain the Random Forest consensus miss model and the XGBoost volatility model on the stored calendar rows (skipped, with the persisted model deleted, while fewer than 10 usable rows exist)
-4. Run inference for today (an event is scored only while both models exist)
+3. Train the Macro HMM on the structural macro indicators, then retrain the Random Forest consensus miss model and the XGBoost volatility model on the stored calendar rows (the two calendar models are skipped, with the persisted model deleted, while fewer than 10 usable rows exist)
+4. Run inference: persist today's `market_regimes.ai_hmm_state`, then score the events of the next 48 hours (an event is scored only while the Random Forest model exists; the volatility warning needs the volatility model as well)
 
 **Request body:** none  
 **Response:** standard background task response
@@ -3363,7 +3363,7 @@ Manually triggers the X-ray risk cache pre-compute job in the background (recomp
 
 ## 21. Macro Regime & Yield Curve Allocator
 
-Synthesises live macro signals (yield curve, CPI, HY credit spread, real yield, HMM state) into a named economic regime label and returns the historically optimal asset class allocation for that regime. Requires the Macro Data Engine to have run at least once (`POST /api/macro/run-pipeline`). Portfolio alignment requires Ghostfolio to be configured.
+Synthesises live macro signals (yield curve, CPI, HY credit spread in percent, real yield, Macro HMM state) into a named economic regime label and returns the historically optimal asset class allocation for that regime. Requires the Macro Data Engine to have run at least once (`POST /api/macro/run-pipeline`). Portfolio alignment requires Ghostfolio to be configured.
 
 ### `GET /api/macro-regime-allocation`
 
@@ -3382,7 +3382,7 @@ Returns the full regime allocation payload. Consumed by the Portfolio X-ray pane
   "key_signals": {
     "us_yield_curve": 0.14,
     "us_cpi_inflation": 3.8,
-    "us_high_yield_spread": 380.0,
+    "us_high_yield_spread": 3.8,
     "us_fed_funds_rate": 5.33,
     "us_real_yield_10y": 1.85,
     "uk_base_rate": 5.25

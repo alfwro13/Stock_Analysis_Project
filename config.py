@@ -218,7 +218,8 @@ DEFAULT_CONFIG = {
             "CALENDAR_TIME": "04:00",
             "CALENDAR_SUNDAY_TIME": "23:00",
             "DATA_DAY": "sat",
-            "DATA_TIME": "05:00"
+            "DATA_TIME": "05:00",
+            "TRAINING_TIME": "06:00"
         },
         "CB_NLP_ALERT": {
             "ENABLED": True,

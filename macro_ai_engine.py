@@ -368,6 +368,8 @@ class MacroAIEngine:
                             SET ai_hmm_state = ? 
                             WHERE date = (SELECT MAX(date) FROM market_regimes)
                         """, (current_hmm_state,))
+                        # Committed on its own: the event loop below may return early without a commit.
+                        self.conn.commit()
                 except Exception:
                     logger.exception("Failed to calculate current live HMM hidden macro regime state.")
 

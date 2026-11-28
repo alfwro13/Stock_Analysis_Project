@@ -651,6 +651,31 @@ class TestWorkflowManifest:
         assert any(d["day_of_week"] == "sun" and d["hour"] == "22" and d["minute"] == "30" for d in described)
         reload_scheduler()
 
+    def test_macro_model_training_job_runs_weekly_on_the_data_day_at_training_time(self):
+        cfg = {"SCHEDULING": {"MACRO_ENGINE": {"ENABLED": True, "CALENDAR_TIME": "04:00", "CALENDAR_SUNDAY_TIME": "22:30", "DATA_DAY": "sun", "DATA_TIME": "05:00", "TRAINING_TIME": "06:15"}}}
+        with patch("scheduler_engine.load_config", return_value=cfg):
+            reload_scheduler()
+            trigger = _sched_module.scheduler.get_job("macro_model_training_job").trigger
+        fields = {f.name: str(f) for f in trigger.fields}
+        assert (fields["day_of_week"], fields["hour"], fields["minute"]) == ("sun", "6", "15")
+        assert _sched_module.job_label("macro_model_training_job") == "Macroeconomic Automation Schedulers (Model Training)"
+        reload_scheduler()
+
+    def test_model_retraining_queue_reuses_the_scheduled_macro_training_job(self):
+        reload_scheduler()
+        job = _sched_module.scheduler.get_job("macro_model_training_job")
+        assert job is not None
+        with patch.object(_sched_module.scheduler, "modify_job") as modify, \
+             patch.object(_sched_module.scheduler, "add_job") as add, \
+             patch.dict(_sched_module._MODEL_RETRAIN_RUNNERS, {"macro_model_training_job": lambda: None}):
+            _sched_module._model_retraining_queue.append("macro_model_training_job")
+            try:
+                _sched_module._dispatch_next_model_retraining()
+            finally:
+                _sched_module._model_retraining_current = None
+        modify.assert_called_once()
+        add.assert_not_called()
+
     def test_next_run_epoch_is_none_for_an_unscheduled_job(self):
         from scheduler_engine import next_run_epoch
         assert next_run_epoch("no_such_job_id") is None

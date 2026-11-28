@@ -103,22 +103,22 @@
                     <li><strong>State 1 = Chop:</strong> Elevated volatility, near-zero or slightly negative average returns. The market is rangebound, directionless — a high-noise environment where momentum signals tend to fail.</li>
                     <li><strong>State 2 = High Volatility:</strong> The highest realized volatility of the three states. Its average daily return can be positive or negative; the Crash Veto in the Regime-Weighted Conviction Score checks that fitted average before suppressing scores.</li>
                 </ul>
-                <div class="rule">Distinct from the <em>Macro HMM</em> (which uses M2, jobless claims, credit spreads, and yield curve to predict macro calendar event impacts). This regime model operates on price and volatility only — it is a market-microstructure signal, not a macro-fundamental one. Full Viterbi history and transition probabilities are at <code>/market-regime</code>.</div>
+                <div class="rule">Distinct from the <em>Macro HMM</em> (which uses M2, jobless claims, credit spreads, and yield curve to label the economic cycle and to inform the macro calendar event scores; it is retrained weekly). This regime model operates on price and volatility only — it is a market-microstructure signal, not a macro-fundamental one. Full Viterbi history and transition probabilities are at <code>/market-regime</code>.</div>
             </div>
 
             <div class="term-box">
                 <span class="term-title">🌍 Macro Regime Label (Yield Curve Allocator)</span>
-                <p>While the Price HMM reads market signals, the <strong>Macro Regime Label</strong> reads economic fundamentals: the shape of the yield curve, CPI inflation, high-yield credit spreads, the real 10-year yield, and the HMM hidden state. Together, these paint a picture of where the economic cycle is currently positioned.</p>
+                <p>While the Price HMM reads market signals, the <strong>Macro Regime Label</strong> reads economic fundamentals: the shape of the yield curve, CPI inflation, high-yield credit spreads, the real 10-year yield, and the Macro HMM hidden state (0 expansion, 1 transition, 2 contraction). Together, these paint a picture of where the economic cycle is currently positioned.</p>
                 <p>The <strong>yield curve</strong> shows interest rates for government bonds at different maturities. Normally it slopes upward — you get paid more for lending for longer (more risk). When short-term rates exceed long-term rates, the curve <strong>inverts</strong> — and this has preceded every US recession since the 1960s. It is considered one of the most powerful economic leading indicators.</p>
                 <p>Five macro regime labels are defined:</p>
                 <ul>
-                    <li><strong>Risk-On:</strong> Positive yield curve, low and stable inflation, tight credit spreads. The economy is healthy and growing. Equities and riskier assets typically perform best.</li>
-                    <li><strong>Late Cycle:</strong> Flattening yield curve, rising CPI. Growth continues but is beginning to peak. Value stocks and defensive sectors start outperforming growth.</li>
-                    <li><strong>Stagflation:</strong> High inflation combined with financial stress or negative real yields. Bonds and equities both struggle. Commodities (gold, oil) historically outperform.</li>
-                    <li><strong>Contraction:</strong> Inverted yield curve, recession-mode HMM. The economy is likely shrinking. Cash, short-duration bonds, and defensive equities are favoured.</li>
-                    <li><strong>Recovery:</strong> Transitioning out of contraction. The HMM state is improving. Early-cycle assets (small-caps, cyclicals) historically lead.</li>
+                    <li><strong>Risk-On:</strong> The default when no other rule applies: low and stable inflation, tight credit spreads, no inversion. The economy is healthy and growing. Equities and riskier assets typically perform best.</li>
+                    <li><strong>Late Cycle:</strong> Flat yield curve (between 0 and 0.20 percentage points) with CPI above 3%. Growth continues but is beginning to peak. Value stocks and defensive sectors start outperforming growth.</li>
+                    <li><strong>Stagflation:</strong> CPI above 4% combined with a high-yield spread above 5% or a negative real yield. Bonds and equities both struggle. Commodities (gold, oil) historically outperform.</li>
+                    <li><strong>Contraction:</strong> Inverted yield curve combined with a contraction Macro HMM state or a high-yield spread above 6%. The economy is likely shrinking. Cash, short-duration bonds, and defensive equities are favoured.</li>
+                    <li><strong>Recovery:</strong> Macro HMM in the transition state with a yield curve that is not inverted. Early-cycle assets (small-caps, cyclicals) historically lead.</li>
                 </ul>
-                <div class="rule">Computed nightly by <code>regime_engine.classify_macro_regime()</code>. Powers the Macro Regime Allocator tool which shows the historically optimal asset class weights for the current regime.</div>
+                <div class="rule">Computed nightly by <code>regime_engine.classify_macro_regime()</code>, using the newest Macro HMM state no older than 7 days. The high-yield spread is read in percent, as FRED publishes it. Powers the Macro Regime Allocator tool which shows the historically optimal asset class weights for the current regime.</div>
             </div>
 
             <div class="term-box">

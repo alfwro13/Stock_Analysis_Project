@@ -1668,7 +1668,7 @@ CARDS = [
             "A mandatory Federal Reserve rate cut within 30 days",
             "A currency devaluation of the US dollar",
         ],
-        "explanation": """<p>While the Price HMM reads market signals, the <strong>Macro Regime Label</strong> reads economic fundamentals: the shape of the yield curve, CPI inflation, high-yield credit spreads, the real 10-year yield, and the HMM hidden state. Together, these paint a picture of where the economic cycle is currently positioned.</p>
+        "explanation": """<p>While the Price HMM reads market signals, the <strong>Macro Regime Label</strong> reads economic fundamentals: the shape of the yield curve, CPI inflation, high-yield credit spreads, the real 10-year yield, and the Macro HMM hidden state (0 expansion, 1 transition, 2 contraction). Together, these paint a picture of where the economic cycle is currently positioned.</p>
 <p>The <strong>yield curve</strong> shows interest rates for government bonds at different maturities. Normally it slopes upward — you get paid more for lending for longer (more risk). When short-term rates exceed long-term rates, the curve <strong>inverts</strong> — and this has preceded every US recession since the 1960s. It is considered one of the most powerful economic leading indicators.</p>
 <p>Five macro regime labels are defined:</p>""",
     },

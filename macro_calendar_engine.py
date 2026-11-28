@@ -150,7 +150,7 @@ def fetch_and_process_calendar() -> List[Tuple]:
                 previous_val,
                 actual_val,
                 None, # post_event_spy_gap (calculated later by reconcile_past_events)
-                0,    # ai_volatility_warning (set by MacroAIEngine inference)
+                None, # ai_volatility_warning (set by MacroAIEngine inference)
                 is_passed,
                 0,    # alert_dispatched default
                 vote_split_text(forecast_raw),

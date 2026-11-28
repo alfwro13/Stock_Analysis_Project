@@ -1030,6 +1030,49 @@ def test_migrate_db_drops_ticker_metadata_table_and_adds_stock_signals_market_ca
 
 
 @pytest.mark.db
+def test_migrate_db_nulls_zero_volatility_warnings_once():
+    conn = _conn()
+    try:
+        conn.execute("DELETE FROM data_migrations WHERE name = 'macro_calendar_unscored_volatility_nulled'")
+        conn.executemany(
+            "INSERT OR REPLACE INTO macro_calendar (event_id, event_date, ai_volatility_warning) VALUES (?, '2099-01-01 12:00:00', ?)",
+            [("ZZMIGVOL1", 0.0), ("ZZMIGVOL2", 1.5)],
+        )
+        conn.commit()
+        cursor = conn.cursor()
+        db_schema.migrate_db(conn, cursor)
+        stored = {r["event_id"]: r["ai_volatility_warning"] for r in conn.execute("SELECT event_id, ai_volatility_warning FROM macro_calendar WHERE event_id LIKE 'ZZMIGVOL%'")}
+        assert stored == {"ZZMIGVOL1": None, "ZZMIGVOL2": 1.5}
+        conn.execute("UPDATE macro_calendar SET ai_volatility_warning = 0.0 WHERE event_id = 'ZZMIGVOL2'")
+        conn.commit()
+        db_schema.migrate_db(conn, cursor)
+        assert conn.execute("SELECT ai_volatility_warning FROM macro_calendar WHERE event_id = 'ZZMIGVOL2'").fetchone()[0] == 0.0
+    finally:
+        conn.execute("DELETE FROM macro_calendar WHERE event_id LIKE 'ZZMIGVOL%'")
+        conn.commit()
+        conn.close()
+
+
+@pytest.mark.db
+def test_migrate_db_removes_future_macro_indicator_rows_and_keeps_today():
+    today = time_engine.now_local().date()
+    dates = {"past": today - timedelta(days=3), "today": today, "future": today + timedelta(days=4)}
+    conn = _conn()
+    try:
+        conn.execute("DELETE FROM data_migrations WHERE name = 'macro_indicators_future_rows_removed'")
+        conn.executemany("INSERT OR REPLACE INTO macro_indicators (date, us_m2) VALUES (?, 1.0)", [(d.isoformat(),) for d in dates.values()])
+        conn.commit()
+        cursor = conn.cursor()
+        db_schema.migrate_db(conn, cursor)
+        kept = {r["date"] for r in conn.execute("SELECT date FROM macro_indicators WHERE date IN (?, ?, ?)", tuple(d.isoformat() for d in dates.values()))}
+        assert kept == {dates["past"].isoformat(), dates["today"].isoformat()}
+    finally:
+        conn.execute("DELETE FROM macro_indicators WHERE date IN (?, ?, ?)", tuple(d.isoformat() for d in dates.values()))
+        conn.commit()
+        conn.close()
+
+
+@pytest.mark.db
 def test_profile_empty_strikes_has_history_strike_columns():
     assert {"strikes", "last_empty_at", "history_strikes", "last_history_empty_at"} <= _columns("profile_empty_strikes")
 

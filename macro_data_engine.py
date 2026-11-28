@@ -34,7 +34,17 @@ ONS_QUARTERLY_TAXONOMY: Dict[str, str] = {
 }
 
 FRED_QUARTERLY_SERIES = {'GDP'}
+_MACRO_INDICATOR_VALUE_COLUMNS = (
+    'us_m2', 'us_jobless_claims', 'us_high_yield_spread', 'us_yield_curve',
+    'uk_m4', 'uk_corporate_spread', 'uk_cpi_inflation', 'uk_claimant_count',
+    'us_cpi_inflation', 'us_fed_funds_rate', 'us_real_yield_10y', 'uk_base_rate',
+    'us_nominal_gdp_yoy', 'uk_nominal_gdp_yoy',
+)
 US_GDP_RELEASE_LAG_DAYS = 30
+# FRED publishes weekly claims (dated by the week-ending Saturday) the following Thursday.
+FRED_WEEKLY_CLAIMS_LAG_DAYS = 5
+# Rows this recent are restated on each run so late publications land; older rows stay point-in-time.
+MACRO_INDICATORS_RESTATE_DAYS = 45
 UK_GDP_RELEASE_LAG_DAYS = 45
 GDP_HISTORY_DAYS = 600
 
@@ -145,7 +155,12 @@ def fetch_fred_api(session: requests.Session, series_id: str, start_date: dateti
         else:
             # Daily market metrics (Credit Spreads/Yield Curves) are instant.
             # Structural economic data (M2/Claims) lags by ~30 days.
-            lag_days = 0 if series_id in ['BAMLH0A0HYM2', 'BAMLHE00EHYIOAS', 'T10Y2Y', 'DFII10', 'DFEDTARU'] else 30
+            if series_id in ['BAMLH0A0HYM2', 'BAMLHE00EHYIOAS', 'T10Y2Y', 'DFII10', 'DFEDTARU']:
+                lag_days = 0
+            elif series_id == 'ICSA':
+                lag_days = FRED_WEEKLY_CLAIMS_LAG_DAYS
+            else:
+                lag_days = 30
             df['publication_date'] = df['date'] + pd.DateOffset(days=lag_days)
 
         df.dropna(subset=['publication_date'], inplace=True)
@@ -329,6 +344,8 @@ def update_macro_indicators() -> None:
     merged_df = pd.concat(dfs, axis=1, sort=False)
     merged_df.sort_index(inplace=True)
     merged_df.ffill(inplace=True)
+    # Publication lags push dates past today; a row is only known once its date has arrived.
+    merged_df = merged_df[merged_df.index <= end_dt]
 
     # No .bfill(): forward-fill only preserves point-in-time knowledge; back-fill would reintroduce lookahead bias.
 
@@ -357,7 +374,7 @@ def update_macro_indicators() -> None:
     try:
         conn = get_connection()
         cursor = conn.cursor()
-        # INSERT OR IGNORE: preserves the point-in-time value recorded on each date; late revisions must not overwrite historical training rows.
+        # INSERT OR IGNORE: preserves the point-in-time value recorded on each date; late revisions must not overwrite historical training rows older than the restatement window.
         cursor.executemany('''
             INSERT OR IGNORE INTO macro_indicators (
                 date, us_m2, us_jobless_claims, us_high_yield_spread, us_yield_curve,
@@ -366,8 +383,18 @@ def update_macro_indicators() -> None:
                 us_nominal_gdp_yoy, uk_nominal_gdp_yoy
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ''', records)
+        inserted = cursor.rowcount
+        restate_from = (end_dt - timedelta(days=MACRO_INDICATORS_RESTATE_DAYS)).strftime("%Y-%m-%d")
+        recent = [r for r in records if r[0] >= restate_from]
+        # COALESCE: a series missing from this fetch leaves the stored value untouched.
+        cursor.executemany(
+            "UPDATE macro_indicators SET "
+            + ", ".join(f"{col} = COALESCE(?, {col})" for col in _MACRO_INDICATOR_VALUE_COLUMNS)
+            + " WHERE date = ?",
+            [r[1:] + (r[0],) for r in recent],
+        )
         conn.commit()
-        logger.info("Successfully bulk-inserted up to %s new Macro Regime historical days (ignoring existing to preserve PIT).", cursor.rowcount)
+        logger.info("Successfully bulk-inserted up to %s new Macro Regime historical days; restated %d day(s) from %s.", inserted, len(recent), restate_from)
 
         # CPI YoY never exceeds 20% in modern history; values > 20 are legacy raw-index artefacts, nullify them.
         cursor.execute("UPDATE macro_indicators SET us_cpi_inflation=NULL WHERE us_cpi_inflation > 20")

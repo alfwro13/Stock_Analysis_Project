@@ -387,6 +387,13 @@
                             <input type="time" id="MACRO_DATA_TIME" class="form-control" value="{{ macro_sched.DATA_TIME | default('05:00') }}">
                         </div>
                     </div>
+                    <div class="flex-gap-15 mb-15">
+                        <div class="form-group flex-1">
+                            <label for="MACRO_TRAINING_TIME"><abbr title="Weekly retraining of the macro regime and event-impact models, on the same day as the data fetch.">Weekly Model Training Time</abbr></label>
+                            <input type="time" id="MACRO_TRAINING_TIME" class="form-control" value="{{ macro_sched.TRAINING_TIME | default('06:00') }}">
+                        </div>
+                        <div class="form-group flex-1"></div>
+                    </div>
                     <div class="flex-gap-15 align-end">
                         {% if macro_sched.INITIALIZED %}
                             <button type="button" class="btn btn-primary mt-0" onclick="triggerMacroRun()">▶️ Run Now</button>
