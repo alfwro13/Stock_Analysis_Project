@@ -12,6 +12,7 @@ from sklearn import __version__ as sklearn_version
 from sklearn.exceptions import InconsistentVersionWarning
 
 from config import ANOMALY_MODELS_DIR, BASE_DIR, HISTORICAL_DIR
+from constants import ML_LABEL
 
 logger = logging.getLogger(__name__)
 
@@ -81,8 +82,8 @@ def remove_sklearn_artifact(path: Path) -> None:
     _xgboost_version_path(path).unlink(missing_ok=True)
 
 
-def load_sklearn_artifact(path: Path, retraining_job_id: str) -> T:
-    """Load a trusted local artifact and reject estimators trained by another scikit-learn or XGBoost version."""
+def load_sklearn_artifact(path: Path, retraining_job_id: str, label: str | None = None) -> T:
+    """Load a trusted local artifact and reject estimators trained by another scikit-learn or XGBoost version, or on a training label other than `label`."""
     version_path = _version_path(path) if isinstance(path, Path) else None
     if version_path is not None and version_path.exists():
         original_version = version_path.read_text().strip()
@@ -137,6 +138,11 @@ def load_sklearn_artifact(path: Path, retraining_job_id: str) -> T:
         )
         raise ModelVersionMismatch(f"{path} was trained with an earlier XGBoost release")
 
+    if label is not None and getattr(artifact, "label_", None) != label:
+        _report_mismatch(retraining_job_id, path, "an earlier training label")
+        logger.warning("Rejected %s trained on an earlier training label; queued %s for retraining", path, retraining_job_id)
+        raise ModelVersionMismatch(f"{path} was trained on an earlier training label")
+
     if version_path is not None and not version_path.exists():
         version_path.write_text(sklearn_version)
     return artifact
@@ -145,6 +151,7 @@ def load_sklearn_artifact(path: Path, retraining_job_id: str) -> T:
 def scan_model_compatibility() -> None:
     """Probe one artifact per training family so upgrades trigger retraining at startup."""
     models_dir = BASE_DIR / "models"
+    labels = {models_dir / "ml_ensemble.joblib": ML_LABEL}
     families: list[tuple[str, list[Path]]] = [
         (
             "ml_training_job",
@@ -184,7 +191,7 @@ def scan_model_compatibility() -> None:
             if not path.exists():
                 continue
             try:
-                load_sklearn_artifact(path, job_id)
+                load_sklearn_artifact(path, job_id, labels.get(path))
             except ModelVersionMismatch:
                 break
             except Exception as error:

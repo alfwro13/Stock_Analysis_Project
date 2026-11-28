@@ -31,7 +31,7 @@ from visuals.ai import (
 from fx_drag_engine import portfolio_lifetime_fx_breakdown
 from constants import (
     MCP_WRITE_LIMIT_BOUNDS,
-    PREDICTION_HORIZON_DAYS, PREDICTION_RETURN_THRESHOLD, CSS_VERSION, GFETCHER_MAX_DELAY_SECONDS, GFETCHER_MAX_PER_TICKER,
+    PREDICTION_HORIZON_DAYS, ML_CONFIDENCE_BASE_RATE, ML_CONFIDENCE_HIGH, ML_CONFIDENCE_LOW, CSS_VERSION, GFETCHER_MAX_DELAY_SECONDS, GFETCHER_MAX_PER_TICKER,
     GFETCHER_MAX_REQUESTS_PER_DAY, GFETCHER_MAX_TICKERS_PER_RUN, GFETCHER_MIN_DELAY_SECONDS, INVESTMENT_POLICY_MAX_CHARS,
     MCP_ACTIVITY_ROWS, MCP_KEY_NAME_MAX_CHARS, MCP_PUBLIC_HOST_MAX_CHARS,
 )
@@ -44,6 +44,9 @@ from pages.page_routes_stock import page_router_stock
 page_router = APIRouter()
 templates = Jinja2Templates(directory="templates")
 templates.env.globals["css_version"] = CSS_VERSION
+templates.env.globals["ml_confidence_base_rate"] = ML_CONFIDENCE_BASE_RATE
+templates.env.globals["ml_confidence_high"] = ML_CONFIDENCE_HIGH
+templates.env.globals["ml_confidence_low"] = ML_CONFIDENCE_LOW
 
 
 @page_router.get("/login", response_class=HTMLResponse)
@@ -187,7 +190,9 @@ def glossary(request: Request):
         context={
             "unread_count": get_unread_count(),
             "prediction_horizon": PREDICTION_HORIZON_DAYS,
-            "prediction_threshold_pct": int(PREDICTION_RETURN_THRESHOLD * 100),
+            "ml_confidence_base_rate": int(ML_CONFIDENCE_BASE_RATE),
+            "ml_confidence_high": int(ML_CONFIDENCE_HIGH),
+            "ml_confidence_low": int(ML_CONFIDENCE_LOW),
             "asset_docs": _render_asset_docs(),
         }
     )
@@ -284,7 +289,6 @@ def market_screener_page(request: Request):
             "unread_count": get_unread_count(),
             "config": load_config(),
             "prediction_horizon": PREDICTION_HORIZON_DAYS,
-            "prediction_threshold_pct": int(PREDICTION_RETURN_THRESHOLD * 100),
         }
     )
 

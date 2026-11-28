@@ -13,9 +13,7 @@ partial, then add a matching entry here (section_id must be an existing LEVELS e
 or a new one). See assets/glossary_learning.md for the full checklist.
 """
 
-from constants import PREDICTION_HORIZON_DAYS, PREDICTION_RETURN_THRESHOLD
-
-_PREDICTION_THRESHOLD_PCT = int(PREDICTION_RETURN_THRESHOLD * 100)  # matches pages/page_routes.py's glossary context
+from constants import ML_CONFIDENCE_BASE_RATE, PREDICTION_HORIZON_DAYS
 
 LEVELS = [
     ("market-fundamentals", "Market Fundamentals"),
@@ -796,7 +794,7 @@ CARDS = [
             "The stock's price exactly 90 trading days from today",
             "The 90th percentile of the stock's historical trading volume",
         ],
-        "explanation": """<p>Standard ML models output a single probability ("65% chance of rising &gt;3%"). The <strong>Quantile Price Bands</strong> go further: instead of predicting the most likely outcome, they predict the <em>distribution</em> of outcomes — specifically, where the stock is likely to be in the worst-case and best-case scenarios over the next 10 trading days.</p>
+        "explanation": """<p>Standard ML models output a single probability ("a 54% chance of beating the universe median"). The <strong>Quantile Price Bands</strong> go further: instead of predicting the most likely outcome, they predict the <em>distribution</em> of outcomes — specifically, where the stock is likely to be in the worst-case and best-case scenarios over the next 10 trading days.</p>
 <p>Two <strong>XGBoost Quantile Regressors</strong> are trained on the same 18 features as the confidence score model, but with different objectives. The <strong>Q10 model</strong> is trained to predict the 10th percentile of outcomes — the level that only 10% of similar historical setups fell below over 10 days. The <strong>Q90 model</strong> predicts the 90th percentile — the level that only 10% of similar setups exceeded. This gives you a statistically grounded range rather than a single point forecast.</p>
 <p><strong>Q10 Band (Floor):</strong> In 90% of comparable historical situations, the stock did not fall below this price over the following 10 trading days. This is a data-driven worst-case support level — useful for placing limit buy orders or stop-loss levels. It is not a guarantee, but a probabilistic boundary based on the model's training data.</p>
 <p><strong>Q90 Band (Ceiling):</strong> In 90% of comparable historical situations, the stock reached or exceeded this price within the following 10 trading days. This is a data-driven optimistic target — useful for setting take-profit levels. When shown on the portfolio page, this is displayed as the ML exit target alongside the Volume Profile Exit Zone.</p>
@@ -1518,10 +1516,10 @@ CARDS = [
             "XGBoost cannot process technical indicators, only fundamental data",
             "Random Forest is used only as a fallback when XGBoost fails to run",
         ],
-        "explanation": f"""<p>Every stock in the universe receives a <strong>ML Confidence Score</strong> — a number between 0% and 100% that represents how likely a machine learning model thinks the stock will gain more than {_PREDICTION_THRESHOLD_PCT}% over the next {PREDICTION_HORIZON_DAYS} trading days (roughly two calendar weeks), measured from the close on the day of the scan to the close {PREDICTION_HORIZON_DAYS} days later.</p>
+        "explanation": f"""<p>Every stock in the universe receives a <strong>ML Confidence Score</strong> — a calibrated probability, shown from 0% to 100%, that the stock's return over the next {PREDICTION_HORIZON_DAYS} trading days (from the close the day after the scan to the close {PREDICTION_HORIZON_DAYS} trading days later) beats the median return of the stock universe the model trains on, measured over the same dates. Half of all training examples are positive by construction, so the base rate is {int(ML_CONFIDENCE_BASE_RATE)}% and scores cluster roughly between 44% and 54%.</p>
 <p>The model is a <strong>Soft-Voting Ensemble</strong>, which means it combines two separate models — XGBoost and Random Forest — and averages their probability estimates rather than taking a hard yes/no vote. This makes it more robust because the two models have different strengths: XGBoost is better at learning non-linear interactions between features; Random Forest is better at avoiding overfitting to recent noise.</p>
 <p><strong>XGBoost</strong> (eXtreme Gradient Boosting) builds a sequence of small decision trees where each tree learns from the mistakes of the previous ones — a technique called gradient boosting. <strong>Random Forest</strong> builds hundreds of independent decision trees on random subsets of data and features, then averages their predictions. Neither model "knows" finance — they learn statistical patterns from 18 technical and fundamental features (RSI, MACD, volume ratios, SMA distances, etc.) across thousands of past observations.</p>
-<p>A score of 75% does not mean "this stock will definitely go up 3% in 10 days." It means: of all historical situations where the model saw this same combination of signals, the stock gained more than {_PREDICTION_THRESHOLD_PCT}% in the next {PREDICTION_HORIZON_DAYS} days about 75% of the time. Markets are inherently unpredictable — even a perfect model would be wrong 25–30% of the time just due to randomness.</p>""",
+<p>A score of 54% does not mean "this stock will definitely beat the market." It means: of all historical situations where the model saw this same combination of signals, the stock's {PREDICTION_HORIZON_DAYS}-day return beat that date's universe median slightly more often than the {int(ML_CONFIDENCE_BASE_RATE)}% base rate. A fixed return threshold such as "gains more than 3%" would label volatile stocks rather than outperformers, which is why the label is relative to the universe median. Markets are inherently unpredictable, so even small edges over the base rate are meaningful.</p>""",
     },
     {
         "term_key": "quant-algo-trading-backtesting-overfitting",
@@ -2142,7 +2140,7 @@ CARDS = [
         ],
         "explanation": """<p><strong>Technical</strong> — every confirmed Pattern Detection result (any registered family — Head &amp; Shoulders, Double Top/Bottom, Flag, Triangle, Wedge, Pennant, Volatility Squeeze, NR4/NR7, Parabolic Stretch, Momentum Divergence, Candlestick Trigger, and any family added later) plus the Trap Monitor's current phase, each resolved to "up"/"down" via that engine's own existing direction convention.</p>
 <p><strong>Statistical</strong> — Earnings Volatility's historical 5-day post-earnings drift, only counted when there's a real measured mispricing edge (<code>edge_score &gt; 0</code>) — a drift reading with no edge is noise, not signal.</p>
-<p><strong>ML</strong> — the daily ML confidence score (the same Quantamental ML ensemble read elsewhere in the app) above or below 50.</p>
+<p><strong>ML</strong> — the daily ML confidence score (the same Quantamental ML ensemble read elsewhere in the app) above or below 50 (the base rate: it votes up above 50 and down below 50).</p>
 <p>A pillar only casts a vote when every signal it saw in the window points the same way — if a pillar's own signals conflict with each other (e.g. one confirmed pattern says up, another says down), that pillar abstains rather than forcing a side.</p>""",
     },
     {

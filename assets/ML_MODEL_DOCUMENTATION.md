@@ -3,7 +3,7 @@
 **Project:** Stock Analysis Quantitative Trading Terminal  
 **Model File:** `models/ml_ensemble.joblib`  
 **Engines:** `ml_features.py`, `ml_backfill_engine.py`, `ml_training_engine.py`, `ml_inference_engine.py`  
-**Final PR-AUC:** 0.4217 (random baseline: 0.3348)
+**Label:** beats the daily universe median over 10 trading days (`constants.ML_LABEL`)  
 
 ---
 
@@ -24,9 +24,9 @@
 
 ## 1. Model Overview
 
-The ML ensemble is a binary classification model that predicts whether a given stock will achieve a **>3% return over the next 10 trading days**, using the entry price proxy of the following day's close (T+1).
+The ML ensemble is a binary classification model that predicts whether a given stock's return over the next 10 trading days (entry at the following day's close, T+1, exit at the close of T+10) beats the **median return of the stock universe the model trains on, measured over the same dates**.
 
-It is used as a **ranking signal**, not an absolute probability. The confidence score (0–100) should be interpreted as: *"This stock is in the top X% of the cross-sectional universe by predicted momentum quality today."* A score of 70 does not mean a 70% probability of a >3% move — it means the stock ranks in approximately the top 5–10% of all scored stocks on that day.
+The confidence score (0–100) is the calibrated probability of that outcome. The label is relative, so half of all training examples are positive by construction and the base rate is `ML_CONFIDENCE_BASE_RATE` = 50; scores cluster roughly between 44 and 54. A fixed return threshold labels volatility rather than outperformance (volatile stocks clear it more often whatever their expected return), which is why the label is measured against the universe median. The score is a relative ranking signal, not an expected return, and tickers on the same value are tied (§5.3).
 
 The model is an ensemble of a Random Forest and an XGBoost classifier, trained using Anchored Walk-Forward Validation with 5 temporal folds and a 5-day embargo gap between training and test sets to prevent target leakage.
 
@@ -35,23 +35,24 @@ The model is an ensemble of a Random Forest and an XGBoost classifier, trained u
 ## 2. Prediction Target
 
 ```
-target = 1  if  (close[T+10] - close[T+1]) / close[T+1]  >  0.03
-target = 0  otherwise
+ret_10d = (close[T+10] - close[T+1]) / close[T+1]
+target  = 1  if  ret_10d  >  median of ret_10d over the universe on date T
+target  = 0  otherwise
 ```
 
 **Entry proxy:** `close[T+1]` — the following day's close, used as a realistic execution price approximation. True execution would be at the open of T+1. Using close[T+1] slightly overstates returns by the T+1 intraday move, which is bounded by typical bid-ask spread (0.01–0.1% for liquid names). This is a well-established and widely-used simplification in practitioner ML research.
 
 **Exit:** `close[T+10]` — 10 trading days after signal generation.
 
-**Threshold:** 3% over 10 days. This equates to approximately 75% annualised return if sustained, which is used purely as a binary discriminator between strong and weak setups. It is not a return forecast.
+**Label tag:** the model artifact records its training label (`constants.ML_LABEL`). `model_compatibility_engine.load_sklearn_artifact()` rejects a model trained on another label like a version mismatch and queues Global Model Training (Walk-Forward) to retrain, so a score never mixes two label definitions.
 
-**Horizon selection rationale:** A 10-day horizon outperformed a 5-day one in empirical testing (PR-AUC 0.4217 vs 0.3592). The mechanism is signal-to-noise: technical momentum factors need time to play out before mean-reversion noise dominates at very short horizons (Jegadeesh & Titman, 1993, found optimal momentum horizons of 3–12 months; at 5-day intraday horizons, market microstructure noise dominates).
+**Horizon selection rationale:** technical momentum factors need time to play out before mean-reversion noise dominates at very short horizons (Jegadeesh & Titman, 1993, found optimal momentum horizons of 3–12 months; at 5-day horizons market microstructure noise dominates), so the horizon is 10 trading days (`PREDICTION_HORIZON_DAYS`).
 
 **Class distribution at 10-day horizon:**
 ```
-Positive (1): 26,533 rows  (33.5%)
-Negative (0): 52,710 rows  (66.5%)
-Total:        79,205 rows  (after target construction dropna)
+Positive (1): about 50% of rows (by construction)
+Negative (0): about 50% of rows
+Rows without a full 10-day forward return are dropped
 ```
 
 ---
@@ -181,7 +182,7 @@ Classifier training, quantile training, classifier inference and quantile scorin
 **Random Forest Classifier**
 ```python
 RandomForestClassifier(
-    class_weight='balanced',   # Corrects for 33.5% / 66.5% class imbalance
+    class_weight='balanced',   # Corrects for any class imbalance (about 50/50 by construction)
     random_state=42,
     n_jobs=-1
 )
@@ -194,7 +195,7 @@ n_estimators=100, min_samples_leaf=5, max_depth=4
 **XGBoost Classifier**
 ```python
 XGBClassifier(
-    scale_pos_weight=1.99,     # neg_count / pos_count = 52,710 / 26,533
+    scale_pos_weight=1.0,      # neg_count / pos_count, about 1 by construction
     eval_metric='logloss',
     random_state=42,
     n_jobs=-1
@@ -229,11 +230,11 @@ Each run logs the rows used, the date range, the rows dropped for age or thin da
 
 ### 5.3 Probability Calibration
 
-The data is split 60/20/20 by date into Train, Calib and Test (`_temporal_split()`). Each base estimator is wrapped in `CalibratedClassifierCV(estimator=FrozenEstimator(estimator), method='isotonic')` and the isotonic map is fitted on the Calib rows only (`_fit_calibrated()`). The headline PR-AUC uses estimators fitted on Train alone, calibrated on Calib and scored on Test. The production ensemble is then refitted on Train + Calib with the same hyperparameters and calibrated on Calib again (`_refit_production_ensemble()`), so its calibrator is fitted on rows the estimator has seen (see §6).
+The data is split 60/20/20 by date into Train, Calib and Test (`_temporal_split()`). Each base estimator is wrapped in `CalibratedClassifierCV(estimator=FrozenEstimator(estimator), method='isotonic')` and the isotonic map is fitted on the Calib rows only (`_fit_calibrated()`). The headline PR-AUC uses estimators fitted on Train alone, calibrated on Calib and scored on Test. The production ensemble is then refitted on Train + Calib with the same hyperparameters, and its isotonic calibration is fitted on the Test region, rows the refit never saw (`_refit_production_ensemble()`), so the production probabilities are an out-of-sample calibration (see §6).
 
 **The output is a step function.** Isotonic regression maps a range of raw scores to one value, and the ensemble averages two such maps. Many tickers therefore share exactly one `ml_confidence_score`, often a tenth of the universe or more on the top step, and the whole universe takes only a few hundred distinct values. Inside one step the raw scores carry no usable ordering: on a held-out period the raw score of the tickers on the top step separated winners from losers no better than chance. Treat tickers on the same value as tied.
 
-**What the value measures.** It is the probability of a rise above `PREDICTION_RETURN_THRESHOLD` within `PREDICTION_HORIZON_DAYS` trading days. That label favours volatile tickers, so a high score marks a likely large move, not a high expected return: on a held-out period the score ranked the 3% hit rate correctly (the top decile hit about four times as often as the bottom one) while its daily rank correlation with the 10-day return was negative.
+**What the value measures.** It is the probability that the ticker's `PREDICTION_HORIZON_DAYS`-trading-day return beats that date's median return across the stock universe the model trains on. The base rate is 50 by construction, so a score above 50 means the model expects outperformance more often than not and a score below 50 the reverse. It is a relative ranking, not an expected return.
 
 ### 5.4 Production Ensemble
 
@@ -300,17 +301,11 @@ count=184, mean=34.03, std=11.62, min=3.90, max=70.17
 
 `update_daily_ml_predictions()` therefore z-scores every fresh, well-covered date in full, regardless of which tickers are in the `tickers` parameter. The `tickers` parameter only governs which rows are written back to the database.
 
-### Calibration data leakage — `ml_training_engine.py`
-The headline PR-AUC is clean: its estimators never see the Calib or Test rows. The production ensemble is refitted on Train + Calib and its isotonic map is fitted on Calib again, so that map is fitted on rows the estimator was trained on. **Status:** a known limitation. The production probabilities are not an out-of-sample calibration, and the evaluated model is not the one that is saved.
+### Calibration data separation — `ml_training_engine.py`
+The headline PR-AUC is clean: its estimators never see the Calib or Test rows. The production ensemble is refitted on Train + Calib and its isotonic calibration is fitted on the Test region, rows the refit never saw, so the saved model's probabilities are calibrated out of sample.
 
 ### Class imbalance correction
-Hyperparameter search does not use `scoring='accuracy'`. Accuracy is a degenerate metric for imbalanced targets — a model predicting the majority class for every observation scores 73.8% accuracy while being completely useless.
-
-**Class distribution at a 5-day target:**
-```
-Positive (1): 26,634  (26.2%)
-Negative (0): 74,848  (73.8%)
-```
+Hyperparameter search does not use `scoring='accuracy'`: accuracy rewards predicting the majority class and is degenerate for any imbalanced target. The label is balanced by construction (about 50% positive), but the weights below are computed from the actual class counts of each run.
 
 **Handling:**
 - `class_weight='balanced'` on RandomForestClassifier
@@ -321,7 +316,7 @@ Negative (0): 74,848  (73.8%)
 
 ## 7. Feature Selection Evidence
 
-Each step below adds one change to the previous one. All steps are measured on the same 82,633-row dataset (350-ticker universe, 2y history, 10-day target horizon where specified). PR-AUC is the primary evaluation metric.
+Each step below adds one change to the previous one. The figures were measured with a fixed 3% return threshold as the label, so they document the effect of each feature on that experiment and are not comparable with PR-AUC values under the current label. All steps are measured on the same 82,633-row dataset (350-ticker universe, 2y history, 10-day target horizon where specified). PR-AUC is the primary evaluation metric.
 
 ### Iteration 0 — Baseline
 
@@ -509,7 +504,7 @@ The training universe is tilted toward Technology stocks, which dominate both us
 The `rel_strength_5d` and `rel_strength_20d` features align SPY and UK stock returns by calendar date, ignoring the fact that UK and US markets close at different times. For a daily signal this is an acceptable approximation.
 
 ### 8.7 The Realistic Ceiling
-For 10-day price direction prediction on liquid stocks using free data, the realistic PR-AUC ceiling is approximately **0.38–0.43** based on academic literature on technical momentum models. The current model at **0.4217** is at the upper end of this range. Further material improvement would require:
+Predicting 10-day relative performance on liquid stocks with free data has a low realistic ceiling: the base rate is 50 and the calibrated scores stay within a few points of it. Further material improvement would require:
 - Options flow data (market maker positioning)
 - Short interest data (crowded positioning)
 - Earnings surprise data (actual vs analyst estimates)
@@ -526,24 +521,23 @@ None of these are available free of charge. The model should be considered at or
 
 Average Precision is the area under the Precision-Recall curve. It is the correct primary metric for this use case because:
 
-1. **Imbalance robustness:** Unlike accuracy, it does not reward a model that predicts the majority class for every observation. A model predicting 0 for every input scores 0.0 AP (not 66.5% accuracy).
+1. **Imbalance robustness:** Unlike accuracy, it does not reward a model that predicts the majority class for every observation. A model predicting 0 for every input scores 0.0 AP (not an accuracy near the majority share).
 
-2. **Practical alignment:** In a screener context, you care about precision (of the stocks the model flags, how many actually produce 3%+ returns?) and recall (of all stocks that will produce 3%+ returns, how many does the model identify?). AP summarises the precision-recall tradeoff across all confidence thresholds.
+2. **Practical alignment:** In a screener context, you care about precision (of the stocks the model flags, how many actually beat the universe median?) and recall (of all stocks that will beat it, how many does the model identify?). AP summarises the precision-recall tradeoff across all confidence thresholds.
 
-3. **Random baseline equals positive prevalence:** For a random classifier, AP equals the fraction of positive examples. This makes the random baseline immediately interpretable: 0.335 means a stock randomly selected from this universe has a 33.5% chance of a >3% 10-day return.
+3. **Random baseline equals positive prevalence:** For a random classifier, AP equals the fraction of positive examples. With the relative label that fraction is about 0.5, so a random baseline is about 0.5 and any gain above it is a measured edge.
 
 ### Secondary Metric: Score Distribution
 
 The distribution of `ml_confidence_score` across the inference universe is monitored at each training run. Key diagnostics:
 
-- **Std > 10.0:** Model is genuinely discriminating between stocks
-- **Std < 5.0:** Warning — model may be collapsing to base rate (check that inference z-scores the full population, see §5.2)
-- **Max > 60:** Model has high-conviction setups present in the universe
-- **Mean near baseline × 100:** Distribution is centred correctly
+- **Std near 0:** the model has collapsed to the base rate (check that inference z-scores the full population, see §5.2)
+- **Mean near 50:** the distribution is centred on the base rate
+- **Range:** scores cluster roughly between 44 and 54; a wide range signals an overfit or miscalibrated model
 
 ### Interpretation of Confidence Scores
 
-A score is the estimated chance, in percent, that the ticker rises more than `PREDICTION_RETURN_THRESHOLD` within `PREDICTION_HORIZON_DAYS` trading days. Compare it with the base rate (the share of rows that do, about a quarter to a third of the universe), not with 50: a score above the base rate means the model expects a large upward move more often than average. It is not a bullish or bearish strength and not an expected return (§5.3): volatile tickers score higher, and tickers on the same value are tied. The practical range depends on the trained model, so read the range of the current night's scores rather than fixed bands.
+A score is the estimated chance, in percent, that the ticker's `PREDICTION_HORIZON_DAYS`-trading-day return beats the universe median. Compare it with the base rate of 50: above it the model expects outperformance more often than not, below it underperformance. It is not an expected return (§5.3), and tickers on the same value are tied. The practical range is narrow (roughly 44 to 54), so the shared cut-offs below mark the tails.
 
 ---
 
@@ -583,12 +577,12 @@ The shared `model_compatibility_engine.py` loader checks the sidecar before unpi
 The confidence score is displayed in the Watchlist, Portfolio, Market Screener, and Stock Detail pages with colour coding:
 
 ```
-Green (metric-excellent): score > 40
-Amber (metric-neutral):   score 20–40
-Red   (metric-poor):      score < 20
+Green (metric-excellent): score >= ML_CONFIDENCE_HIGH (55)
+Neutral:                  between the two cut-offs
+Red   (metric-poor):      score <= ML_CONFIDENCE_LOW (45)
 ```
 
-These thresholds are calibrated to the current model's output range (max ~70, mean ~34). The original thresholds (green > 75, red < 40) were recalibrated when the model's practical maximum was confirmed to be well below 75.
+`constants.ML_CONFIDENCE_BASE_RATE` (50), `ML_CONFIDENCE_HIGH` (55) and `ML_CONFIDENCE_LOW` (45) are shared by Portfolio, Watchlist, Stock Detail, the Market Screener and GARP pages, the glossary, Signal Pillar Confluence (the ML pillar votes up above the base rate and down below it) and the Portfolio/Watchlist signals: "AI Buy" is a composite score below 40 with ML Confidence at or above the high cut-off, and "AI Disconnect" (divergence) is a composite score of 70 or more with ML Confidence at or below the low cut-off. The Regime-Weighted Conviction Score and `find_candidates` (tiebreak) read the score with unchanged weights.
 
 ### Re-running from Scratch
 

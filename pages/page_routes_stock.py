@@ -6,7 +6,7 @@ from config import load_config
 from db.database import get_watchlist_tickers
 from market_pulse import get_all_cached_pulse, get_index_tickers
 from utils import normalize_ticker, safe_ticker_filename, time_request_call
-from constants import CSS_VERSION
+from constants import CSS_VERSION, ML_CONFIDENCE_BASE_RATE, ML_CONFIDENCE_HIGH, ML_CONFIDENCE_LOW
 from pages.page_helpers import _load_fundamentals_extra, get_unread_count, get_all_scope_heat_tier
 from pages.page_data_stock import data_freshness, load_stock_row, parse_json_field
 from pages.page_data_stock_panels import (
@@ -26,6 +26,9 @@ from pages.page_data_stock_panels import (
 page_router_stock = APIRouter()
 templates = Jinja2Templates(directory="templates")
 templates.env.globals["css_version"] = CSS_VERSION
+templates.env.globals["ml_confidence_high"] = ML_CONFIDENCE_HIGH
+templates.env.globals["ml_confidence_low"] = ML_CONFIDENCE_LOW
+templates.env.globals["ml_confidence_base_rate"] = ML_CONFIDENCE_BASE_RATE
 
 
 @page_router_stock.get("/stock/{ticker}", response_class=HTMLResponse)

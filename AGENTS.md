@@ -70,7 +70,7 @@ Detailed references live in `agents/`. **Do not edit `AGENTS.md` or `agents/` yo
 18. **Uniform Plotly chart conventions.** → `agents/RULES_FRONTEND_UI.md`.
 19. **Alert dedup gates must never auto-fire solely on calendar-day rollover.** → `agents/RULES_CONCURRENCY_ALERTS_DEPENDENCIES.md`.
 20. **Dependency updates are CI-gated, documented, and runtime self-verified.** → `agents/RULES_CONCURRENCY_ALERTS_DEPENDENCIES.md`.
-21. **Persisted scikit-learn estimators:** Use `model_compatibility_engine.dump_sklearn_artifact()` and `load_sklearn_artifact(path, retraining_job_id)` — never `joblib.dump()`/`joblib.load()`. Load once per job, never per scored item. → `agents/RULE_12_CENTRAL_ENGINES.md` ("Rule 21").
+21. **Persisted scikit-learn estimators:** Use `model_compatibility_engine.dump_sklearn_artifact()` and `load_sklearn_artifact(path, retraining_job_id, label=None)` (a `label` rejects models trained on an earlier training label) — never `joblib.dump()`/`joblib.load()`. Load once per job, never per scored item. → `agents/RULE_12_CENTRAL_ENGINES.md` ("Rule 21").
 22. **Admin auth, step-up, API keys & MCP access:**
     - Host/credential-changing routes (settings save, git-pull, restart, backup restore, secret/credential save/rotation) require `api.deps.require_step_up`, called via `stepUpFetch()`. Never render authorising tokens/secrets into pages or use shared header gates. No unauthenticated state-changing admin routes (no config flag opens one).
     - `X-API-Key` is restricted strictly to `(method, path)` pairs in `api.deps.API_KEY_ROUTES` (Home Assistant routes) — never widen or add `/mcp`.

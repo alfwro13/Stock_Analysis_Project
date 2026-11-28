@@ -70,7 +70,7 @@ $(document).ready(function() {
             } },
             { data: 'ml_confidence_score', render: function(data) {
                 if (data == null) return '<span class="text-secondary">—</span>';
-                let cssClass = data >= 60 ? 'positive-val' : (data < 30 ? 'negative-val' : '');
+                let cssClass = data >= window.ML_CONFIDENCE_HIGH ? 'positive-val' : (data <= window.ML_CONFIDENCE_LOW ? 'negative-val' : '');
                 return `<span class="${cssClass}">${data.toFixed(1)}%</span>`;
             } }
         ]

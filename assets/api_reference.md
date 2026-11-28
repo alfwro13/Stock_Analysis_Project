@@ -779,7 +779,7 @@ Field availability varies by report type.
 
 ## 8. Machine Learning (ML)
 
-The ML pipeline uses an XGBoost + Random Forest soft-voting ensemble trained on 2 years of historical daily features. It predicts whether a stock will return >3% over the next 10 trading days. The model must be trained before inference can run.
+The ML pipeline uses an XGBoost + Random Forest soft-voting ensemble trained on 2 years of historical daily features. It predicts whether a stock's return over the next 10 trading days beats the median return of the stock universe the model trains on. The model artifact records its training label, and a model trained on another label is rejected like a version mismatch and queued for retraining. The model must be trained before inference can run.
 
 ### `POST /api/ml/trigger-backfill`
 
@@ -2739,7 +2739,7 @@ The composite score is an integer in the range `-100` to `+100` computed by the 
 
 ### ML confidence score
 
-The ML model outputs a probability (0–100) that the ticker will return more than 3% over the next 10 trading days. Scores below 40 are vetoed by the screener.
+The ML model outputs the calibrated probability (0–100) that the ticker's return over the next 10 trading days beats the median return of the stock universe the model trains on. The base rate is 50 by construction and scores cluster roughly between 44 and 54. At or above 55 (`constants.ML_CONFIDENCE_HIGH`) the page cells show green and count towards "AI Buy"; at or below 45 (`constants.ML_CONFIDENCE_LOW`) they show red and count towards "AI Disconnect". The screener does not veto on the score.
 
 ### VaR / CVaR
 

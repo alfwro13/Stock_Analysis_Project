@@ -9,6 +9,7 @@ from typing import Any, Dict, List, Literal, Optional
 import pandas as pd
 import ta
 
+from constants import ML_CONFIDENCE_BASE_RATE, PREDICTION_HORIZON_DAYS
 from config import HISTORICAL_DIR
 from db.database import get_connection
 from db.helpers import get_upcoming_macro_events, macro_event_value, ml_fresh_since, sentiment_fresh_since
@@ -711,7 +712,7 @@ System Verdict: {overall_signal} (Score: {composite_score}/100)
 ATR Stop-Loss: {atr_stop_str} {stock_currency}
 
 --- AI, RISK & SENTIMENT ---
-ML Confidence Score (>3% return in 5d): {ml_conf_str}
+ML Confidence (chance the {PREDICTION_HORIZON_DAYS}-day return beats the universe median; base rate {ML_CONFIDENCE_BASE_RATE:.0f}%): {ml_conf_str}
 Parametric VaR (95%): {var_str}
 Conditional Log-Return CVaR (95% Tail Risk): {cvar_str}
 VADER Media Sentiment: {sentiment_str}

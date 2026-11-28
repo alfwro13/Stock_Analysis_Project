@@ -27,7 +27,7 @@
                 <th><abbr title="Return on Equity (> 10%)">ROE</abbr></th>
                 <th><abbr title="Forward P/E (10 to 40)">Fwd P/E</abbr></th>
                 <th><abbr title="Market capitalisation (> $500M)">Market Cap</abbr></th>
-                <th><abbr title="ML confidence score. Shows — when not yet scored.">ML</abbr></th>
+                <th><abbr title="ML Confidence: the chance the 10-day return beats the median of the stock universe (base rate {{ ml_confidence_base_rate|int }}%). Shows — when not yet scored.">ML</abbr></th>
             </tr>
         </thead>
         <tbody></tbody>
@@ -66,8 +66,7 @@
             </li>
             <li>
                 <strong class="text-accent-blue">ML Confidence — Machine Learning Score (optional):</strong>
-                A second opinion from our quantitative model, trained to predict whether a stock matching GARP criteria actually outperforms the market.
-                <em>Most stocks currently show "—" as ML scoring is still being rolled out across the full universe.</em>
+                A second opinion from our quantitative model: the chance the stock's 10-day return beats the median of the stock universe (base rate {{ ml_confidence_base_rate|int }}%). Shows "—" when a stock has not been scored.
             </li>
         </ul>
     </div>
@@ -75,5 +74,9 @@
 {% endblock %}
 
 {% block scripts %}
+<script>
+    window.ML_CONFIDENCE_HIGH = {{ ml_confidence_high }};
+    window.ML_CONFIDENCE_LOW = {{ ml_confidence_low }};
+</script>
 <script src="/static/js/garp_tenbaggers.js?v={{ css_version }}"></script>
 {% endblock %}

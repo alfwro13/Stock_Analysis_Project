@@ -4,7 +4,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import pandas as pd
 
-from constants import ML_FEATURE_MAX_AGE_TRADING_DAYS
+from constants import ML_FEATURE_MAX_AGE_TRADING_DAYS, ML_LABEL
 from db.helpers import get_portfolio_watchlist_tickers, ml_fresh_since
 from model_compatibility_engine import load_sklearn_artifact
 from db.database import get_connection, log_notification
@@ -150,7 +150,7 @@ def update_daily_ml_predictions(tickers: List[str]) -> Optional[List[str]]:
 
     conn = None
     try:
-        model = load_sklearn_artifact(MODEL_PATH, "ml_training_job")
+        model = load_sklearn_artifact(MODEL_PATH, "ml_training_job", ML_LABEL)
         conn  = get_connection()
         df = pd.read_sql_query(LATEST_FEATURES_QUERY, conn)
 

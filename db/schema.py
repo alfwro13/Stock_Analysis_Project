@@ -3277,6 +3277,35 @@ def migrate_db(conn, cursor) -> None:
         logger.error("[MIGRATION ERROR] Failed to queue the Regime-Weighted Conviction Score history recompute: %s", e)
 
     try:
+        cursor.execute("SELECT 1 FROM data_migrations WHERE name = 'ml_confidence_relative_label'")
+        if cursor.fetchone() is None:
+            conn.commit()
+            cursor.execute(
+                "UPDATE quant_signals SET ml_confidence_score = NULL, ml_scored_at = NULL "
+                "WHERE ml_confidence_score IS NOT NULL OR ml_scored_at IS NOT NULL"
+            )
+            cleared = cursor.rowcount
+            cursor.execute("UPDATE stock_signals SET ml_confidence = NULL WHERE ml_confidence IS NOT NULL")
+            requeued = 0
+            for table, training_scope in (("trap_phase_history", "phase != 'NEUTRAL'"), ("pattern_detection_history", "phase = 'CONFIRMED'")):
+                cursor.execute(
+                    f"UPDATE {table} SET confluence_features_ts = NULL "
+                    f"WHERE (pillar_ml IS NOT NULL OR regime_weighted_score IS NOT NULL) AND {training_scope}"
+                )
+                requeued += cursor.rowcount
+                cursor.execute(
+                    f"UPDATE {table} SET pillar_ml = NULL, regime_weighted_score = NULL "
+                    f"WHERE (pillar_ml IS NOT NULL OR regime_weighted_score IS NOT NULL) AND NOT ({training_scope})"
+                )
+            cursor.execute("INSERT INTO data_migrations (name) VALUES ('ml_confidence_relative_label')")
+            conn.commit()
+            if cleared or requeued:
+                logger.info("[MIGRATION] Cleared %d ML Confidence score(s) from the earlier >3%% label and queued %d trap/pattern history row(s) for a recompute; Global Model Training (Walk-Forward) retrains on the beat-the-median label.", cleared, requeued)
+    except Exception as e:
+        conn.rollback()
+        logger.error("[MIGRATION ERROR] Failed to clear ML Confidence scores from the earlier label: %s", e)
+
+    try:
         cursor.execute("SELECT 1 FROM data_migrations WHERE name = 'news_articles_feed_text_repaired'")
         if cursor.fetchone() is None:
             conn.commit()

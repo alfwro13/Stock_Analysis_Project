@@ -2,7 +2,10 @@
 
 # ── ML prediction ─────────────────────────────────────────────────────────────
 PREDICTION_HORIZON_DAYS     = 10    # trading days from T+1 entry to T+10 exit
-PREDICTION_RETURN_THRESHOLD = 0.03  # 3% return required for a positive label
+ML_LABEL                    = "beats_daily_median_10d"  # positive = 10-day return above that date's universe median; stored on the model so a label change forces a retrain
+ML_CONFIDENCE_BASE_RATE     = 50.0  # share (%) of positive labels by construction; the ML pillar votes up above it and down below it
+ML_CONFIDENCE_HIGH          = 55.0  # shared colour / AI Buy cut-off, roughly the top tenth of scores
+ML_CONFIDENCE_LOW           = 45.0  # shared colour / AI Disconnect cut-off, roughly the bottom tenth of scores
 
 # ── Earnings Volatility drift prediction ───────────────────────────────────────
 EARNINGS_DRIFT_HORIZONS = (1, 5, 20)  # trading days after earnings for signed drift stats + predictions
@@ -233,7 +236,7 @@ ML_TRAINING_POST_LOAD_MIN_AVAILABLE_GB = 1.5   # ... and after the load, where t
 ML_TRAINING_SEARCH_ITERATIONS = 10             # RandomizedSearchCV draws for each classifier
 
 # ── Static asset versioning ───────────────────────────────────────────────────
-CSS_VERSION = "5.224" # bump this whenever styles.css (or any versioned static/js/*.js file) changes to bust browser caches
+CSS_VERSION = "5.225" # bump this whenever styles.css (or any versioned static/js/*.js file) changes to bust browser caches
 
 # ── FinBERT / NLP sentiment ────────────────────────────────────────────────────
 NLP_FINBERT_MAX_TOKENS     = 512   # HuggingFace token limit for ProsusAI/finbert

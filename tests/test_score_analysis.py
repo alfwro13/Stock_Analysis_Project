@@ -22,7 +22,7 @@ from score_analysis import (
     pillar_confluence_label,
 )
 
-pytestmark = pytest.mark.restore_tables("data_migrations", "market_regimes", "market_stress_states", "pattern_detection_history", "price_hmm_states", "quant_signals", "trap_phase_history")
+pytestmark = pytest.mark.restore_tables("data_migrations", "market_regimes", "market_stress_states", "pattern_detection_history", "price_hmm_states", "quant_signals", "stock_signals", "trap_phase_history")
 
 _DEFAULT_META_SCORING = {
     "REGIME_WEIGHTS": {
@@ -279,6 +279,13 @@ class TestEvaluatePillarConfluence:
         conn.commit()
         conn.close()
         assert self._ml_votes("UNSTAMPEDML") == []
+
+    def test_ml_pillar_votes_up_above_the_base_rate_and_down_below_it(self):
+        from constants import ML_CONFIDENCE_BASE_RATE
+        _seed_ml_confidence("MLABOVE", _d(0), ML_CONFIDENCE_BASE_RATE + 1)
+        _seed_ml_confidence("MLBELOW", _d(0), ML_CONFIDENCE_BASE_RATE - 1)
+        assert self._ml_votes("MLABOVE") == ["up"]
+        assert self._ml_votes("MLBELOW") == ["down"]
 
     def test_fresh_newest_score_keeps_older_scores_in_the_window(self):
         _seed_ml_confidence("FRESHML", _d(2), 20, scored_at="2020-01-01 01:30:00")
@@ -999,6 +1006,74 @@ class TestRescaledCompositeMigration:
             conn.commit()
             _db_schema.migrate_db(conn, conn.cursor())
             assert state("trap_phase_history", "MIGA") == (55.0, "2031-02-01 00:00:00")
+        finally:
+            conn.close()
+
+
+class TestMlConfidenceRelativeLabelMigration:
+    _NAME = "ml_confidence_relative_label"
+
+    def _insert(self, conn):
+        ts = "2031-01-02 00:00:00"
+        conn.execute(
+            "INSERT OR REPLACE INTO quant_signals (ticker, date, ml_confidence_score, ml_scored_at) VALUES ('MLMIG', '2031-01-02', 61.0, ?)",
+            (ts,),
+        )
+        conn.execute("INSERT OR REPLACE INTO stock_signals (ticker, ml_confidence) VALUES ('MLMIG', 61.0)")
+        for ticker, phase, pillar, rws in (
+            ("MLA", "BULL_TRAP", "up", None), ("MLB", "BULL_TRAP", None, 55.0),
+            ("MLC", "NEUTRAL", "up", 55.0), ("MLD", "BULL_TRAP", None, None),
+        ):
+            conn.execute(
+                """INSERT INTO trap_phase_history (ticker, phase, scan_date, scan_ts, pillar_ml, regime_weighted_score, confluence_features_ts)
+                   VALUES (?, ?, '2031-01-02', ?, ?, ?, ?)""",
+                (ticker, phase, ts, pillar, rws, ts),
+            )
+        for ticker, phase, pillar, rws in (
+            ("MLE", "CONFIRMED", "up", None), ("MLF", "CONFIRMED", None, 55.0),
+            ("MLG", "FORMING", "up", 55.0), ("MLH", "CONFIRMED", None, None),
+        ):
+            conn.execute(
+                """INSERT INTO pattern_detection_history
+                   (ticker, pattern_family, pattern_type, phase, scan_date, scan_ts, pillar_ml, regime_weighted_score, confluence_features_ts)
+                   VALUES (?, 'flag', 'bull_flag', ?, '2031-01-02', ?, ?, ?, ?)""",
+                (ticker, phase, ts, pillar, rws, ts),
+            )
+        conn.commit()
+
+    def _state(self, conn, table, ticker):
+        row = conn.execute(f"SELECT pillar_ml, regime_weighted_score, confluence_features_ts FROM {table} WHERE ticker = ?", (ticker,)).fetchone()
+        return row["pillar_ml"], row["regime_weighted_score"], row["confluence_features_ts"]
+
+    def test_clears_scores_requeues_training_rows_and_runs_once(self):
+        conn = _db_module.get_connection()
+        try:
+            conn.execute("DELETE FROM data_migrations WHERE name = ?", (self._NAME,))
+            self._insert(conn)
+            _db_schema.migrate_db(conn, conn.cursor())
+
+            quant = conn.execute("SELECT ml_confidence_score, ml_scored_at FROM quant_signals WHERE ticker = 'MLMIG'").fetchone()
+            assert (quant["ml_confidence_score"], quant["ml_scored_at"]) == (None, None)
+            assert conn.execute("SELECT ml_confidence FROM stock_signals WHERE ticker = 'MLMIG'").fetchone()[0] is None
+            assert conn.execute("SELECT COUNT(*) FROM quant_signals WHERE ml_confidence_score IS NOT NULL OR ml_scored_at IS NOT NULL").fetchone()[0] == 0
+
+            ts = "2031-01-02 00:00:00"
+            assert self._state(conn, "trap_phase_history", "MLA") == ("up", None, None)
+            assert self._state(conn, "trap_phase_history", "MLB") == (None, 55.0, None)
+            assert self._state(conn, "trap_phase_history", "MLC") == (None, None, ts)
+            assert self._state(conn, "trap_phase_history", "MLD") == (None, None, ts)
+            assert self._state(conn, "pattern_detection_history", "MLE") == ("up", None, None)
+            assert self._state(conn, "pattern_detection_history", "MLF") == (None, 55.0, None)
+            assert self._state(conn, "pattern_detection_history", "MLG") == (None, None, ts)
+            assert self._state(conn, "pattern_detection_history", "MLH") == (None, None, ts)
+            assert conn.execute("SELECT COUNT(*) FROM data_migrations WHERE name = ?", (self._NAME,)).fetchone()[0] == 1
+
+            conn.execute("UPDATE trap_phase_history SET pillar_ml = 'down', confluence_features_ts = '2031-02-01 00:00:00' WHERE ticker = 'MLA'")
+            conn.execute("INSERT OR REPLACE INTO stock_signals (ticker, ml_confidence) VALUES ('MLMIG', 62.0)")
+            conn.commit()
+            _db_schema.migrate_db(conn, conn.cursor())
+            assert self._state(conn, "trap_phase_history", "MLA") == ("down", None, "2031-02-01 00:00:00")
+            assert conn.execute("SELECT ml_confidence FROM stock_signals WHERE ticker = 'MLMIG'").fetchone()[0] == 62.0
         finally:
             conn.close()
 

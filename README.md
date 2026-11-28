@@ -11,7 +11,7 @@ Please note that this is a hobby project not an investment platform.
 Full detail on every feature lives in the in-app Glossary and `assets/` docs — this list is a scannable index, not a manual.
 
 **Prediction & Signals**
-* **Ensemble ML Prediction Engine** — XGBoost + Random Forest soft-voting classifier scoring 10-day upside probability.
+* **Ensemble ML Prediction Engine** — XGBoost + Random Forest soft-voting classifier scoring each stock's probability of beating the universe median return over the next 10 trading days.
 * **Entry & Exit Zone Analysis** — Volume Profile, Keltner Channel Z-Score, and ML Quantile Price Bands, with a **Position Targets** box to set your own buy/sell alerts.
 * **Proprietary Scoring (−100 to +100)** — composite technical grade from MA alignment, RSI, volatility contraction, MACD, and OBV.
 * **Hierarchical Candlestick Recognition** — 11 scored candlestick patterns across three tiers, tagged inline and on the macro chart.

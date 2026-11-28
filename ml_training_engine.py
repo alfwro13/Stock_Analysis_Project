@@ -16,7 +16,7 @@ from model_compatibility_engine import dump_sklearn_artifact
 from db.database import get_connection, log_notification
 from constants import (
     ML_TRAINING_ABORT_AVAILABLE_GB, ML_TRAINING_POST_LOAD_MIN_AVAILABLE_GB, ML_TRAINING_SEARCH_ITERATIONS,
-    PREDICTION_HORIZON_DAYS, PREDICTION_RETURN_THRESHOLD,
+    ML_LABEL, PREDICTION_HORIZON_DAYS,
 )
 from ml_features import (
     MODEL_PATH, FEATURE_STATS_PATH, QUANTILE_Q10_PATH, QUANTILE_Q90_PATH, FEATURE_COLS,
@@ -134,7 +134,9 @@ def _add_forward_return(df: pd.DataFrame) -> pd.Series:
 
 
 def _add_classifier_target(df: pd.DataFrame) -> pd.DataFrame:
-    df['target'] = (_add_forward_return(df) > PREDICTION_RETURN_THRESHOLD).astype(int)
+    """Positive when the 10-day return beats that date's universe median: a fixed return threshold labels volatility, not outperformance."""
+    forward_return = _add_forward_return(df)
+    df['target'] = (forward_return > forward_return.groupby(df['date']).transform('median')).astype(int)
     return df
 
 
@@ -301,13 +303,13 @@ def _holdout_pr_auc(best_rf, best_xgb, split: _Split) -> Tuple[float, float]:
     return true_oos_pr_auc, true_oos_baseline
 
 
-def _refit_production_ensemble(final_rf, final_xgb, X_prod, y_prod, X_calib, y_calib) -> VotingClassifier:
-    """Hyperparameters are fixed; refit on Train + Calib for more signal, then recalibrate on Calib again."""
+def _refit_production_ensemble(final_rf, final_xgb, X_prod, y_prod, X_unseen, y_unseen) -> VotingClassifier:
+    """Hyperparameters are fixed; refit on Train + Calib for more signal, then calibrate on the Test region, which the refit never saw (isotonic fitted on training rows is overconfident)."""
     final_rf.fit(X_prod, y_prod)
     final_xgb.fit(X_prod, y_prod)
 
-    final_calibrated_rf  = _fit_calibrated(final_rf,  X_calib, y_calib)
-    final_calibrated_xgb = _fit_calibrated(final_xgb, X_calib, y_calib)
+    final_calibrated_rf  = _fit_calibrated(final_rf,  X_unseen, y_unseen)
+    final_calibrated_xgb = _fit_calibrated(final_xgb, X_unseen, y_unseen)
 
     production_ensemble = VotingClassifier(
         estimators=[('rf', final_calibrated_rf), ('xgb', final_calibrated_xgb)],
@@ -316,6 +318,7 @@ def _refit_production_ensemble(final_rf, final_xgb, X_prod, y_prod, X_calib, y_c
     # Estimators are already fitted — manually mark VotingClassifier as fitted
     production_ensemble.estimators_ = [final_calibrated_rf, final_calibrated_xgb]
     production_ensemble.classes_    = np.array([0, 1])
+    production_ensemble.label_      = ML_LABEL
     # n_features_in_ is auto-derived from estimators_ in sklearn 1.6+
     return production_ensemble
 
@@ -363,16 +366,16 @@ def train_global_ml_model() -> bool:
 
         true_oos_pr_auc, true_oos_baseline = _holdout_pr_auc(best_rf, best_xgb, split)
 
-        logger.info("Refitting production model on Train + Calib region (80% of data)...")
+        logger.info("Refitting production model on Train + Calib region (80% of data); calibrating on the Test region...")
 
         X_prod = pd.concat([split.X_train, split.X_calib])
         y_prod = pd.concat([split.y_train, split.y_calib])
-        X_calib, y_calib = split.X_calib, split.y_calib
+        X_unseen, y_unseen = split.X_test, split.y_test
 
         final_rf = clone(best_rf)
         final_xgb = clone(best_xgb)
         del best_rf, best_xgb, split
-        production_ensemble = _refit_production_ensemble(final_rf, final_xgb, X_prod, y_prod, X_calib, y_calib)
+        production_ensemble = _refit_production_ensemble(final_rf, final_xgb, X_prod, y_prod, X_unseen, y_unseen)
 
         dump_sklearn_artifact(production_ensemble, MODEL_PATH)
         logger.info('✅ Production ML Ensemble saved to %s', MODEL_PATH)

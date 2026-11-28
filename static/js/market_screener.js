@@ -177,16 +177,16 @@ $(document).ready(function() {
                     if (data === null || data === undefined) return 'N/A';
 
                     if (type === 'display') {
-                        let cssClass = data >= 40 ? 'metric-excellent' : (data < 20 ? 'metric-poor' : 'metric-neutral');
+                        let cssClass = data >= window.ML_CONFIDENCE_HIGH ? 'metric-excellent' : (data <= window.ML_CONFIDENCE_LOW ? 'metric-poor' : 'metric-neutral');
                         let html = `<span class="${cssClass}">${data.toFixed(1)}%</span>`;
 
                         if (row.composite_score !== undefined && row.composite_score !== null && row.composite_score !== 'N/A') {
                             let comp = parseInt(row.composite_score);
                             if (!isNaN(comp)) {
-                                if (comp >= 70 && data < 20) {
-                                    html += ` <div class="d-inline-block"><abbr title="High Quant Score but Low AI Confidence" class="no-decoration-abbr"><span class="setup-tag">⚠️ Divergence</span></abbr></div>`;
-                                } else if (comp < 40 && data >= 40) {
-                                    html += ` <div class="d-inline-block"><abbr title="Low Quant Score but High AI Confidence" class="no-decoration-abbr"><span class="setup-tag">🤖 AI Buy</span></abbr></div>`;
+                                if (comp >= 70 && data <= window.ML_CONFIDENCE_LOW) {
+                                    html += ` <div class="d-inline-block"><abbr title="High Quant Score but the ML model ranks it below most of the universe over the next 10 days" class="no-decoration-abbr"><span class="setup-tag">⚠️ Divergence</span></abbr></div>`;
+                                } else if (comp < 40 && data >= window.ML_CONFIDENCE_HIGH) {
+                                    html += ` <div class="d-inline-block"><abbr title="Low Quant Score but the ML model ranks it above most of the universe over the next 10 days" class="no-decoration-abbr"><span class="setup-tag">🤖 AI Buy</span></abbr></div>`;
                                 }
                             }
                         }
