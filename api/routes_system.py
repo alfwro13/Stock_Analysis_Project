@@ -9,12 +9,12 @@ import signal
 import subprocess
 import sys
 import threading
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, List, Literal, Optional
 
 import time_engine
-from fastapi import APIRouter, BackgroundTasks, Depends, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, Query, Request
 from fastapi.responses import JSONResponse, PlainTextResponse
 from pydantic import BaseModel, Field, field_validator
 
@@ -41,8 +41,8 @@ import markets_engine
 import memory_helpers
 from notification_engine import notify, validate_routing_map
 from scheduler_engine import (
-    build_workflow_graph, detect_workflow_conflicts, get_all_job_last_runs,
-    get_job_run_history, job_label, reload_scheduler, run_xray_risk_cache_job,
+    build_schedule_timeline, build_workflow_graph, detect_workflow_conflicts, get_all_job_last_runs,
+    get_job_run_history, timeline_window_start, job_label, reload_scheduler, run_xray_risk_cache_job,
     CONFIG_KEY_TO_JOB, _resolve_manifest,
 )
 from sentiment_engine import run_nextcloud_alert
@@ -1429,6 +1429,15 @@ def get_workflow_monitor_status():
             "edges": graph["edges"],
             "conflicts": conflicts,
         })
+    except Exception as e:
+        return _error_500(e)
+
+
+@system_router.get("/workflow-monitor/timeline")
+def get_job_scheduling_timeline(start: date | None = None, days: int = Query(7, ge=1, le=14)):
+    try:
+        timeline = build_schedule_timeline(timeline_window_start(start), days)
+        return JSONResponse(content={"status": "success", **timeline})
     except Exception as e:
         return _error_500(e)
 

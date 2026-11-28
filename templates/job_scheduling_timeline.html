@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+
+{% block title %}Quantamental - Job Scheduling Timeline{% endblock %}
+
+{% block extra_head %}
+<script src="/static/vendor/plotly/plotly-3.5.0.min.js"></script>
+{% endblock %}
+
+{% block container_class %}jst-page{% endblock %}
+
+{% block content %}
+<div class="jst-header d-flex flex-wrap align-items-center justify-content-between gap-2">
+    <div>
+        <h1 class="jst-title mb-0">Job Scheduling Timeline</h1>
+        <p class="jst-subtitle mb-0">Configured schedule, expected and actual run windows, buffers and dependency order (read-only). Times in <span id="jstTz"></span>. Click a block for details and its dependencies.</p>
+    </div>
+    <div class="jst-toolbar d-flex flex-wrap align-items-center gap-2">
+        <div class="btn-group btn-group-sm" role="group" aria-label="Zoom">
+            <button type="button" class="btn btn-outline-secondary" data-jst-view="week">Week</button>
+            <button type="button" class="btn btn-outline-secondary" data-jst-view="day">Day</button>
+            <button type="button" class="btn btn-outline-secondary" data-jst-view="6h">6 h</button>
+        </div>
+        <div class="btn-group btn-group-sm" role="group" aria-label="Week navigation">
+            <button type="button" class="btn btn-outline-secondary" id="jstPrev">&#9664; Week</button>
+            <button type="button" class="btn btn-outline-secondary" id="jstNow">Now</button>
+            <button type="button" class="btn btn-outline-secondary" id="jstNext">Week &#9654;</button>
+        </div>
+        <div class="form-check form-switch mb-0">
+            <input class="form-check-input" type="checkbox" id="jstHideFrequent">
+            <label class="form-check-label jst-toolbar-label" for="jstHideFrequent">Hide high-frequency jobs</label>
+        </div>
+        <button type="button" class="btn btn-sm btn-outline-secondary" id="jstRefresh">Refresh</button>
+    </div>
+</div>
+
+<div id="jstStatus" class="jst-status"></div>
+
+<div class="jst-main">
+    <div class="jst-chart-wrap">
+        <div id="jstChart" class="jst-chart"></div>
+    </div>
+    <aside id="jstPanel" class="jst-panel d-none">
+        <button type="button" class="btn-close btn-close-white jst-panel-close" id="jstPanelClose" aria-label="Close"></button>
+        <div id="jstPanelContent"></div>
+    </aside>
+</div>
+
+<div class="jst-legend">
+    <span><span class="jst-swatch jst-sw-planned"></span><abbr title="Configured start time to start plus the job's average successful run time.">Planned run</abbr></span>
+    <span><span class="jst-swatch jst-sw-whisker"></span><abbr title="Longest of the job's last 5 successful runs, drawn past the planned block when it is longer.">Recent longest run</abbr></span>
+    <span><span class="jst-swatch jst-sw-margin"></span><abbr title="Reserved safety margin after the expected end, the same margin the Workflow Monitor conflict check uses.">Safety margin</abbr></span>
+    <span><span class="jst-swatch jst-sw-idle"></span><abbr title="Idle time beyond the safety margin before the next dependent job starts.">Idle buffer</abbr></span>
+    <span><span class="jst-swatch jst-sw-actual"></span>Actual run</span>
+    <span><span class="jst-swatch jst-sw-failed"></span>Failed run</span>
+    <span><span class="jst-swatch jst-sw-band"></span><abbr title="Jobs that fire more than once a day are shown as active bands with a fire count.">High-frequency band</abbr></span>
+    <span><span class="jst-swatch jst-sw-tight"></span><abbr title="The dependent job starts inside the producer's safety margin.">Tight gap</abbr></span>
+    <span><span class="jst-swatch jst-sw-violation"></span><abbr title="The dependent job starts before its producer is expected to finish, runs before it, or its producer's recent runs overran the start.">Dependency problem</abbr></span>
+    <span><span class="jst-swatch jst-sw-overlap"></span><abbr title="Two scheduled jobs overlap in time without a dependency between them.">Overlap</abbr></span>
+    <span><span class="jst-swatch jst-sw-nohistory"></span><abbr title="Before the oldest stored run; only the last 20 runs per job are kept.">No history</abbr></span>
+    <span class="jst-legend-note">Planned blocks in the past use the current schedule.</span>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/job_scheduling_timeline.js?v={{ css_version }}"></script>
+{% endblock %}

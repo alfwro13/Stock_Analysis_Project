@@ -101,6 +101,8 @@ html,body{height:100%;background:#0e0e0e;color:#ccc;font-family:system-ui,sans-s
 .wf-zoom{display:flex;align-items:center;gap:6px}
 .wf-zoom button{background:#222;border:1px solid #444;color:#ccc;padding:3px 9px;border-radius:4px;cursor:pointer;font-size:13px}
 .wf-zoom button:hover{background:#333}
+.wf-tl-link{background:#004d54;border:1px solid #00bcd4;color:#b2ebf2;padding:3px 9px;border-radius:4px;font-size:12px;text-decoration:none;white-space:nowrap}
+.wf-tl-link:hover{background:#005f6b}
 #wf-zoom-pct{font-size:11px;color:#888;min-width:36px;text-align:right}
 #wf-ts{font-size:10px;color:#666}
 #wf-body{display:flex;height:calc(100vh - 52px);overflow:hidden}
@@ -143,6 +145,7 @@ html,body{height:100%;background:#0e0e0e;color:#ccc;font-family:system-ui,sans-s
       <button onclick="wfZoomIn()">+</button>
       <button onclick="wfZoomOut()">−</button>
       <button onclick="wfFit()">Fit</button>
+      <a class="wf-tl-link" href="${base}/workflow-monitor/timeline" target="_blank" rel="noopener">Open Job Scheduling Timeline</a>
       <span id="wf-zoom-pct">100%</span>
     </div>
     <span id="wf-ts">Updated: ${ts}</span>

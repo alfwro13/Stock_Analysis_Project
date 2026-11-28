@@ -743,6 +743,16 @@ def test_stock_detail_missing_data_does_not_crash(client):
 
 
 @pytest.mark.pages
+def test_job_scheduling_timeline_page_renders_without_navbar(client):
+    resp = client.get("/workflow-monitor/timeline")
+    assert resp.status_code == 200
+    assert "Job Scheduling Timeline" in resp.text
+    assert "/static/js/job_scheduling_timeline.js" in resp.text
+    assert 'id="jstChart"' in resp.text
+    assert "app-navbar" not in resp.text
+
+
+@pytest.mark.pages
 def test_stock_detail_embed_mode_still_shows_back_button(client):
     """Embed mode hides the full anchor nav (Verdict/Charts/Glossary etc.) and macro cards,
     but a bare Back button must still render — otherwise an embedded iframe (e.g. Home

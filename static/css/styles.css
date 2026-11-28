@@ -1670,3 +1670,42 @@ div.DTCR_pointer {
   line-height: inherit;
   cursor: pointer;
 }
+
+/* Job Scheduling Timeline (navbar-less tool window) */
+.jst-page { padding: 0 4px; }
+.jst-header { padding: 4px 0 10px; border-bottom: 1px solid #222; margin-bottom: 8px; }
+.jst-title { font-size: var(--font-size-section); font-weight: 600; color: #e0e0e0; }
+.jst-subtitle { font-size: var(--font-size-form); color: #888; }
+.jst-toolbar .btn, .jst-toolbar-label { font-size: var(--font-size-btn); }
+.jst-status { font-size: var(--font-size-form); color: #aaa; min-height: 1.4em; margin-bottom: 4px; }
+.jst-main { display: flex; gap: 10px; align-items: flex-start; }
+.jst-chart-wrap { flex: 1; min-width: 0; overflow-x: auto; }
+.jst-chart { min-width: 720px; }
+.jst-panel { position: relative; width: 320px; flex-shrink: 0; background: #111; border: 1px solid #222; border-radius: 6px; padding: 14px; font-size: var(--font-size-form); max-height: 80vh; overflow-y: auto; }
+.jst-panel-close { position: absolute; top: 12px; right: 12px; }
+.jst-pnl-title { font-weight: 600; color: #e0e0e0; margin-bottom: 10px; padding-right: 24px; }
+.jst-pnl-row { display: flex; gap: 8px; margin-bottom: 6px; line-height: 1.4; }
+.jst-pnl-key { color: #888; min-width: 120px; flex-shrink: 0; }
+.jst-pnl-val { color: #ccc; word-break: break-word; }
+.jst-pnl-issue { margin: 8px 0 0; padding: 6px 8px; border-radius: 4px; background: #1a1a1a; }
+.jst-pnl-violation { border-left: 3px solid #ef5350; }
+.jst-pnl-tight { border-left: 3px solid #ffb300; }
+.jst-legend { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: var(--font-size-form); color: #aaa; padding: 8px 0; }
+.jst-legend > span { display: inline-flex; align-items: center; gap: 5px; }
+.jst-legend-note { color: #777; }
+.jst-swatch { width: 18px; height: 10px; border-radius: 3px; display: inline-block; }
+.jst-sw-planned { background: #3d8bfd; }
+.jst-sw-whisker { background: #ff7043; height: 3px; }
+.jst-sw-margin { background: #ffb300; }
+.jst-sw-idle { background: rgba(255, 224, 130, 0.45); }
+.jst-sw-actual { background: #43a047; }
+.jst-sw-failed { background: #ef5350; }
+.jst-sw-band { background: rgba(108, 117, 125, 0.75); }
+.jst-sw-tight { background: transparent; border-top: 2px solid #ffb300; height: 2px; }
+.jst-sw-violation { background: transparent; border-top: 2px solid #ef5350; height: 2px; }
+.jst-sw-overlap { background: #3d8bfd; outline: 2px solid #ff8a65; }
+.jst-sw-nohistory { background: rgba(120, 120, 120, 0.25); }
+@media (max-width: 768px) {
+  .jst-main { flex-direction: column; }
+  .jst-panel { width: 100%; max-height: none; }
+}

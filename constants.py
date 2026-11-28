@@ -237,7 +237,7 @@ ML_TRAINING_POST_LOAD_MIN_AVAILABLE_GB = 1.5   # ... and after the load, where t
 ML_TRAINING_SEARCH_ITERATIONS = 10             # RandomizedSearchCV draws for each classifier
 
 # ── Static asset versioning ───────────────────────────────────────────────────
-CSS_VERSION = "5.225" # bump this whenever styles.css (or any versioned static/js/*.js file) changes to bust browser caches
+CSS_VERSION = "5.226" # bump this whenever styles.css (or any versioned static/js/*.js file) changes to bust browser caches
 
 # ── FinBERT / NLP sentiment ────────────────────────────────────────────────────
 NLP_FINBERT_MAX_TOKENS     = 512   # HuggingFace token limit for ProsusAI/finbert

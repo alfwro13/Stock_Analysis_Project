@@ -64,6 +64,36 @@ def test_get_workflow_monitor_status_returns_200(client):
 
 
 @pytest.mark.api
+def test_get_workflow_monitor_timeline_returns_expected_shape(client):
+    """GET /api/workflow-monitor/timeline must return the window, lanes and the five timeline collections."""
+    resp = client.get("/api/workflow-monitor/timeline?start=2026-11-23&days=3")
+    assert resp.status_code == 200, f"Expected 200, got {resp.status_code}"
+    data = _json(resp)
+    assert data["status"] == "success"
+    assert data["window"]["start"] == "2026-11-23 00:00:00" and data["window"]["end"] == "2026-11-26 00:00:00"
+    assert data["timezone"] and isinstance(data["lanes"], int)
+    for key in ("jobs", "blocks", "bands", "runs", "dependencies"):
+        assert isinstance(data[key], list), f"'{key}' must be a list"
+    for job in data["jobs"]:
+        assert job["row"] in ("scheduled", "frequent")
+
+
+@pytest.mark.api
+def test_get_workflow_monitor_timeline_defaults_to_a_seven_day_window(client):
+    data = _json(client.get("/api/workflow-monitor/timeline"))
+    assert data["status"] == "success"
+    start = datetime.strptime(data["window"]["start"], "%Y-%m-%d %H:%M:%S")
+    end = datetime.strptime(data["window"]["end"], "%Y-%m-%d %H:%M:%S")
+    assert start.weekday() == 0 and (end - start).days == 7
+
+
+@pytest.mark.api
+@pytest.mark.parametrize("query", ["days=0", "days=15", "days=abc", "start=not-a-date", "start=2026-13-45"])
+def test_get_workflow_monitor_timeline_rejects_bad_parameters(client, query):
+    assert client.get(f"/api/workflow-monitor/timeline?{query}").status_code == 422
+
+
+@pytest.mark.api
 def test_get_scheduler_job_runs_returns_history(client):
     from db import database
 
