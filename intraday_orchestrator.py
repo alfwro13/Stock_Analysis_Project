@@ -7,14 +7,15 @@ import sqlite3
 from typing import Any, Dict, List, Optional
 from urllib.parse import urlparse
 import pandas as pd
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from config import load_config, INTRADAY_DIR, HISTORICAL_DIR, PORT, SERVER_URL
 from yahoo_engine import yahoo_engine
 import time_engine
 import markets_engine
 from utils import cached_fundamentals_extra, is_missing_sector, normalize_ticker, is_daily_bar_still_forming, is_synthetic_ticker, ignored_tickers_set, safe_ticker_filename, write_parquet_atomic
 from db.database import get_connection, get_mutual_fund_tickers
-from db.helpers import ml_fresh_since, sentiment_fresh_since
+from db.helpers import get_intraday_volume_coverage, ml_fresh_since, save_intraday_volume_coverage, sentiment_fresh_since
+from constants import INTRADAY_VOLUME_COVERAGE_MIN_SESSIONS, INTRADAY_VOLUME_COVERAGE_SESSIONS
 from accounts import accounts_engine
 from db.account_store import get_all_holding_price_limits, get_accounts
 from crash_engine import CrashEngine
@@ -37,6 +38,8 @@ _CORP_ACTION_GAP_PCT  = 10.0   # price gap % that triggers a corporate action lo
 _MACRO_YIELD_SURGE_PCT = 1.5   # intraday yield spike % that fires a systemic macro alert
 _AI_DEFENSE_THRESHOLD = 2.0    # predicted SPY gap % that activates AI Volatility Defense
 _AI_DEFENSE_CAP       = 1.5    # flash-crash threshold cap (%) applied when defense is active
+# Last settled close each ticker's coverage fetch was tried for, so a ticker Yahoo or the parquet cannot cover is retried next session rather than every scan.
+_coverage_attempted: Dict[str, datetime] = {}
 # N alerts × 1 s blocks the APScheduler thread and holds the DB connection; consider a digest for large portfolios.
 _DISPATCH_SLEEP_SECONDS = 1
 
@@ -382,6 +385,70 @@ class IntradayOrchestrator:
             return (now_utc - ts.tz_convert(timezone.utc)).total_seconds()
         return (now_utc - ts.tz_localize(timezone.utc)).total_seconds()
 
+    def _volume_coverage(self, tickers: List[str], metadata: Dict[str, Dict[str, Any]]) -> Dict[str, Optional[float]]:
+        """Each ticker's 5m-bar to daily-bar volume ratio, relearned from one bulk 1-month 5m fetch once per settled session of its exchange; a failed fetch keeps the stored ratios."""
+        stored = get_intraday_volume_coverage(tickers)
+        exchanges = {t: time_engine.ticker_exchange(t, metadata.get(t, {}).get('currency', 'USD')) for t in tickers}
+        settled = {ex: time_engine.last_settled_session_close_utc(ex) for ex in set(exchanges.values())}
+        stale = [
+            t for t in tickers
+            if (t not in stored or stored[t][1] is None or stored[t][1] < settled[exchanges[t]])
+            and _coverage_attempted.get(t) != settled[exchanges[t]]
+        ]
+        if stale:
+            for t in stale:
+                _coverage_attempted[t] = settled[exchanges[t]]
+            bars = yahoo_engine.get_intraday(stale, period="1mo", interval="5m")
+            rows = []
+            for t in stale:
+                df5 = bars.get(t)
+                if df5 is None or df5.empty or 'Volume' not in df5.columns:
+                    continue
+                coverage, sessions = self._coverage_from_bars(t, df5, exchanges[t])
+                rows.append((t, coverage, sessions))
+                stored[t] = (coverage, None)
+            if rows:
+                save_intraday_volume_coverage(rows, set(tickers))
+        return {t: v[0] for t, v in stored.items()}
+
+    @staticmethod
+    def _coverage_from_bars(ticker: str, df5: pd.DataFrame, exchange: str) -> tuple:
+        """(coverage, matched sessions) over the latest completed sessions present in both the 5m bars and the daily parquet."""
+        safe_ticker = safe_ticker_filename(ticker)
+        hist_path = HISTORICAL_DIR / f"{safe_ticker}.parquet" if safe_ticker else None
+        if hist_path is None or not hist_path.exists():
+            return None, 0
+        daily = pd.read_parquet(hist_path, columns=['Volume'])['Volume']
+        daily.index = pd.DatetimeIndex(daily.index).date
+        index = pd.DatetimeIndex(df5.index)
+        if index.tz is None:
+            index = index.tz_localize(timezone.utc)
+        local_dates = index.tz_convert(time_engine.exchange_tz(exchange)).date
+        totals = df5['Volume'].groupby(local_dates).sum()
+        totals = totals[totals.index < time_engine.exchange_local_date(exchange)]
+        matched = pd.concat([totals.rename('bars'), daily.rename('daily')], axis=1, join='inner')
+        matched = matched[(matched['bars'] > 0) & (matched['daily'] > 0)].tail(INTRADAY_VOLUME_COVERAGE_SESSIONS)
+        if len(matched) < INTRADAY_VOLUME_COVERAGE_MIN_SESSIONS:
+            return None, len(matched)
+        return float(matched['bars'].sum() / matched['daily'].sum()), len(matched)
+
+    @staticmethod
+    def _projected_volume(
+        session_volume: Optional[float], exchange: str, quote_type: Optional[str],
+        last_bar_start: pd.Timestamp, coverage: Optional[float],
+    ) -> Optional[float]:
+        """Full-day volume in daily-bar units, measured to the end of the last 5m bar so a delayed feed (LSE) is not read as a slow day."""
+        now_utc = datetime.now(timezone.utc)
+        open_t, close_t = time_engine.market_window_utc(exchange)
+        session_open = datetime.combine(now_utc.date(), open_t, tzinfo=timezone.utc)
+        session_close = datetime.combine(now_utc.date(), close_t, tzinfo=timezone.utc)
+        bar_start = last_bar_start.tz_localize(timezone.utc) if last_bar_start.tzinfo is None else last_bar_start.tz_convert(timezone.utc)
+        data_through = min(bar_start.to_pydatetime() + timedelta(seconds=_INTRADAY_BAR_SECONDS), now_utc)
+        return market_session_helpers.projected_session_volume(
+            session_volume, market_session_helpers.volume_curve_key(exchange, quote_type),
+            session_open, session_close, data_through, coverage,
+        )
+
     def _settled_close(self, df: pd.DataFrame) -> float:
         """The last row of a 5m bulk fetch is often the still-forming current bucket, whose Close
         is a transient print that can revise substantially once the bucket finishes filling (seen
@@ -567,12 +634,6 @@ class IntradayOrchestrator:
             logger.error("Invalid schedule time config (%s): %s", sched_cfg, e)
             return
 
-        # Without normalisation, partial-day volume vs 50-day average understates the ratio and flags every morning breakout as low-volume.
-        _to_min = lambda t: t.hour * 60 + t.minute
-        _session_total = _to_min(end_time) - _to_min(start_time)
-        _elapsed = max(0, _to_min(datetime.now(timezone.utc).time().replace(tzinfo=None)) - _to_min(start_time))
-        session_elapsed_frac = max(0.01, min(1.0, _elapsed / _session_total)) if _session_total > 0 else 1.0
-
         tickers = self.get_portfolio_tickers()
         ignored = ignored_tickers_set(self.config)
         mutual_funds = get_mutual_fund_tickers(tickers)
@@ -740,6 +801,7 @@ class IntradayOrchestrator:
         moonshot_enabled = self.config.get("SCHEDULING", {}).get("MOONSHOT_ALERTS", {}).get("ENABLED", False)
         anomaly_enabled = self.config.get("NOTIFICATIONS", {}).get("ANOMALY_ALERTS", {}).get("ENABLED", False)
         risk_orch_alerts_enabled = self.config.get("NOTIFICATIONS", {}).get("RISK_ORCHESTRATOR_ALERTS", {}).get("ENABLED", False)
+        volume_coverage = self._volume_coverage(tickers, metadata) if (crash_enabled or moonshot_enabled or anomaly_enabled) else {}
 
         for ticker in tickers:
             safe_ticker = safe_ticker_filename(ticker)
@@ -832,8 +894,10 @@ class IntradayOrchestrator:
                             )
 
                 session_volume = float(df_intraday['Volume'].sum()) if 'Volume' in df_intraday.columns else None
-                # Project to full-day equivalent so it compares correctly against the 50-day average.
-                projected_volume = session_volume / session_elapsed_frac if session_volume is not None else None
+                projected_volume = self._projected_volume(
+                    session_volume, ticker_exchange, asset_meta.get('quote_type'),
+                    df_intraday.index[-1], volume_coverage.get(ticker),
+                )
 
                 # evaluate() first so reason string is available for fingerprinting; returns None when no condition met.
                 if crash_enabled:
@@ -855,14 +919,14 @@ class IntradayOrchestrator:
                     ):
                         moonshot_alerts_to_send.append((ticker, moonshot_alert, currency, asset_meta))
 
-                if anomaly_enabled and 'Volume' in df_intraday.columns:
+                if anomaly_enabled and projected_volume is not None:
                     try:
                         vol_ma20 = df_hist['Volume'].tail(20).mean()
                         if vol_ma20 > 0:
                             prev_close_hist = float(df_hist['Close'].iloc[-1])
                             sma_50 = asset_meta.get('sma_50') or current_price
                             feature_vector = [
-                                float(df_intraday['Volume'].sum()) / vol_ma20,
+                                projected_volume / vol_ma20,
                                 float(asset_meta.get('rsi_14') or 50.0),
                                 ((current_price - prev_close_hist) / prev_close_hist) * 100,
                                 ((current_price - sma_50) / sma_50) * 100,

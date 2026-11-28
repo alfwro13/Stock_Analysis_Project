@@ -1649,3 +1649,46 @@ def prune_nextcloud_talk_stats(cutoff_date: str) -> int:
     finally:
         if conn:
             conn.close()
+
+
+def get_intraday_volume_coverage(tickers: List[str]) -> dict:
+    """{ticker: (coverage or None, computed_at as aware UTC datetime)} for the tickers that have a row."""
+    if not tickers:
+        return {}
+    conn = None
+    try:
+        conn = get_connection()
+        placeholders = ",".join("?" * len(tickers))
+        rows = conn.execute(
+            f"SELECT ticker, coverage, computed_at FROM intraday_volume_coverage WHERE ticker IN ({placeholders})",
+            list(tickers),
+        ).fetchall()
+        return {r["ticker"]: (r["coverage"], parse_stored_utc(r["computed_at"])) for r in rows}
+    finally:
+        if conn:
+            conn.close()
+
+
+def save_intraday_volume_coverage(rows: List[tuple], keep_tickers: set) -> None:
+    """Upsert (ticker, coverage, sessions) rows and drop rows for tickers no longer scanned."""
+    computed_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+
+    def write() -> None:
+        conn = None
+        try:
+            conn = get_connection()
+            conn.executemany(
+                "INSERT INTO intraday_volume_coverage (ticker, coverage, sessions, computed_at) VALUES (?, ?, ?, ?) "
+                "ON CONFLICT(ticker) DO UPDATE SET coverage = excluded.coverage, sessions = excluded.sessions, "
+                "computed_at = excluded.computed_at",
+                [(t, c, n, computed_at) for t, c, n in rows],
+            )
+            if keep_tickers:
+                placeholders = ",".join("?" * len(keep_tickers))
+                conn.execute(f"DELETE FROM intraday_volume_coverage WHERE ticker NOT IN ({placeholders})", sorted(keep_tickers))
+            conn.commit()
+        finally:
+            if conn:
+                conn.close()
+
+    write_or_defer(f"intraday volume coverage ({len(rows)} tickers)", write)

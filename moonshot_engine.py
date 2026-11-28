@@ -35,7 +35,7 @@ class MoonshotEngine:
         df_hist: pd.DataFrame,
         current_volume: float | None = None,
     ) -> dict[str, Any] | None:
-        """Returns alert dict if moonshot signature detected, else None. current_volume must be a projected full-day estimate (orchestrator normalises by session-elapsed fraction); df_combined must be Close-only."""
+        """Returns alert dict if moonshot signature detected, else None. current_volume must be a projected full-day estimate in daily-bar units (market_session_helpers.projected_session_volume), None while too early for a volume verdict; df_combined must be Close-only."""
         # Exclude the live (partially-formed) intraday tick — it skews RSI/Bollinger on volatile opens.
         df_settled = df_combined.iloc[:-1]
 

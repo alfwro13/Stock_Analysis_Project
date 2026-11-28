@@ -429,6 +429,16 @@ def init_db() -> None:
             )
         ''')
 
+        # Per held ticker: Yahoo's 5m-bar volume over its daily-bar volume, learned once per settled session (NULL coverage = too few sessions).
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS intraday_volume_coverage (
+                ticker TEXT PRIMARY KEY,
+                coverage REAL,
+                sessions INTEGER NOT NULL,
+                computed_at TEXT NOT NULL
+            )
+        ''')
+
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS data_migrations (
                 name TEXT PRIMARY KEY,
