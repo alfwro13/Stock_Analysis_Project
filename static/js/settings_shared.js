@@ -322,7 +322,8 @@ async function saveSettings(silent = false) {
                 "CALENDAR_TIME": document.getElementById('MACRO_CALENDAR_TIME').value,
                 "CALENDAR_SUNDAY_TIME": document.getElementById('MACRO_CALENDAR_SUNDAY_TIME').value,
                 "DATA_DAY": document.getElementById('MACRO_DATA_DAY').value,
-                "DATA_TIME": document.getElementById('MACRO_DATA_TIME').value
+                "DATA_TIME": document.getElementById('MACRO_DATA_TIME').value,
+                "TRAINING_TIME": document.getElementById('MACRO_TRAINING_TIME').value
             },
             "AI_CONTAGION": {
                 "ENABLED": document.getElementById('AI_CONTAGION_SCHED_ENABLED').checked,

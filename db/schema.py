@@ -706,7 +706,7 @@ def init_db() -> None:
                 previous_val REAL,
                 actual_val REAL,
                 post_event_spy_gap REAL,
-                ai_volatility_warning REAL DEFAULT 0.0,
+                ai_volatility_warning REAL,
                 is_event_passed BOOLEAN DEFAULT 0,
                 alert_dispatched BOOLEAN DEFAULT 0,
                 forecast_text TEXT,
@@ -2354,7 +2354,7 @@ def migrate_db(conn, cursor) -> None:
     required_calendar_columns = {
         'event_date': 'TIMESTAMP', 'currency': 'TEXT', 'impact': 'TEXT',
         'event_name': 'TEXT', 'forecast_val': 'REAL', 'previous_val': 'REAL',
-        'actual_val': 'REAL', 'post_event_spy_gap': 'REAL', 'ai_volatility_warning': 'REAL DEFAULT 0.0',
+        'actual_val': 'REAL', 'post_event_spy_gap': 'REAL', 'ai_volatility_warning': 'REAL',
         'is_event_passed': 'BOOLEAN DEFAULT 0', 'alert_dispatched': 'BOOLEAN DEFAULT 0',
         'ai_consensus_miss_prob': 'REAL',  # Surface standalone RF probability to UI
         'forecast_text': 'TEXT', 'previous_text': 'TEXT', 'actual_text': 'TEXT'
@@ -3153,6 +3153,34 @@ def migrate_db(conn, cursor) -> None:
             logger.info("[MIGRATION] Cleared %d macro calendar SPY gap(s) stored as 0.0 and the volatility model trained on them.", cleared)
     except Exception as e:
         logger.error("[MIGRATION ERROR] Failed to clear the unmeasured macro calendar SPY gaps: %s", e)
+
+    try:
+        cursor.execute("SELECT 1 FROM data_migrations WHERE name = 'macro_calendar_unscored_volatility_nulled'")
+        if cursor.fetchone() is None:
+            conn.commit()
+            cursor.execute("UPDATE macro_calendar SET ai_volatility_warning = NULL WHERE ai_volatility_warning = 0.0")
+            nulled = cursor.rowcount
+            cursor.execute("INSERT INTO data_migrations (name) VALUES ('macro_calendar_unscored_volatility_nulled')")
+            conn.commit()
+            if nulled:
+                logger.info("[MIGRATION] Set %d unscored macro calendar volatility warning(s) stored as 0.0 to NULL.", nulled)
+    except Exception as e:
+        conn.rollback()
+        logger.error("[MIGRATION ERROR] Failed to null the unscored macro calendar volatility warnings: %s", e)
+
+    try:
+        cursor.execute("SELECT 1 FROM data_migrations WHERE name = 'macro_indicators_future_rows_removed'")
+        if cursor.fetchone() is None:
+            conn.commit()
+            cursor.execute("DELETE FROM macro_indicators WHERE date > ?", (time_engine.now_local().strftime("%Y-%m-%d"),))
+            removed = cursor.rowcount
+            cursor.execute("INSERT INTO data_migrations (name) VALUES ('macro_indicators_future_rows_removed')")
+            conn.commit()
+            if removed:
+                logger.info("[MIGRATION] Removed %d macro indicator row(s) dated after today by a publication-lag shift.", removed)
+    except Exception as e:
+        conn.rollback()
+        logger.error("[MIGRATION ERROR] Failed to remove the future-dated macro indicator rows: %s", e)
 
     try:
         cursor.execute("SELECT 1 FROM data_migrations WHERE name = 'stored_bar_artifacts'")

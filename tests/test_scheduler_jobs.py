@@ -129,6 +129,53 @@ class TestRunMacroDataUpdate:
         assert any(call.args[0] == "Error" and "boom" in call.args[1] for call in mock_notify.call_args_list)
 
 
+class TestRunMacroCalendarUpdate:
+    def test_scores_the_new_calendar_with_todays_local_date_and_closes_the_engine(self):
+        engine = MagicMock()
+        with patch("scheduler_jobs.update_macro_calendar") as mock_update, \
+             patch("macro_ai_engine.MacroAIEngine", return_value=engine), \
+             patch("scheduler_jobs.time_engine.now_local") as mock_now, \
+             patch("scheduler_jobs.log_sched_notification"):
+            mock_now.return_value.strftime.return_value = "2026-11-28"
+            scheduler_jobs.run_macro_calendar_update()
+
+        mock_update.assert_called_once()
+        engine.run_macro_inference.assert_called_once_with("2026-11-28")
+        engine.close.assert_called_once()
+
+    def test_failed_inference_still_closes_the_engine_and_is_notified(self):
+        engine = MagicMock()
+        engine.run_macro_inference.side_effect = ValueError("boom")
+        with patch("scheduler_jobs.update_macro_calendar"), \
+             patch("macro_ai_engine.MacroAIEngine", return_value=engine), \
+             patch("scheduler_jobs.log_sched_notification") as mock_notify:
+            scheduler_jobs.run_macro_calendar_update()
+
+        engine.close.assert_called_once()
+        assert any(call.args[0] == "Error" and "boom" in call.args[1] for call in mock_notify.call_args_list)
+
+    def test_calendar_failure_skips_inference(self):
+        with patch("scheduler_jobs.update_macro_calendar", side_effect=ValueError("feed down")), \
+             patch("macro_ai_engine.MacroAIEngine") as mock_cls, \
+             patch("scheduler_jobs.log_sched_notification"):
+            scheduler_jobs.run_macro_calendar_update()
+
+        mock_cls.assert_not_called()
+
+
+class TestRunMacroModelTrainingJob:
+    def test_trains_all_three_models_and_closes_the_engine(self):
+        engine = MagicMock()
+        with patch("macro_ai_engine.MacroAIEngine", return_value=engine), \
+             patch("scheduler_jobs.log_sched_notification"):
+            scheduler_jobs.run_macro_model_training_job()
+
+        engine.train_regime_clustering.assert_called_once()
+        engine.train_consensus_miss_probability.assert_called_once()
+        engine.train_volatility_magnitude.assert_called_once()
+        engine.close.assert_called_once()
+
+
 class TestRunEarningsVolRetryJob:
     def test_calls_run_earnings_vol_scan_with_given_tickers(self):
         with patch("scheduler_jobs.run_earnings_vol_scan", return_value={}) as mock_scan, \

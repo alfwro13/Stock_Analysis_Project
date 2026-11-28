@@ -412,6 +412,42 @@ class TestStackedScoring:
         assert row["ai_volatility_warning"] is None
 
 
+class TestHmmStatePersistence:
+
+    def test_state_is_committed_when_the_window_holds_no_events(self, tmp_path):
+        db = tmp_path / "macro.db"
+        conn = sqlite3.connect(db)
+        conn.row_factory = sqlite3.Row
+        conn.executescript("""
+            CREATE TABLE market_regimes (date TEXT PRIMARY KEY, vix_close REAL, ai_hmm_state INTEGER);
+            CREATE TABLE macro_indicators (date TEXT PRIMARY KEY, us_m2 REAL, us_jobless_claims REAL, us_high_yield_spread REAL, us_yield_curve REAL);
+            CREATE TABLE macro_calendar (event_id INTEGER PRIMARY KEY, event_date TEXT, forecast_val TEXT, previous_val TEXT, is_event_passed INTEGER DEFAULT 0);
+            INSERT INTO market_regimes (date, vix_close) VALUES ('2026-06-04', 18.0), ('2026-06-05', 19.0);
+            INSERT INTO macro_indicators VALUES ('2026-06-05', 21000.0, 210000.0, 3.1, 0.4);
+        """)
+        conn.commit()
+        with patch("macro_ai_engine.get_connection", return_value=conn), \
+             patch.object(macro_ai_engine, "MACRO_HMM_PATH", tmp_path / "no_hmm.joblib"), \
+             patch.object(macro_ai_engine, "MACRO_RF_PATH", tmp_path / "no_rf.joblib"), \
+             patch.object(macro_ai_engine, "MACRO_XGB_PATH", tmp_path / "no_xgb.joblib"):
+            eng = MacroAIEngine()
+        eng.hmm_model = MagicMock()
+        eng.hmm_model.predict.return_value = np.array([2])
+        eng.hmm_scaler = MagicMock()
+        eng.hmm_scaler.transform.side_effect = lambda x: np.array(x)
+        eng.hmm_state_order = None
+
+        eng.run_macro_inference("2026-06-05")
+
+        fresh = sqlite3.connect(db)
+        try:
+            states = dict(fresh.execute("SELECT date, ai_hmm_state FROM market_regimes").fetchall())
+        finally:
+            fresh.close()
+            conn.close()
+        assert states == {"2026-06-04": None, "2026-06-05": 2}
+
+
 class TestDiscardPersistedModels:
 
     def test_removes_the_consensus_miss_and_volatility_models_with_their_sidecars_and_keeps_the_hmm(self, tmp_path):

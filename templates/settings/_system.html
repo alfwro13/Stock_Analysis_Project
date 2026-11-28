@@ -152,6 +152,20 @@
                             <td class="font-monospace">{{ auction_pm_input }}</td>
                             <td class="text-muted font-monospace" data-sched-key="macro_auction_job_pm">—</td>
                         </tr>
+                        {% set _macro_cfg = config.SCHEDULING.MACRO_ENGINE if config.SCHEDULING.MACRO_ENGINE else {} %}
+                        <tr>
+                            <td class="font-bold"><span role="button" tabindex="0" class="scheduler-job-history-btn" data-job-id="macro_model_training_job" data-job-label="{{ scheduler_job_label('macro_model_training_job') | e }}">{{ scheduler_job_label('macro_model_training_job') }}</span></td>
+                            <td>
+                                {% if _macro_cfg.ENABLED != false %}
+                                    <span class="status-pill status-enabled">ACTIVE</span>
+                                {% else %}
+                                    <span class="status-pill status-disabled">DISABLED</span>
+                                {% endif %}
+                            </td>
+                            <td>{{ (_macro_cfg.DATA_DAY | default('sat')) | upper }}</td>
+                            <td class="font-monospace">{{ _macro_cfg.TRAINING_TIME | default('06:00') }}</td>
+                            <td class="text-muted font-monospace" data-sched-key="macro_model_training_job">—</td>
+                        </tr>
                         <tr>
                             <td class="font-bold"><span role="button" tabindex="0" class="scheduler-job-history-btn" data-job-id="anomaly_training_job" data-job-label="{{ scheduler_job_label('anomaly_training_job') | e }}">{{ scheduler_job_label('anomaly_training_job') }}</span></td>
                             <td><span class="status-pill status-scheduled">NOTIFICATIONS</span></td>

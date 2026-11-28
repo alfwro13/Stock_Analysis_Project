@@ -22,7 +22,7 @@ from regime_engine import (
 )
 from constants import REGIME_CRASH_VOL, REGIME_VOLATILE_VOL, IF_STRESS_MIN_ROWS
 
-pytestmark = [pytest.mark.regime, pytest.mark.restore_tables("macro_regimes", "market_regimes", "price_hmm_states", "market_stress_states", "system_notifications", "data_migrations")]
+pytestmark = [pytest.mark.regime, pytest.mark.restore_tables("macro_indicators", "macro_regimes", "market_regimes", "price_hmm_states", "market_stress_states", "system_notifications", "data_migrations")]
 
 
 def _make_spy_vix_ftse(spy_daily_std, ftse_daily_std=None, n=252):
@@ -388,33 +388,33 @@ class TestClassifyRegime:
     """Unit tests for the pure _classify_regime() function — no DB needed."""
 
     def test_risk_on_all_clear(self):
-        assert _classify_regime(0.50, 2.5, 300, 0, 1.2) == "Risk-On"
+        assert _classify_regime(0.50, 2.5, 3.0, 0, 1.2) == "Risk-On"
 
     def test_risk_on_hmm_zero_positive_curve(self):
-        assert _classify_regime(0.80, 1.5, 250, 0, 2.0) == "Risk-On"
+        assert _classify_regime(0.80, 1.5, 2.5, 0, 2.0) == "Risk-On"
 
     def test_late_cycle_flattening_curve_elevated_cpi(self):
-        assert _classify_regime(0.10, 3.5, 420, 1, 1.1) == "Late Cycle"
+        assert _classify_regime(0.10, 3.5, 4.2, 1, 1.1) == "Late Cycle"
 
     def test_late_cycle_curve_at_upper_boundary(self):
         # 0.20 is the boundary — should still be Late Cycle when CPI > 3
-        assert _classify_regime(0.20, 3.2, 400, 0, 1.0) == "Late Cycle"
+        assert _classify_regime(0.20, 3.2, 4.0, 0, 1.0) == "Late Cycle"
 
     def test_stagflation_high_cpi_with_blown_spreads(self):
-        assert _classify_regime(0.30, 4.5, 550, 0, 0.5) == "Stagflation"
+        assert _classify_regime(0.30, 4.5, 5.5, 0, 0.5) == "Stagflation"
 
     def test_stagflation_high_cpi_with_negative_real_yield(self):
-        assert _classify_regime(0.50, 4.1, 300, 0, -0.3) == "Stagflation"
+        assert _classify_regime(0.50, 4.1, 3.0, 0, -0.3) == "Stagflation"
 
     def test_contraction_inverted_and_hmm_recession(self):
-        assert _classify_regime(-0.20, 2.5, 450, 2, 1.0) == "Contraction"
+        assert _classify_regime(-0.20, 2.5, 4.5, 2, 1.0) == "Contraction"
 
     def test_contraction_inverted_blown_spreads_no_hmm(self):
-        # Spreads > 600 with inverted curve = Contraction regardless of HMM
-        assert _classify_regime(-0.10, 2.0, 650, 0, 1.0) == "Contraction"
+        # Spreads > 6.0% with inverted curve = Contraction regardless of HMM
+        assert _classify_regime(-0.10, 2.0, 6.5, 0, 1.0) == "Contraction"
 
     def test_recovery_hmm_choppy_positive_curve(self):
-        assert _classify_regime(0.40, 2.0, 380, 1, 1.5) == "Recovery"
+        assert _classify_regime(0.40, 2.0, 3.8, 1, 1.5) == "Recovery"
 
     def test_risk_on_when_all_inputs_none(self):
         # Must not raise; defaults to Risk-On
@@ -422,11 +422,20 @@ class TestClassifyRegime:
 
     def test_stagflation_requires_both_cpi_and_stress(self):
         # High CPI alone (no spread blow-out, positive real yield) does not trigger Stagflation
-        assert _classify_regime(0.50, 4.5, 350, 0, 1.0) == "Risk-On"
+        assert _classify_regime(0.50, 4.5, 3.5, 0, 1.0) == "Risk-On"
+
+    def test_hy_spread_is_read_in_percent_for_stagflation(self):
+        assert _classify_regime(0.50, 4.5, 5.5, 0, 1.0) == "Stagflation"
+
+    def test_hy_spread_is_read_in_percent_for_contraction(self):
+        assert _classify_regime(-0.30, 2.0, 6.5, None, 1.0) == "Contraction"
+
+    def test_hmm_state_one_with_positive_curve_is_recovery(self):
+        assert _classify_regime(0.60, 2.0, 3.0, 1, 1.0) == "Recovery"
 
     def test_late_cycle_not_triggered_below_cpi_threshold(self):
         # Flattening curve but CPI under 3% → Risk-On, not Late Cycle
-        assert _classify_regime(0.10, 2.8, 350, 0, 1.0) == "Risk-On"
+        assert _classify_regime(0.10, 2.8, 3.5, 0, 1.0) == "Risk-On"
 
 
 class TestClassifyMacroRegime:
@@ -439,7 +448,7 @@ class TestClassifyMacroRegime:
 
     _DATE = "2099-06-01"
 
-    def _seed(self, us_yield_curve, us_cpi=2.5, us_hy_spread=300.0, us_real_yield=1.2):
+    def _seed(self, us_yield_curve, us_cpi=2.5, us_hy_spread=3.0, us_real_yield=1.2):
         conn = database.get_connection()
         try:
             conn.execute("DELETE FROM macro_indicators WHERE date=?", (self._DATE,))
@@ -491,6 +500,29 @@ class TestClassifyMacroRegime:
         result = self._read_result()
         assert result is not None
         assert result["yield_curve_inverted"] == 0
+
+    def _seed_market_regime(self, date, state):
+        conn = database.get_connection()
+        try:
+            conn.execute("DELETE FROM market_regimes WHERE date=?", (date,))
+            conn.execute("INSERT INTO market_regimes (date, ai_hmm_state) VALUES (?, ?)", (date, state))
+            conn.commit()
+        finally:
+            conn.close()
+
+    def test_uses_hmm_state_from_an_older_row_within_the_age_limit(self):
+        self._seed(us_yield_curve=0.60, us_cpi=2.0)
+        self._seed_market_regime("2099-05-30", 1)
+        self._seed_market_regime(self._DATE, None)
+        classify_macro_regime()
+        assert self._read_result()["regime_label"] == "Recovery"
+
+    def test_ignores_hmm_state_older_than_the_age_limit(self):
+        self._seed(us_yield_curve=0.60, us_cpi=2.0)
+        self._seed_market_regime("2099-05-20", 1)
+        self._seed_market_regime(self._DATE, None)
+        classify_macro_regime()
+        assert self._read_result()["regime_label"] == "Risk-On"
 
     def test_no_macro_indicators_does_not_raise(self):
         conn = database.get_connection()

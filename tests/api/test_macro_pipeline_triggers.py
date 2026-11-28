@@ -27,10 +27,10 @@ def _run(body, init_calls):
     return engine
 
 
-def test_run_now_retrains_the_consensus_miss_and_volatility_models_before_scoring():
+def test_run_now_retrains_all_three_models_before_scoring():
     calls = []
     engine = _run(routes_triggers.bg_run_macro_pipeline, calls)
-    assert calls == ["calendar", "indicators", "train_consensus_miss_probability", "train_volatility_magnitude", "run_macro_inference"]
+    assert calls == ["calendar", "indicators", "train_regime_clustering", "train_consensus_miss_probability", "train_volatility_magnitude", "run_macro_inference"]
     engine.close.assert_called_once()
 
 

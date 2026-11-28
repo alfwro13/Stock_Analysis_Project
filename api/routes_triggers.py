@@ -143,6 +143,7 @@ def bg_run_macro_pipeline():
 
         ai_engine = MacroAIEngine()
         try:
+            ai_engine.train_regime_clustering()
             ai_engine.train_consensus_miss_probability()
             ai_engine.train_volatility_magnitude()
             scan_date = time_engine.now_local().strftime('%Y-%m-%d')

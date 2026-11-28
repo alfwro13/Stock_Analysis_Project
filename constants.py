@@ -40,6 +40,7 @@ FRESHNESS_PRICES_STALE_DAYS = 5   # trading days since the latest bar → red
 # Training data minimums
 MACRO_HMM_MIN_TRAIN_ROWS   = 50    # macro_indicators rows required to fit HMM
 MACRO_CAL_MIN_TRAIN_ROWS   = 10    # macro_calendar rows required for RF and XGBoost
+MACRO_HMM_STATE_MAX_AGE_DAYS = 7   # oldest market_regimes.ai_hmm_state the Macro Regime classifier still uses
 
 # HMM architecture
 MACRO_HMM_N_STATES         = 3     # hidden states: 0=expansion, 1=choppy, 2=recession
@@ -228,7 +229,7 @@ ML_TRAINING_WATCHDOG_POLL_SECONDS = 2          # how often the web process sampl
 ML_TRAINING_CHILD_OOM_SCORE_ADJ = 1000         # the training child asks the kernel to pick it, not the web process, if memory runs out
 
 # ── Static asset versioning ───────────────────────────────────────────────────
-CSS_VERSION = "5.222" # bump this whenever styles.css (or any versioned static/js/*.js file) changes to bust browser caches
+CSS_VERSION = "5.223" # bump this whenever styles.css (or any versioned static/js/*.js file) changes to bust browser caches
 
 # ── FinBERT / NLP sentiment ────────────────────────────────────────────────────
 NLP_FINBERT_MAX_TOKENS     = 512   # HuggingFace token limit for ProsusAI/finbert

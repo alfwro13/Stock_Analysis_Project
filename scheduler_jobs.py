@@ -581,7 +581,7 @@ def run_ml_inference():
         record_job_run('ml_inference_job')
 
 def run_macro_model_training_job():
-    """Retrain persisted macro models after a scikit-learn version change."""
+    """Retrain the macro models weekly and after a scikit-learn or XGBoost version change."""
     _mark_job_started(job_label("macro_model_training_job"))
     engine = None
     try:
@@ -610,6 +610,13 @@ def run_macro_calendar_update():
         logger.info("Macro calendar update initiated.")
         update_macro_calendar()
         logger.info("Macro calendar update complete.")
+        from macro_ai_engine import MacroAIEngine
+
+        ai_engine = MacroAIEngine()
+        try:
+            ai_engine.run_macro_inference(time_engine.now_local().strftime('%Y-%m-%d'))
+        finally:
+            ai_engine.close()
         log_sched_notification("Success", "Macro Calendar Update completed successfully.")
     except Exception as e:
         logger.error("Macro Calendar Update Failed: %s", e)

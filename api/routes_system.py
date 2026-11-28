@@ -139,6 +139,7 @@ class ScheduleItemConfig(FiniteModel):
     CALENDAR_SUNDAY_TIME: Optional[str] = None
     DATA_DAY: Optional[str] = None
     DATA_TIME: Optional[str] = None
+    TRAINING_TIME: Optional[str] = None
     DAY_OF_WEEK: Optional[str] = None
     DAYS_TO_KEEP_FILES: Optional[int] = None
     MAX_PER_TICKER: Optional[int] = None
@@ -1133,7 +1134,7 @@ def get_system_metrics():
             cfg_key: (job_last_runs.get(job_id) or {}).get("last_run") or ""
             for cfg_key, job_id in config_key_to_job.items()
         }
-        for auction_job_id in ("macro_auction_job_am", "macro_auction_job_pm"):
+        for auction_job_id in ("macro_auction_job_am", "macro_auction_job_pm", "macro_model_training_job"):
             scheduler_last_runs[auction_job_id] = time_engine.fmt_stored_utc((job_last_runs.get(auction_job_id) or {}).get("last_run"), fallback="Never")
             scheduler_last_runs_sort[auction_job_id] = (job_last_runs.get(auction_job_id) or {}).get("last_run") or ""
 

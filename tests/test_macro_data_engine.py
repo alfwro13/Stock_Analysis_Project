@@ -16,7 +16,7 @@ import json
 import os
 import sys
 import sqlite3
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -476,6 +476,81 @@ class TestUpdateMacroIndicators:
             cleanup.execute("DELETE FROM macro_indicators WHERE date='2024-01-31'")
             cleanup.commit()
             cleanup.close()
+
+    def _run_update(self, fred_frames=None, session=None):
+        def fred_side_effect(sess, series_id, *args, **kwargs):
+            return (fred_frames or {}).get(series_id, pd.DataFrame())
+
+        fetch = patch("macro_data_engine.fetch_fred_api", side_effect=fred_side_effect) if session is None else patch("macro_data_engine.get_retry_session", return_value=session)
+        with patch.dict(os.environ, {"FRED_API_KEY": "key"}), \
+             patch("macro_data_engine.get_retry_session"), \
+             fetch, \
+             patch("macro_data_engine.fetch_boe_data", return_value=pd.DataFrame()), \
+             patch("macro_data_engine.fetch_ons_taxonomy_data", return_value=pd.DataFrame()):
+            update_macro_indicators()
+
+    @staticmethod
+    def _today():
+        import time_engine
+        return pd.Timestamp(time_engine.now_local().date())
+
+    @staticmethod
+    def _rows(query, params=()):
+        conn = _db_module.get_connection()
+        try:
+            return conn.execute(query, params).fetchall()
+        finally:
+            conn.close()
+
+    def test_weekly_claims_land_five_days_after_the_week_and_no_future_row_is_written(self):
+        today = self._today()
+        obs = [today - timedelta(days=12), today - timedelta(days=5), today - timedelta(days=2)]
+        payload = _fred_payload("ICSA", [(d.strftime("%Y-%m-%d"), 200000 + i) for i, d in enumerate(obs)])
+
+        def get(url, params=None, **kwargs):
+            resp = MagicMock()
+            resp.raise_for_status = MagicMock()
+            resp.json.return_value = payload if params["series_id"] == "ICSA" else {}
+            return resp
+
+        session = MagicMock()
+        session.get.side_effect = get
+        self._run_update(session=session)
+
+        rows = {r["date"]: r["us_jobless_claims"] for r in self._rows("SELECT date, us_jobless_claims FROM macro_indicators WHERE us_jobless_claims IS NOT NULL")}
+        assert rows[(today - timedelta(days=7)).strftime("%Y-%m-%d")] == pytest.approx(200000.0)
+        assert rows[today.strftime("%Y-%m-%d")] == pytest.approx(200001.0)
+        assert (today - timedelta(days=12)).strftime("%Y-%m-%d") not in rows
+        assert not self._rows("SELECT 1 FROM macro_indicators WHERE date > ?", (today.strftime("%Y-%m-%d"),))
+
+    def test_row_inside_the_restate_window_is_restated_and_an_older_row_keeps_its_value(self):
+        today = self._today()
+        recent, old = (today - timedelta(days=10)).strftime("%Y-%m-%d"), (today - timedelta(days=60)).strftime("%Y-%m-%d")
+        conn = _db_module.get_connection()
+        conn.executemany("INSERT INTO macro_indicators (date, us_m2) VALUES (?, ?)", [(recent, 5.0), (old, 5.0)])
+        conn.commit()
+        conn.close()
+
+        frame = pd.DataFrame({"WM2NS": [777.0, 888.0]}, index=[pd.Timestamp(old), pd.Timestamp(recent)])
+        self._run_update({"WM2NS": frame})
+
+        values = {r["date"]: r["us_m2"] for r in self._rows("SELECT date, us_m2 FROM macro_indicators WHERE date IN (?, ?)", (recent, old))}
+        assert values[recent] == pytest.approx(888.0)
+        assert values[old] == pytest.approx(5.0)
+
+    def test_series_missing_from_a_run_leaves_the_stored_value(self):
+        today = self._today()
+        recent = (today - timedelta(days=10)).strftime("%Y-%m-%d")
+        conn = _db_module.get_connection()
+        conn.execute("INSERT INTO macro_indicators (date, us_m2, us_jobless_claims) VALUES (?, 5.0, 42.0)", (recent,))
+        conn.commit()
+        conn.close()
+
+        frame = pd.DataFrame({"WM2NS": [888.0]}, index=[pd.Timestamp(recent)])
+        self._run_update({"WM2NS": frame})
+
+        row = self._rows("SELECT us_m2, us_jobless_claims FROM macro_indicators WHERE date = ?", (recent,))[0]
+        assert (row["us_m2"], row["us_jobless_claims"]) == (pytest.approx(888.0), pytest.approx(42.0))
 
     def test_uk_m4_stored_in_billions_from_boe_level_series(self):
         """LPMAUYN is BoE's M4 amounts-outstanding series in sterling millions; the pipeline

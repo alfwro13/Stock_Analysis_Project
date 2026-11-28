@@ -659,6 +659,7 @@ def reload_scheduler():
         sunday_time = macro_cfg.get("CALENDAR_SUNDAY_TIME", "23:00")
         data_day = macro_cfg.get("DATA_DAY", "sat")
         data_time = macro_cfg.get("DATA_TIME", "05:00")
+        training_time = macro_cfg.get("TRAINING_TIME", "06:00")
         try:
             cal_hour, cal_minute = map(int, calendar_time.split(':'))
             sunday_hour, sunday_minute = map(int, sunday_time.split(':'))
@@ -679,6 +680,14 @@ def reload_scheduler():
                 id='macro_data_job'
             )
             logger.info("Macro Data Update scheduled for %s at %s", data_day, data_time)
+
+            training_hour, training_minute = map(int, training_time.split(':'))
+            scheduler.add_job(
+                run_macro_model_training_job,
+                CronTrigger(day_of_week=data_day, hour=training_hour, minute=training_minute, timezone=user_tz),
+                id='macro_model_training_job'
+            )
+            logger.info("Macro Model Training scheduled for %s at %s", data_day, training_time)
         except Exception as e:
             logger.error("Failed to schedule Macro Engine Jobs: %s", e)
 
