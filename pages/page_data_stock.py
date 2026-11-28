@@ -205,7 +205,6 @@ def load_stock_row(ticker):
                    CASE WHEN q.quantile_scored_at >= ? THEN q.price_q90 END AS price_q90,
                    mu.industry, mu.index_membership,
                    cno.display_name as name_override,
-                   tmeta.market_cap,
                    trap.phase as trap_phase,
                    (SELECT flag FROM bubble_radar_metrics
                     WHERE ticker = s.ticker ORDER BY scan_date DESC LIMIT 1) AS bubble_flag,
@@ -222,7 +221,6 @@ def load_stock_row(ticker):
             LEFT JOIN company_name_overrides cno ON s.ticker = cno.ticker
             LEFT JOIN quant_signals q ON s.ticker = q.ticker
                 AND q.date = (SELECT MAX(date) FROM quant_signals WHERE ticker = s.ticker)
-            LEFT JOIN ticker_metadata tmeta ON s.ticker = tmeta.ticker
             LEFT JOIN trap_monitor_results trap ON s.ticker = trap.ticker
             WHERE s.ticker = ?
         ''', (fresh_since, fresh_since, sentiment_fresh_since(), fresh_since, fresh_since, ticker))

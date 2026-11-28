@@ -1013,6 +1013,29 @@ def test_migrate_db_adds_scope_column_to_predicted_movers_history():
 
 
 @pytest.mark.db
+def test_migrate_db_drops_ticker_metadata_market_cap_and_adds_stock_signals_market_cap():
+    conn = _conn()
+    try:
+        conn.execute("DROP TABLE ticker_metadata")
+        conn.execute("CREATE TABLE ticker_metadata (ticker TEXT PRIMARY KEY, sector TEXT, beta REAL, market_cap REAL)")
+        conn.execute("INSERT INTO ticker_metadata VALUES ('MIGMCAP', 'Tech', 1.1, 5e9)")
+        conn.execute("ALTER TABLE stock_signals DROP COLUMN market_cap")
+        conn.commit()
+        cursor = conn.cursor()
+        db_schema.migrate_db(conn, cursor)
+        db_schema.migrate_db(conn, cursor)
+        conn.commit()
+        assert "market_cap" not in {r["name"] for r in conn.execute("PRAGMA table_info(ticker_metadata)").fetchall()}
+        assert "market_cap" in {r["name"] for r in conn.execute("PRAGMA table_info(stock_signals)").fetchall()}
+        row = conn.execute("SELECT sector, beta FROM ticker_metadata WHERE ticker = 'MIGMCAP'").fetchone()
+        assert (row["sector"], row["beta"]) == ("Tech", 1.1)
+    finally:
+        conn.execute("DELETE FROM ticker_metadata WHERE ticker = 'MIGMCAP'")
+        conn.commit()
+        conn.close()
+
+
+@pytest.mark.db
 def test_profile_empty_strikes_has_history_strike_columns():
     assert {"strikes", "last_empty_at", "history_strikes", "last_history_empty_at"} <= _columns("profile_empty_strikes")
 

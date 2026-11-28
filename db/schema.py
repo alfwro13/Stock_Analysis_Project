@@ -352,6 +352,7 @@ def init_db() -> None:
                 price_to_book REAL,
                 price_to_sales REAL,
                 free_cash_flow REAL,
+                market_cap REAL,
 
                 -- Profitability & Health (Equities)
                 profit_margin REAL,
@@ -652,8 +653,7 @@ def init_db() -> None:
             CREATE TABLE IF NOT EXISTS ticker_metadata (
                 ticker TEXT PRIMARY KEY,
                 sector TEXT,
-                beta REAL,
-                market_cap REAL
+                beta REAL
             )
         ''')
 
@@ -2191,7 +2191,7 @@ def migrate_db(conn, cursor) -> None:
         'fifty_two_week_low': 'REAL', 'fifty_two_week_high': 'REAL',
         'trailing_pe': 'REAL', 'forward_pe': 'REAL', 'peg_ratio': 'REAL',
         'peter_lynch_peg': 'REAL', 'price_to_book': 'REAL',
-        'price_to_sales': 'REAL', 'free_cash_flow': 'REAL',
+        'price_to_sales': 'REAL', 'free_cash_flow': 'REAL', 'market_cap': 'REAL',
         'profit_margin': 'REAL', 'roe': 'REAL', 'revenue_growth': 'REAL',
         'debt_to_equity': 'REAL', 'current_ratio': 'REAL', 'operating_cash_flow': 'REAL',
         'ytd_return': 'REAL', 'total_assets': 'REAL', 'nav_price': 'REAL',
@@ -2503,12 +2503,20 @@ def migrate_db(conn, cursor) -> None:
             CREATE TABLE IF NOT EXISTS ticker_metadata (
                 ticker TEXT PRIMARY KEY,
                 sector TEXT,
-                beta REAL,
-                market_cap REAL
+                beta REAL
             )
         ''')
     except Exception as e:
         logger.error("[MIGRATION ERROR] Failed to create ticker_metadata: %s", e)
+
+    # stock_signals.market_cap is the one market cap column; the old copy here was never refreshed
+    cursor.execute("PRAGMA table_info(ticker_metadata)")
+    if 'market_cap' in [info['name'] for info in cursor.fetchall()]:
+        try:
+            logger.info("[MIGRATION] Dropping column market_cap from ticker_metadata...")
+            cursor.execute("ALTER TABLE ticker_metadata DROP COLUMN market_cap")
+        except Exception as e:
+            logger.error("[MIGRATION ERROR] Failed dropping market_cap from ticker_metadata: %s", e)
 
     # model_training_log (guard for DBs that pre-date init_db ownership of this table)
     try:

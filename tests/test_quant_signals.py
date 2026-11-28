@@ -146,7 +146,7 @@ _SAVE_TO_DB_DEFAULTS = dict(
     trend_50d="Neutral", trend_200d="Neutral", rsi=None, stop_loss=None,
     fifty_two_week_low=None, fifty_two_week_high=None,
     trailing_pe=None, forward_pe=None, peg_ratio=None, peter_lynch_peg=None, price_to_book=None,
-    price_to_sales=None, free_cash_flow=None,
+    price_to_sales=None, free_cash_flow=None, market_cap=None,
     profit_margin=None, roe=None, revenue_growth=None, debt_to_equity=None, current_ratio=None,
     operating_cash_flow=None,
     ytd_return=None, total_assets=None, nav_price=None, expense_ratio=None,
@@ -212,6 +212,32 @@ class TestSaveToDbDoesNotWipeOtherEnginesColumns:
         row = conn.execute("SELECT company_name FROM stock_signals WHERE ticker=?", (self.TICKER,)).fetchone()
         conn.close()
         assert row["company_name"] == "Test Co"
+
+
+class TestSaveToDbStoresMarketCap:
+    TICKER = "TST_QS_MCAP"
+
+    def teardown_method(self):
+        conn = _db.get_connection()
+        try:
+            conn.execute("DELETE FROM stock_signals WHERE ticker=?", (self.TICKER,))
+            conn.commit()
+        finally:
+            conn.close()
+
+    def _stored(self):
+        conn = _db.get_connection()
+        try:
+            return conn.execute("SELECT market_cap FROM stock_signals WHERE ticker=?", (self.TICKER,)).fetchone()["market_cap"]
+        finally:
+            conn.close()
+
+    def test_stores_the_market_cap_and_a_later_missing_one_writes_null(self):
+        QuantEngine().save_to_db(self.TICKER, **dict(_SAVE_TO_DB_DEFAULTS, market_cap=2.5e9))
+        assert self._stored() == 2.5e9
+
+        QuantEngine().save_to_db(self.TICKER, **dict(_SAVE_TO_DB_DEFAULTS, market_cap=None))
+        assert self._stored() is None
 
 
 class TestSaveToDbWritesAtrStopHistory:

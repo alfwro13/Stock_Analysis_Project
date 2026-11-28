@@ -99,27 +99,22 @@ def sync_ticker_metadata(tickers: List[str]) -> None:
             logger.info("All ticker metadata is already up to date.")
             return
 
-        records: List[Tuple[str, str, float, float]] = []
+        records: List[Tuple[str, str, float]] = []
         for ticker in missing_tickers:
             try:
                 info   = yahoo_engine.get_ticker_info(ticker) or {}
                 sector = info.get('sector', 'Unknown')
                 beta   = info.get('beta', 1.0)
-                mcap   = info.get('marketCap', 0.0)
-                records.append((
-                    ticker, sector,
-                    float(beta) if beta else 1.0,
-                    float(mcap) if mcap else 0.0
-                ))
+                records.append((ticker, sector, float(beta) if beta else 1.0))
             except Exception as e:
                 logger.warning('Failed to fetch metadata for %s: %s', ticker, e)
-                records.append((ticker, 'Unknown', 1.0, 0.0))
+                records.append((ticker, 'Unknown', 1.0))
             time.sleep(0.1)
 
         if records:
             cursor.executemany("""
-                INSERT OR REPLACE INTO ticker_metadata (ticker, sector, beta, market_cap)
-                VALUES (?, ?, ?, ?)
+                INSERT OR REPLACE INTO ticker_metadata (ticker, sector, beta)
+                VALUES (?, ?, ?)
             """, records)
             conn.commit()
             logger.info('Injected metadata for %s new tickers.', len(records))

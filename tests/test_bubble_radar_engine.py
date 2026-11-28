@@ -319,6 +319,24 @@ def test_get_fundamentals_returns_four_nones_when_ticker_absent(conn):
     )
 
 
+def test_get_fundamentals_fcf_yield_uses_stock_signals_market_cap(conn):
+    ticker = "TSTFCFY"
+    conn.execute(
+        "INSERT OR REPLACE INTO stock_signals (ticker, current_price, price_to_sales, free_cash_flow, market_cap, peg_ratio) "
+        "VALUES (?,?,?,?,?,?)",
+        (ticker, 10.0, 4.0, 5_000_000.0, 500_000_000.0, 2.0),
+    )
+    conn.commit()
+    try:
+        assert _get_fundamentals(ticker, conn) == (4.0, pytest.approx(1.0), 2.0, 10.0)
+        conn.execute("UPDATE stock_signals SET market_cap = NULL WHERE ticker=?", (ticker,))
+        conn.commit()
+        assert _get_fundamentals(ticker, conn)[1] is None
+    finally:
+        conn.execute("DELETE FROM stock_signals WHERE ticker=?", (ticker,))
+        conn.commit()
+
+
 # ── _compute_iv_skew ─────────────────────────────────────────────────────────
 
 def test_compute_iv_skew_returns_none_without_price():
@@ -357,12 +375,8 @@ def test_run_bubble_scan_returns_dict(mock_bf, mock_us, mock_iv, mock_spread, co
         (ticker, scan_date, 150.0, 100.0, 78.0),
     )
     conn.execute(
-        "INSERT OR IGNORE INTO stock_signals (ticker, current_price, price_to_sales, free_cash_flow, peg_ratio) VALUES (?,?,?,?,?)",
-        (ticker, 150.0, 25.0, 5_000_000.0, 5.0),
-    )
-    conn.execute(
-        "INSERT OR IGNORE INTO ticker_metadata (ticker, market_cap) VALUES (?,?)",
-        (ticker, 500_000_000.0),
+        "INSERT OR IGNORE INTO stock_signals (ticker, current_price, price_to_sales, free_cash_flow, market_cap, peg_ratio) VALUES (?,?,?,?,?,?)",
+        (ticker, 150.0, 25.0, 5_000_000.0, 500_000_000.0, 5.0),
     )
     conn.commit()
 
@@ -379,7 +393,6 @@ def test_run_bubble_scan_returns_dict(mock_bf, mock_us, mock_iv, mock_spread, co
     conn.execute("DELETE FROM bubble_radar_history WHERE ticker=?", (ticker,))
     conn.execute("DELETE FROM quant_signals WHERE ticker=?", (ticker,))
     conn.execute("DELETE FROM stock_signals WHERE ticker=?", (ticker,))
-    conn.execute("DELETE FROM ticker_metadata WHERE ticker=?", (ticker,))
     conn.commit()
 
 

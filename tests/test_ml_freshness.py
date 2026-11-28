@@ -56,7 +56,7 @@ def _utc(days_ago: float) -> str:
 def _clean_rows():
     yield
     conn = _conn()
-    for table in ("quant_signals", "stock_signals", "market_universe", "ticker_metadata"):
+    for table in ("quant_signals", "stock_signals", "market_universe"):
         conn.executemany(f"DELETE FROM {table} WHERE ticker = ?", [(t,) for t in TICKERS])
     conn.commit()
     conn.close()
@@ -177,15 +177,14 @@ def _seed_latest_row(ticker, scored_at, quantile_scored_at=None):
     conn = _conn()
     conn.execute(
         "INSERT OR REPLACE INTO stock_signals (ticker, company_name, current_price, currency, last_updated, "
-        "dividend_yield, ex_dividend_date, composite_score, quote_type, peter_lynch_peg, revenue_growth, roe, forward_pe) "
-        "VALUES (?, ?, 100.0, 'USD', datetime('now'), 0.05, '2026-09-01', 100, 'EQUITY', 0.5, 0.3, 0.3, 20)",
+        "dividend_yield, ex_dividend_date, composite_score, quote_type, peter_lynch_peg, revenue_growth, roe, forward_pe, market_cap) "
+        "VALUES (?, ?, 100.0, 'USD', datetime('now'), 0.05, '2026-09-01', 100, 'EQUITY', 0.5, 0.3, 0.3, 20, 5e9)",
         (ticker, ticker),
     )
     conn.execute(
         "INSERT OR REPLACE INTO market_universe (ticker, company_name, is_freetrade, is_index) VALUES (?, ?, 1, 1)",
         (ticker, ticker),
     )
-    conn.execute("INSERT OR REPLACE INTO ticker_metadata (ticker, market_cap) VALUES (?, 5e9)", (ticker,))
     conn.execute(
         "INSERT OR REPLACE INTO quant_signals (ticker, date, close_price, ml_confidence_score, ml_scored_at, "
         "price_q10, price_q90, quantile_scored_at) VALUES (?, '2099-01-01', 100.0, 61.0, ?, 90.0, 130.0, ?)",

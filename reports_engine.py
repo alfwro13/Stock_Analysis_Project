@@ -445,13 +445,12 @@ def get_garp_tenbaggers() -> List[Dict[str, Any]]:
             ROUND(s.revenue_growth * 100.0, 2) as revenue_growth_pct,
             ROUND(s.roe * 100.0, 2) as roe_pct,
             ROUND(s.forward_pe, 2) as forward_pe,
-            tm.market_cap,
+            s.market_cap,
             ROUND(lq.ml_confidence_score, 1) as ml_confidence_score
         FROM stock_signals s
         INNER JOIN market_universe m ON s.ticker = m.ticker
         LEFT JOIN asset_profiles p ON s.ticker = p.ticker
         LEFT JOIN latest_quant lq ON s.ticker = lq.ticker
-        LEFT JOIN ticker_metadata tm ON s.ticker = tm.ticker
         WHERE m.is_index = 1
           AND COALESCE(p.quote_type, s.quote_type, 'EQUITY') = 'EQUITY'
           AND s.peter_lynch_peg > 0
@@ -459,7 +458,7 @@ def get_garp_tenbaggers() -> List[Dict[str, Any]]:
           AND s.revenue_growth > ?
           AND s.roe > ?
           AND s.forward_pe BETWEEN ? AND ?
-          AND COALESCE(tm.market_cap, 0) > ?
+          AND s.market_cap > ?
         ORDER BY s.peter_lynch_peg ASC, lq.ml_confidence_score DESC
         LIMIT 500
         """

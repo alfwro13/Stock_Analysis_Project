@@ -13,6 +13,7 @@ from constants import (
 )
 from yahoo_engine import yahoo_engine
 from db.database import get_connection, log_notification
+from db.helpers import get_portfolio_watchlist_tickers
 from fundamentals_helpers import calculate_peter_lynch_peg, currency_safe_price_ratios, dividend_yield_fraction
 from profile_engine import load_blacklist
 from time_engine import parse_stored_utc
@@ -62,14 +63,14 @@ def _fetch_info(ticker: str) -> dict:
 
 
 def _due_fundamentals_tickers(scope: set) -> list:
-    """Scan-scope tickers whose dump is older than FUNDAMENTALS_REFRESH_DAYS plus index stocks with none; missing first, then oldest."""
+    """Scan-scope tickers whose dump is older than FUNDAMENTALS_REFRESH_DAYS plus index, Portfolio and Watchlist stocks with none; missing first, then oldest."""
     due = {}
     for path in FUNDAMENTALS_DIR.glob("*.json"):
         if normalize_ticker(path.stem) in scope:
             age = fundamentals_dump_age(path)
             if age > timedelta(days=FUNDAMENTALS_REFRESH_DAYS):
                 due[path.stem] = age
-    for ticker in _get_universe_target_tickers(freetrade_firewall=False):
+    for ticker in set(_get_universe_target_tickers(freetrade_firewall=False)) | set(get_portfolio_watchlist_tickers()):
         path = contained_ticker_path(FUNDAMENTALS_DIR, ticker, ".json")
         if path is not None and not os.path.exists(path):
             due[ticker] = timedelta.max
@@ -280,6 +281,7 @@ def _upsert_fundamentals(ticker: str, info: dict) -> None:
     peg_ratio      = info.get('pegRatio')
     price_to_book, price_to_sales = currency_safe_price_ratios(info, currency)
     free_cash_flow = info.get('freeCashflow')
+    market_cap     = info.get('marketCap')
     profit_margin  = info.get('profitMargins')
     roe            = info.get('returnOnEquity')
     revenue_growth = info.get('revenueGrowth')
@@ -327,7 +329,7 @@ def _upsert_fundamentals(ticker: str, info: dict) -> None:
                 current_price,
                 fifty_two_week_low, fifty_two_week_high,
                 trailing_pe, forward_pe, peg_ratio, peter_lynch_peg, price_to_book,
-                price_to_sales, free_cash_flow,
+                price_to_sales, free_cash_flow, market_cap,
                 profit_margin, roe, revenue_growth, debt_to_equity, current_ratio,
                 operating_cash_flow, dividend_yield, ex_dividend_date,
                 target_price, analyst_rating, next_earnings_date,
@@ -339,7 +341,7 @@ def _upsert_fundamentals(ticker: str, info: dict) -> None:
                 ?,
                 ?, ?,
                 ?, ?, ?, ?, ?,
-                ?, ?,
+                ?, ?, ?,
                 ?, ?, ?, ?, ?,
                 ?, ?, ?,
                 ?, ?, ?,
@@ -355,6 +357,7 @@ def _upsert_fundamentals(ticker: str, info: dict) -> None:
                 trailing_pe=excluded.trailing_pe, forward_pe=excluded.forward_pe, peg_ratio=excluded.peg_ratio,
                 peter_lynch_peg=excluded.peter_lynch_peg, price_to_book=excluded.price_to_book,
                 price_to_sales=excluded.price_to_sales, free_cash_flow=excluded.free_cash_flow,
+                market_cap=excluded.market_cap,
                 profit_margin=excluded.profit_margin, roe=excluded.roe, revenue_growth=excluded.revenue_growth,
                 debt_to_equity=excluded.debt_to_equity, current_ratio=excluded.current_ratio,
                 operating_cash_flow=excluded.operating_cash_flow, dividend_yield=excluded.dividend_yield,
@@ -371,7 +374,7 @@ def _upsert_fundamentals(ticker: str, info: dict) -> None:
             _clean(current_price),
             _clean(fifty_two_week_low), _clean(fifty_two_week_high),
             _clean(trailing_pe), _clean(forward_pe), _clean(peg_ratio), _clean(peter_lynch_peg), _clean(price_to_book),
-            _clean(price_to_sales), _clean(free_cash_flow),
+            _clean(price_to_sales), _clean(free_cash_flow), _clean(market_cap),
             _clean(profit_margin), _clean(roe), _clean(revenue_growth), _clean(debt_to_equity), _clean(current_ratio),
             _clean(operating_cash_flow), _clean(dividend_yield), ex_dividend_date,
             _clean(target_price), analyst_rating, next_earnings_date,

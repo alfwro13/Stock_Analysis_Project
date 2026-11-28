@@ -26,7 +26,6 @@ _SIGNAL_COLUMNS = """
                    q.mom_1m, q.mom_3m, q.mom_6m, q.mom_12m_skip1m,
                    q.rel_strength_5d, q.rel_strength_20d, q.hist_vol_20, q.volume,
                    ap.industry, mu.index_membership,
-                   tmeta.market_cap,
                    xrisk.beta AS xray_beta, xrisk.annualized_vol AS xray_annualized_vol,
                    (SELECT dividend_yield_pct FROM xray_dividend_cache
                     WHERE ticker = s.ticker ORDER BY last_updated DESC LIMIT 1) AS xray_dividend_yield,
@@ -47,7 +46,6 @@ _SIGNAL_JOINS = f"""
             LEFT JOIN asset_profiles ap ON s.ticker = ap.ticker
             LEFT JOIN market_universe mu ON s.ticker = mu.ticker
             LEFT JOIN company_name_overrides cno ON s.ticker = cno.ticker
-            LEFT JOIN ticker_metadata tmeta ON s.ticker = tmeta.ticker
             LEFT JOIN quant_signals q ON s.ticker = q.ticker
             AND q.date = (SELECT MAX(date) FROM quant_signals WHERE ticker = s.ticker)
             LEFT JOIN xray_risk_cache xrisk ON s.ticker = xrisk.ticker AND xrisk.benchmark = ?
