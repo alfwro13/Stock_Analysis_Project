@@ -191,11 +191,13 @@
                 <p class="settings-desc">
                     A per-ticker 0-100 score blending the composite Quant Score, ML confidence, and the
                     Technical pillar's two signal sources (Pattern Detection, Trap Monitor) — weighted
-                    differently depending on the current <a href="/market-regime">Market Regime</a>. During
-                    a Crash regime (or when the Isolation Forest market stress score crosses the threshold
-                    below), the score is suppressed entirely rather than reweighted — none of these inputs
-                    were validated to mean anything during a genuine crash. On-demand computation only, no
-                    scheduler job.
+                    differently depending on the current <a href="/market-regime">Market Regime</a>. The score
+                    is suppressed entirely rather than reweighted when the regime is High Volatility and that
+                    state's fitted mean daily return is below the floor below (or unknown), or when the
+                    Isolation Forest market stress score crosses the threshold below — none of these inputs
+                    were validated to mean anything during a genuine crash. A High Volatility regime with a
+                    mean return at or above the floor is scored with the High Volatility weights.
+                    On-demand computation only, no scheduler job.
                 </p>
 
                 <div class="settings-panel border-left-green">
@@ -252,16 +254,50 @@
                 </div>
 
                 <div class="settings-panel border-left-red">
+                    <h4 class="settings-panel-header text-red">⚡ High Volatility Regime Weights (must sum to 100%)</h4>
+                    <p class="settings-desc-sm">The highest-volatility HMM state; Trap Monitor and Pattern Detection carry more weight because the state often brings sharp reversals.</p>
+                    <div class="flex-gap-15 flex-wrap align-end">
+                        <div class="form-group flex-1 mb-0 min-w-130">
+                            <label>Composite Score %</label>
+                            <input type="number" id="MS_HV_W_COMPOSITE" class="form-control"
+                                value="{{ (config.META_SCORING.REGIME_WEIGHTS['High Volatility'].composite_score | default(0.20)) * 100 }}" min="0" max="100" step="5">
+                        </div>
+                        <div class="form-group flex-1 mb-0 min-w-130">
+                            <label>ML Confidence %</label>
+                            <input type="number" id="MS_HV_W_ML" class="form-control"
+                                value="{{ (config.META_SCORING.REGIME_WEIGHTS['High Volatility'].ml_confidence | default(0.20)) * 100 }}" min="0" max="100" step="5">
+                        </div>
+                        <div class="form-group flex-1 mb-0 min-w-130">
+                            <label>Pattern Detection %</label>
+                            <input type="number" id="MS_HV_W_PATTERN" class="form-control"
+                                value="{{ (config.META_SCORING.REGIME_WEIGHTS['High Volatility'].pattern | default(0.30)) * 100 }}" min="0" max="100" step="5">
+                        </div>
+                        <div class="form-group flex-1 mb-0 min-w-130">
+                            <label>Trap Monitor %</label>
+                            <input type="number" id="MS_HV_W_TRAP" class="form-control"
+                                value="{{ (config.META_SCORING.REGIME_WEIGHTS['High Volatility'].trap | default(0.30)) * 100 }}" min="0" max="100" step="5">
+                        </div>
+                    </div>
+                </div>
+
+                <div class="settings-panel border-left-red">
                     <h4 class="settings-panel-header text-red">🚨 Crash Veto</h4>
                     <p class="settings-desc-sm">
-                        The score is suppressed (returns "no signal") whenever the current regime is Crash,
-                        or the Isolation Forest market stress score is at or above this threshold — whichever
-                        fires first.
+                        The score is suppressed (returns "no signal") when the HMM is in High Volatility and that
+                        fitted state's mean daily return is below the floor (or unknown), or when the Isolation
+                        Forest market stress score is at or above the threshold — whichever fires first.
                     </p>
-                    <div class="form-group flex-1 mb-0 min-w-130">
-                        <label>Market Stress Threshold (0-1)</label>
-                        <input type="number" id="MS_CRASH_STRESS_THRESHOLD" class="form-control"
-                            value="{{ config.META_SCORING.CRASH_VETO.MARKET_STRESS_THRESHOLD | default(0.75) }}" min="0" max="1" step="0.05">
+                    <div class="flex-gap-15 flex-wrap align-end">
+                        <div class="form-group flex-1 mb-0 min-w-130">
+                            <label>Market Stress Threshold (0-1)</label>
+                            <input type="number" id="MS_CRASH_STRESS_THRESHOLD" class="form-control"
+                                value="{{ config.META_SCORING.CRASH_VETO.MARKET_STRESS_THRESHOLD | default(0.75) }}" min="0" max="1" step="0.05">
+                        </div>
+                        <div class="form-group flex-1 mb-0 min-w-130">
+                            <label><abbr title="Average daily log return, in percent, of the fitted High Volatility state. The veto fires when it is below this floor or unknown; 0 means any non-positive average return vetoes.">HMM Mean Return Floor (% per day)</abbr></label>
+                            <input type="number" id="MS_CRASH_HMM_MEAN_RETURN_FLOOR" class="form-control"
+                                value="{{ config.META_SCORING.CRASH_VETO.HMM_MEAN_RETURN_FLOOR | default(0.0) }}" step="0.01">
+                        </div>
                     </div>
                 </div>
             </details>

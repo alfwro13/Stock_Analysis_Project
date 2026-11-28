@@ -1257,7 +1257,7 @@ A non-finite number (`Infinity`, `-Infinity`, `NaN`, `1e999`) anywhere in the bo
 | `FILE_LOGGING.LOG_DIR` | A relative folder that resolves inside the project root (`log_config.resolve_log_dir()`). Absolute paths, `..` escapes, symlinks that leave the project and empty values are refused. `configure_file_logging()` and the `/api/logs/*` reader apply the same check to a value already in `config.json` and fall back to `logs/` with a warning |
 | `NOTIFICATION_ROUTING` | Keys must be a registered source (`notification_engine.NOTIFICATION_SOURCES`, a non-dynamic `JOB_GRAPH` job id, or `scheduler_status`); each value an object whose keys are only `log_file`, `in_app`, `nextcloud_talk` and whose values are booleans (`notification_engine.validate_routing_map()`). `effective_routing()` also ignores an already-stored entry that is not an object, so one bad entry cannot stop that source's alerts |
 | `XRAY_TARGETS` | Sections and threshold keys must exist in `config.DEFAULT_CONFIG["XRAY_TARGETS"]`. The band sections (`market_development`, `regional_clusters`, `country_concentration`, `sector_targets`, `asset_class_targets`) take up to 100 entries of 1–64 characters, each `{min, max}` with a number from 0 to 100 or `null`. Threshold keys take a number or `null`: `*_pct` keys 0–100, `hhi_max` 0–1, others any finite number (`config.validate_xray_targets()`) |
-| `META_SCORING` | Only `REGIME_WEIGHTS.{Bull,Chop}.{composite_score,ml_confidence,pattern,trap}` and `CRASH_VETO.MARKET_STRESS_THRESHOLD` (`DEFAULT_CONFIG`'s keys), each a number from 0 to 1 (`config.validate_meta_scoring()`) |
+| `META_SCORING` | Only `REGIME_WEIGHTS.{Bull,Chop,High Volatility}.{composite_score,ml_confidence,pattern,trap}` and `CRASH_VETO.MARKET_STRESS_THRESHOLD` (`DEFAULT_CONFIG`'s keys), each a number from 0 to 1, and `CRASH_VETO.HMM_MEAN_RETURN_FLOOR`, a number from -10 to 10 in percent per day (`config.validate_meta_scoring()`) |
 
 The credential endpoints are:
 
@@ -2995,13 +2995,13 @@ Triggers an immediate background Bubble Radar scan across all portfolio and watc
 
 ## 19. Market Regime (HMM + Market Stress IF)
 
-Price-action Hidden Markov Model (3 states: Bull / Chop / Crash, ranked by each state's mean EWMA volatility within the fitted window) fitted on 5-year SPY returns and EWMA volatility, plus a market-wide Isolation Forest stress score. The model is refitted on every run from the SPY history cache `data/historical/SPY_hmm.parquet`, which is the previous cache plus a repaired one-month Yahoo tail. The history is checked before every fit and the cache is replaced by a full repaired 5-year fetch when it has fewer than `constants.HMM_CACHE_MIN_ROWS` bars, a gap above `HMM_CACHE_MAX_GAP_DAYS` calendar days, a non-positive Close, or a one-day log return above `HMM_CACHE_MAX_ABS_LOG_RETURN`; a full fetch that fails the same check is not stored. A fit in which any state covers under `HMM_MIN_STATE_FRACTION` of the days is refused. In both cases the run stores nothing, reports no result and is recorded as an error, so readers keep the last stored regime and its `as_of` date. Both are updated daily as part of the quant pipeline. The IF score (`market_stress_score`, REAL [0,1]) and contributing features (`market_stress_features`, JSON) are stored in the `market_regimes` table alongside the HMM columns.
+Price-action Hidden Markov Model (3 states: Bull / Chop / High Volatility, ranked by each state's mean EWMA volatility within the fitted window) fitted on 5-year SPY returns and EWMA volatility, plus a market-wide Isolation Forest stress score. The model is refitted on every run from the SPY history cache `data/historical/SPY_hmm.parquet`, which is the previous cache plus a repaired one-month Yahoo tail. The history is checked before every fit and the cache is replaced by a full repaired 5-year fetch when it has fewer than `constants.HMM_CACHE_MIN_ROWS` bars, a gap above `HMM_CACHE_MAX_GAP_DAYS` calendar days, a non-positive Close, or a one-day log return above `HMM_CACHE_MAX_ABS_LOG_RETURN`; a full fetch that fails the same check is not stored. A fit in which any state covers under `HMM_MIN_STATE_FRACTION` of the days is refused. In both cases the run stores nothing, reports no result and is recorded as an error, so readers keep the last stored regime and its `as_of` date. Both are updated daily as part of the quant pipeline. The IF score (`market_stress_score`, REAL [0,1]) and contributing features (`market_stress_features`, JSON) are stored in the `market_regimes` table alongside the HMM columns.
 
 ### `GET /api/market-regime/current`
 
 Returns the latest HMM regime state and the most recent regime transition. Lightweight; used by the Trap Monitor panel. `current.us_regime_label`/`uk_regime_label` are a *different* taxonomy from
 `current.label` — the EWMA-turbulence classifier's per-country `Normal`/`Volatile`/`Crash` label
-(`regime_engine.calculate_market_regime()`), not the HMM's own `Bull`/`Chop`/`Crash` state — both
+(`regime_engine.calculate_market_regime()`), not the HMM's own `Bull`/`Chop`/`High Volatility` state — both
 happen to live on the same `market_regimes` row/date.
 
 **Response:**
@@ -3020,7 +3020,7 @@ happen to live on the same `market_regimes` row/date.
 
 Returns full Viterbi history, empirical transition matrix, and per-regime return/vol statistics.
 
-**Response fields:** `current`, `last_change`, `history` (array of `{date, state, label, probability}`), `transition_matrix` (3×3 array), `regime_stats` (`{Bull, Chop, Crash}` each with `days`, `mean_daily_return`, `mean_vol`).
+**Response fields:** `current`, `last_change`, `history` (array of `{date, state, label, probability}`), `transition_matrix` (3×3 array), `regime_stats` (`{Bull, Chop, High Volatility}` each with `days`, `mean_daily_return`, `mean_vol`).
 
 ### `POST /api/market-regime/run`
 

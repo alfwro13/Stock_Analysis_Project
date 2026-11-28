@@ -6,7 +6,7 @@
 <h1 class="mb-1">&#127917; Market Trap &amp; Recovery Monitor</h1>
 <p class="page-subtitle mb-4">
     Synthesises three independent signals —
-    <abbr title="5-year Hidden Markov Model on SPY daily log-returns and EWMA volatility. States: Bull (low vol), Chop (elevated vol), Crash (high vol).">Market Regime (HMM)</abbr>,
+    <abbr title="5-year Hidden Markov Model on SPY daily log-returns and EWMA volatility. States: Bull (low vol), Chop (elevated vol), High Volatility (highest vol).">Market Regime (HMM)</abbr>,
     <abbr title="Market-wide Isolation Forest on 6 daily macro features. Score 0–1; above 0.75 for two consecutive days triggers an alert.">Macro Stress (IF)</abbr>, and
     <abbr title="Per-ticker post-crash lifecycle detection: Bull Trap, Bear Trap, Capitulation, Wyckoff Accumulation.">Post-Crash Lifecycle</abbr>
     — into a single plain-English market read.

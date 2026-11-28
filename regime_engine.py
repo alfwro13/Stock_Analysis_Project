@@ -24,7 +24,7 @@ from constants import (
 logger = logging.getLogger(__name__)
 
 _HMM_CACHE_PATH = HISTORICAL_DIR / "SPY_hmm.parquet"
-_HMM_LABEL_MAP = {0: "Bull", 1: "Chop", 2: "Crash"}
+_HMM_LABEL_MAP = {0: "Bull", 1: "Chop", 2: "High Volatility"}
 _HMM_EWMA_LAMBDA = 0.94
 
 _IF_CACHE_PATH = HISTORICAL_DIR / "market_stress_if.parquet"
@@ -131,11 +131,14 @@ def run_price_regime_hmm() -> dict:
         return {}
     canonical_states = remap[raw_states]
     posterior_probs = model.predict_proba(X)  # shape (n_obs, n_components)
+    # % per day, per raw state: the High Volatility veto needs the fitted state's mean return, since the top-vol state is not always a falling market
+    state_mean_returns = scaler.inverse_transform(model.means_)[:, 0] * 100.0
 
     today_raw = int(raw_states[-1])
     today_canonical = int(remap[today_raw])
     today_prob = float(posterior_probs[-1, today_raw])
     today_label = _HMM_LABEL_MAP[today_canonical]
+    today_mean_return = round(float(state_mean_returns[today_raw]), 4)
     today_date = features.index[-1].strftime("%Y-%m-%d")
 
     conn = None
@@ -155,13 +158,14 @@ def run_price_regime_hmm() -> dict:
             prev_label = prev_row["price_hmm_label"]
 
         cursor.execute(
-            """INSERT INTO market_regimes (date, price_hmm_state, price_hmm_label, price_hmm_prob)
-               VALUES (?, ?, ?, ?)
+            """INSERT INTO market_regimes (date, price_hmm_state, price_hmm_label, price_hmm_prob, price_hmm_mean_return)
+               VALUES (?, ?, ?, ?, ?)
                ON CONFLICT(date) DO UPDATE SET
                    price_hmm_state = excluded.price_hmm_state,
                    price_hmm_label = excluded.price_hmm_label,
-                   price_hmm_prob  = excluded.price_hmm_prob""",
-            (today_date, today_canonical, today_label, round(today_prob, 4))
+                   price_hmm_prob  = excluded.price_hmm_prob,
+                   price_hmm_mean_return = excluded.price_hmm_mean_return""",
+            (today_date, today_canonical, today_label, round(today_prob, 4), today_mean_return)
         )
 
         # Backfill full Viterbi path (INSERT OR IGNORE to avoid clobbering historical runs)
@@ -171,21 +175,23 @@ def run_price_regime_hmm() -> dict:
                 int(canonical_states[i]),
                 _HMM_LABEL_MAP[int(canonical_states[i])],
                 round(float(posterior_probs[i, int(raw_states[i])]), 4),
+                round(float(state_mean_returns[int(raw_states[i])]), 4),
             )
             for i in range(len(features))
         ]
         cursor.executemany(
-            "INSERT OR IGNORE INTO price_hmm_states (date, state, label, probability) VALUES (?, ?, ?, ?)",
+            "INSERT OR IGNORE INTO price_hmm_states (date, state, label, probability, mean_return) VALUES (?, ?, ?, ?, ?)",
             history_rows,
         )
         # Always update today's row (state can shift as new data arrives)
         cursor.execute(
-            """INSERT INTO price_hmm_states (date, state, label, probability) VALUES (?, ?, ?, ?)
+            """INSERT INTO price_hmm_states (date, state, label, probability, mean_return) VALUES (?, ?, ?, ?, ?)
                ON CONFLICT(date) DO UPDATE SET
                    state = excluded.state,
                    label = excluded.label,
-                   probability = excluded.probability""",
-            (today_date, today_canonical, today_label, round(today_prob, 4))
+                   probability = excluded.probability,
+                   mean_return = excluded.mean_return""",
+            (today_date, today_canonical, today_label, round(today_prob, 4), today_mean_return)
         )
 
         conn.commit()
@@ -206,6 +212,7 @@ def run_price_regime_hmm() -> dict:
         "state": today_canonical,
         "label": today_label,
         "probability": today_prob,
+        "mean_return": today_mean_return,
         "previous_state": prev_state,
         "previous_label": prev_label,
         "date": today_date,
@@ -593,7 +600,7 @@ def current_hmm_regime() -> Dict[str, Any]:
             "as_of": row["date"],
             # us/uk_regime_label are the EWMA-turbulence classifier's Normal/Volatile/Crash
             # labels (calculate_market_regime()) — a different taxonomy than the HMM's
-            # Bull/Chop/Crash above, though both live on this same row/date.
+            # Bull/Chop/High Volatility above, though both live on this same row/date.
             "us_regime_label": row["us_regime_label"],
             "uk_regime_label": row["uk_regime_label"],
         }
@@ -659,6 +666,12 @@ def crash_veto_stress_threshold() -> float:
     """Stress score at or above which the Meta Score vetoes every signal (Settings, default 0.75)."""
     from config import load_config
     return load_config().get("META_SCORING", {}).get("CRASH_VETO", {}).get("MARKET_STRESS_THRESHOLD", 0.75)
+
+
+def crash_veto_mean_return_floor() -> float:
+    """Fitted High Volatility mean daily return (%) below which the Meta Score vetoes every signal (Settings, default 0.0)."""
+    from config import load_config
+    return load_config().get("META_SCORING", {}).get("CRASH_VETO", {}).get("HMM_MEAN_RETURN_FLOOR", 0.0)
 
 
 def macro_conditions_snapshot() -> Dict[str, Any]:

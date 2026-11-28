@@ -417,7 +417,7 @@ def pillar_confluence_label(result: Optional[dict]) -> Optional[str]:
     return f"{result['direction'].capitalize()} ({len(pillars)}/3)"
 
 
-_REGIME_WEIGHTED_SCORE_REGIMES = ("Bull", "Chop")
+_REGIME_WEIGHTED_SCORE_REGIMES = ("Bull", "Chop", "High Volatility")
 
 
 def _direction_to_100(signals: list[str]) -> float:
@@ -435,7 +435,7 @@ def _regime_as_of(as_of: str) -> Optional[dict]:
     try:
         conn = get_connection()
         label_row = conn.execute(
-            "SELECT label FROM price_hmm_states WHERE date <= ? ORDER BY date DESC LIMIT 1", (as_of,)
+            "SELECT label, mean_return FROM price_hmm_states WHERE date <= ? ORDER BY date DESC LIMIT 1", (as_of,)
         ).fetchone()
         stress_row = conn.execute(
             "SELECT score FROM market_stress_states WHERE date <= ? ORDER BY date DESC LIMIT 1", (as_of,)
@@ -444,6 +444,7 @@ def _regime_as_of(as_of: str) -> Optional[dict]:
             return None
         return {
             "price_hmm_label": label_row["label"] if label_row else None,
+            "price_hmm_mean_return": label_row["mean_return"] if label_row else None,
             "market_stress_score": stress_row["score"] if stress_row else None,
         }
     except Exception as e:
@@ -462,7 +463,8 @@ def compute_regime_weighted_score_batch(tickers: list[str], as_of: Optional[str]
     (regime_engine.get_latest_regime()'s price_hmm_label).
 
     Every ticker maps to None (no signal) rather than a reweighted number whenever: the regime
-    is Crash, the Isolation Forest market_stress_score is at or above the configured threshold,
+    is High Volatility and the fitted state's mean daily return is below the configured floor (or
+    was not stored, as on rows fitted before it was recorded), the Isolation Forest market_stress_score is at or above the configured threshold,
     no regime has been computed yet, or the ticker itself is missing composite_score/ml_confidence
     (never scanned/never run through ML inference). None of these are a "bug" — a hard veto is
     more honest than fabricating a number the underlying inputs were never validated to support.
@@ -472,7 +474,7 @@ def compute_regime_weighted_score_batch(tickers: list[str], as_of: Optional[str]
     quant_signals' own per-date history rather than the latest-only regime_engine/stock_signals
     lookups. Used by the Cross-Engine Alert Referee's historical backfill."""
     from config import load_config
-    from regime_engine import crash_veto_stress_threshold, get_latest_regime
+    from regime_engine import crash_veto_mean_return_floor, crash_veto_stress_threshold, get_latest_regime
 
     tickers = list(dict.fromkeys(tickers))
     results: dict[str, Optional[dict]] = {t: None for t in tickers}
@@ -482,10 +484,14 @@ def compute_regime_weighted_score_batch(tickers: list[str], as_of: Optional[str]
     regime_row = _regime_as_of(as_of) if as_of else get_latest_regime()
     regime = regime_row.get("price_hmm_label") if regime_row else None
     market_stress_score = regime_row.get("market_stress_score") if regime_row else None
+    hmm_mean_return = regime_row.get("price_hmm_mean_return") if regime_row else None
 
     meta_cfg = load_config().get("META_SCORING", {})
     stress_threshold = crash_veto_stress_threshold()
-    crash_veto = regime == "Crash" or (market_stress_score is not None and market_stress_score >= stress_threshold)
+    falling_high_vol = regime == "High Volatility" and (
+        hmm_mean_return is None or hmm_mean_return < crash_veto_mean_return_floor()
+    )
+    crash_veto = falling_high_vol or (market_stress_score is not None and market_stress_score >= stress_threshold)
 
     weights = None
     if not crash_veto and regime in _REGIME_WEIGHTED_SCORE_REGIMES:

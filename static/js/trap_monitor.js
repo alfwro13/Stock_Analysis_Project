@@ -36,7 +36,7 @@
     var HMM_PILL_STYLE = {
         'Bull':  { bg: 'rgba(0,255,0,.15)',   color: '#00ff00', border: '#00cc00' },
         'Chop':  { bg: 'rgba(255,170,0,.15)', color: '#ffaa00', border: '#cc8800' },
-        'Crash': { bg: 'rgba(255,77,77,.18)', color: '#ff4d4d', border: '#cc2222' },
+        'High Volatility': { bg: 'rgba(255,77,77,.18)', color: '#ff4d4d', border: '#cc2222' },
     };
     var BULL_STYLE  = { 'SEVERE_TRAP_RISK': { color: '#ff4d4d', label: 'SEVERE' }, 'ELEVATED_RISK': { color: '#ffaa00', label: 'ELEVATED' }, 'ACTIVE_SELLOFF': { color: '#ff4d4d', label: 'SELLOFF' }, 'SAFE': { color: '#444', label: '—' } };
     var BEAR_STYLE  = { 'CONFIRMED_BEAR_TRAP': { color: '#4da6ff', label: 'CONFIRMED' }, 'POSSIBLE_BEAR_TRAP': { color: '#88aaff', label: 'POSSIBLE' }, 'SAFE': { color: '#444', label: '—' } };
@@ -114,81 +114,81 @@
         var alerts    = alertCount(trapRows);
         var stressAlert    = stressVal >= 0.75;
         var stressElevated = stressVal >= 0.50;
-        var hmmCrash  = hmmLabel === 'Crash';
+        var hmmHighVol  = hmmLabel === 'High Volatility';
         var hmmChop   = hmmLabel === 'Chop';
         var hmmBull   = hmmLabel === 'Bull';
 
         var sev, title, narrative, watch;
 
         // Priority waterfall — most severe first
-        if (hmmCrash && stressAlert) {
+        if (hmmHighVol && stressAlert) {
             sev = 3;
             title = 'Systemic crisis — both market structure and macro are broken';
-            narrative = 'The broad market is in a confirmed Crash regime (HMM) and the macro stress model is simultaneously in alert territory. '
+            narrative = 'The broad market is in a confirmed High Volatility regime (HMM) and the macro stress model is simultaneously in alert territory. '
                 + 'VIX is spiking, credit spreads are widening, and the joint distribution of macro signals is in its most anomalous 5% of the past two years. '
                 + 'This combination historically accompanies the most damaging drawdown phases. Defensive positioning is strongly warranted.';
             watch = ['HYG (credit ETF) daily return — accelerating spread widening is the most dangerous leading signal',
                      'VIX term structure — backwardation (near-term VIX above long-term) signals acute fear',
                      'Watch for capitulation volume signatures in the ticker table — that would mark the final flush'];
 
-        } else if (hmmCrash && stressElevated) {
+        } else if (hmmHighVol && stressElevated) {
             sev = 3;
-            title = 'Crash regime with rising macro stress';
-            narrative = 'SPY is in a confirmed Crash regime and macro conditions are deteriorating but not yet at full-alert levels. '
+            title = 'High Volatility regime with rising macro stress';
+            narrative = 'SPY is in a confirmed High Volatility regime and macro conditions are deteriorating but not yet at full-alert levels. '
                 + 'The stress model is reading elevated readings across VIX and/or credit. This is a worsening picture that warrants reduced risk exposure. '
                 + 'The key question is whether macro stress continues to build toward a full systemic event.';
             watch = ['Stress score trajectory — two consecutive days above 0.75 would trigger the systemic alert',
                      'HYG and 10Y yield — if both are moving adversely simultaneously, credit is the driver',
                      'An HMM transition back to Chop would be the first sign of stabilisation'];
 
-        } else if (hmmCrash && dom === 'BULL_TRAP_RISK') {
+        } else if (hmmHighVol && dom === 'BULL_TRAP_RISK') {
             sev = 3;
-            title = 'Bull Trap risk inside a crash regime — high danger';
-            narrative = 'SPY volatility is in crash territory and individual stocks are bouncing on low volume — the most dangerous pattern on this page. '
-                + 'A Bull Trap forming within a confirmed crash regime typically precedes a secondary, often sharper, leg down. '
+            title = 'Bull Trap risk inside a High Volatility regime — high danger';
+            narrative = 'SPY volatility is in High Volatility territory and individual stocks are bouncing on low volume — the most dangerous pattern on this page. '
+                + 'A Bull Trap forming within a confirmed High Volatility regime typically precedes a secondary, often sharper, leg down. '
                 + 'The bounce lacks institutional conviction: down-day volume significantly exceeds up-day volume. '
                 + 'Crucially, macro conditions are not yet acutely stressed, suggesting this is a market-structure correction rather than a credit event — which means recovery is possible, but not yet signalled.';
             watch = ['Volume on the next up-day — any increase would be the first sign of genuine buying interest',
-                     'VIX level — needs to start falling to confirm crash regime is easing',
+                     'VIX level — needs to start falling to confirm the High Volatility regime is easing',
                      'Stress score — if it rises above 0.50, the macro backdrop is worsening into this weakness'];
 
-        } else if (hmmCrash && dom === 'CAPITULATION_FORMING') {
+        } else if (hmmHighVol && dom === 'CAPITULATION_FORMING') {
             sev = 2;
-            title = 'Possible true bottom — capitulation forming in a crash regime';
-            narrative = 'The market is in a confirmed crash regime and multiple monitored tickers are showing capitulation volume signatures: panic-selling climaxes with RSI below 30. '
+            title = 'Possible true bottom — capitulation forming in a High Volatility regime';
+            narrative = 'The market is in a confirmed High Volatility regime and multiple monitored tickers are showing capitulation volume signatures: panic-selling climaxes with RSI below 30. '
                 + 'When this occurs while the macro plumbing is intact (credit spreads fine, VIX not spiking to extremes), it is often the final flush before institutional absorption establishes a genuine bottom. '
                 + 'This is not a buy signal yet — confirmation requires the volume to dry up in subsequent sessions.';
             watch = ['Wick patterns — a candle closing in the upper half of its range signals absorption',
                      'Volume in subsequent sessions — the Wyckoff pattern requires volume to contract after the flush',
                      'Stress score — if it remains below 0.50, credit is not in distress and recovery is more likely'];
 
-        } else if (hmmCrash && dom === 'ACCUMULATION') {
+        } else if (hmmHighVol && dom === 'ACCUMULATION') {
             sev = 2;
-            title = 'Crash regime, but bases are quietly forming';
-            narrative = 'SPY volatility is elevated (crash regime) while individual tickers are entering Wyckoff accumulation patterns: Bollinger Bands squeezing, ATR contracting, volume drying up. '
-                + 'Base-building in a crash regime historically precedes the fastest recoveries — institutions absorb supply quietly before the breakout. '
+            title = 'High Volatility regime, but bases are quietly forming';
+            narrative = 'SPY volatility is elevated (High Volatility regime) while individual tickers are entering Wyckoff accumulation patterns: Bollinger Bands squeezing, ATR contracting, volume drying up. '
+                + 'Base-building in a High Volatility regime historically precedes the fastest recoveries — institutions absorb supply quietly before the breakout. '
                 + 'Macro conditions are not acutely stressed, which is supportive of a genuine base forming.';
             watch = ['Volume-confirmed breakout above the squeeze range — this is the entry signal',
                      'HMM — a transition to Chop is the first confirmation of regime stabilisation',
                      'Stress score — keep it below 0.50 to maintain confidence in the base'];
 
-        } else if (hmmCrash) {
+        } else if (hmmHighVol) {
             sev = 2;
-            title = 'Crash regime — elevated volatility, mixed ticker signals';
-            narrative = 'SPY is in a confirmed crash regime with high realised volatility. Individual tickers show a mixed picture with no single dominant lifecycle phase. '
+            title = 'High Volatility regime — elevated volatility, mixed ticker signals';
+            narrative = 'SPY is in a confirmed High Volatility regime with high realised volatility. Individual tickers show a mixed picture with no single dominant lifecycle phase. '
                 + 'Macro conditions remain relatively calm, suggesting this is a market-structure correction rather than a macro-driven crisis. '
                 + 'The range of outcomes from here is wide — monitor for a dominant pattern to emerge in the ticker table.';
             watch = ['Watch for the ticker table to converge on a single phase — that would clarify the next move',
                      'VIX — a sustained decline below 20 would signal regime transition is beginning',
                      'Any rise in the stress score would indicate the correction is feeding into macro'];
 
-        } else if (stressAlert && !hmmCrash) {
+        } else if (stressAlert && !hmmHighVol) {
             sev = 3;
             title = 'Macro stress alert — market structure hasn\'t broken yet';
             narrative = 'The macro stress model is detecting statistically abnormal conditions: the joint reading of VIX, credit spreads, yield volatility, and SPY dynamics is in its most anomalous 5% of the past two years. '
-                + 'Crucially, SPY itself has not yet transitioned into a Crash regime — meaning the macro warning is leading the market reaction, not confirming it. '
-                + 'Historically, macro stress signals that precede a crash regime transition give a short but actionable window to reduce exposure.';
-            watch = ['HMM state — a transition to Crash would confirm the macro stress is feeding into equities',
+                + 'Crucially, SPY itself has not yet transitioned into a High Volatility regime — meaning the macro warning is leading the market reaction, not confirming it. '
+                + 'Historically, macro stress signals that precede a High Volatility regime transition give a short but actionable window to reduce exposure.';
+            watch = ['HMM state — a transition to High Volatility would confirm the macro stress is feeding into equities',
                      'HYG daily return — the most sensitive real-time credit indicator',
                      'Individual ticker phases — any widespread ACTIVE_SELLOFF signals would confirm broadening'];
 
@@ -200,14 +200,14 @@
                 + 'This is the classic Bull Trap setup: smart money is not buying the dip. '
                 + 'Critically, the macro plumbing is intact — VIX is calm, credit spreads are tight, yields are stable. This is a sector-specific or stock-specific event, not a systemic crisis.';
             watch = ['Volume on the next up-session — a meaningful increase would signal genuine demand returning',
-                     'HMM state — a transition to Crash would deepen this picture significantly',
+                     'HMM state — a transition to High Volatility would deepen this picture significantly',
                      'Stress score — if it rises above 0.50, the macro backdrop is joining the weakness'];
 
         } else if (hmmChop && dom === 'CAPITULATION_FORMING') {
             sev = 1;
             title = 'Capitulation signatures in a choppy market — possible local bottom';
             narrative = 'The broad market is in a Chop regime with no clear trend, while some tickers are hitting capitulation volume: extreme selling climaxes with oversold RSI. '
-                + 'Capitulation during a Chop regime (rather than full Crash) often produces faster recoveries — the broader tape has not broken down, providing a supportive backdrop. '
+                + 'Capitulation during a Chop regime (rather than full High Volatility) often produces faster recoveries — the broader tape has not broken down, providing a supportive backdrop. '
                 + 'Macro conditions are calm, which further reduces the risk of a more serious leg down.';
             watch = ['Wick patterns and closing prices to confirm institutional absorption',
                      'Volume dry-up in subsequent sessions — the prerequisite for a Wyckoff base'];
@@ -235,10 +235,10 @@
             title = 'Active selling pressure in a choppy market';
             narrative = 'Multiple tickers are in an active selloff phase while the broad market regime is choppy rather than trending. '
                 + 'The selloff is concentrated in specific names rather than being market-wide — SPY has not broken down and macro conditions are intact. '
-                + 'However, concentrated selling that starts in a few names can broaden if the HMM transitions toward Crash.';
+                + 'However, concentrated selling that starts in a few names can broaden if the HMM transitions toward High Volatility.';
             watch = ['Whether the selling is spreading to other sectors or remaining contained',
                      'Stress score — any rise toward 0.50 would indicate the macro backdrop is worsening',
-                     'HMM state — watch for transition to Crash as the key escalation signal'];
+                     'HMM state — watch for transition to High Volatility as the key escalation signal'];
 
         } else if (hmmChop) {
             sev = 0;

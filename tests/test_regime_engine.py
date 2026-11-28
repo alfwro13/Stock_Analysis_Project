@@ -598,7 +598,7 @@ class TestRunPriceRegimeHmm:
                    return_value={"SPY": spy_df}), \
              patch("regime_engine._HMM_CACHE_PATH", new=tmp):
             result = run_price_regime_hmm()
-        assert set(result.keys()) == {"state", "label", "probability", "previous_state", "previous_label", "date"}
+        assert set(result.keys()) == {"state", "label", "probability", "previous_state", "previous_label", "date", "mean_return"}
 
     def test_state_is_valid(self):
         spy_df = _make_spy_df(n=300)
@@ -608,7 +608,7 @@ class TestRunPriceRegimeHmm:
              patch("regime_engine._HMM_CACHE_PATH", new=tmp):
             result = run_price_regime_hmm()
         assert result["state"] in (0, 1, 2)
-        assert result["label"] in ("Bull", "Chop", "Crash")
+        assert result["label"] in ("Bull", "Chop", "High Volatility")
 
     def test_probability_in_unit_interval(self):
         spy_df = _make_spy_df(n=300)
@@ -638,6 +638,50 @@ class TestRunPriceRegimeHmm:
         finally:
             conn.close()
         assert count > 0
+
+
+class TestHighVolatilityLabelMigration:
+    def test_stored_crash_hmm_labels_are_renamed_and_turbulence_label_is_untouched(self):
+        conn = database.get_connection()
+        try:
+            conn.execute("INSERT INTO price_hmm_states (date, state, label, probability) VALUES ('2032-01-02', 2, 'Crash', 0.9)")
+            conn.execute(
+                "INSERT INTO market_regimes (date, us_regime_label, price_hmm_state, price_hmm_label, price_hmm_prob) "
+                "VALUES ('2032-01-02', 'Crash', 2, 'Crash', 0.9)"
+            )
+            conn.commit()
+            db_schema.migrate_db(conn, conn.cursor())
+            assert conn.execute("SELECT label FROM price_hmm_states WHERE date = '2032-01-02'").fetchone()[0] == "High Volatility"
+            row = conn.execute("SELECT price_hmm_label, us_regime_label FROM market_regimes WHERE date = '2032-01-02'").fetchone()
+            assert (row["price_hmm_label"], row["us_regime_label"]) == ("High Volatility", "Crash")
+        finally:
+            conn.close()
+
+
+class TestHmmMeanReturnStored:
+    def test_today_row_and_state_history_store_the_fitted_mean_return(self):
+        spy_df = _make_spy_df(n=300)
+        tmp = Path(tempfile.mkdtemp()) / "spy_hmm.parquet"
+        with patch("regime_engine.yahoo_engine.get_price_history", return_value={"SPY": spy_df}), \
+             patch("regime_engine._HMM_CACHE_PATH", new=tmp):
+            result = run_price_regime_hmm()
+        assert result["mean_return"] is not None
+        conn = database.get_connection()
+        try:
+            regime = conn.execute(
+                "SELECT price_hmm_mean_return, price_hmm_label FROM market_regimes WHERE date = ?", (result["date"],)
+            ).fetchone()
+            state = conn.execute(
+                "SELECT mean_return, label FROM price_hmm_states WHERE date = ?", (result["date"],)
+            ).fetchone()
+            top = conn.execute("SELECT DISTINCT label FROM price_hmm_states WHERE state = 2").fetchall()
+        finally:
+            conn.close()
+        assert regime["price_hmm_mean_return"] == pytest.approx(result["mean_return"])
+        assert state["mean_return"] == pytest.approx(result["mean_return"])
+        assert [r["label"] for r in top] in ([], ["High Volatility"])
+        assert regime["price_hmm_label"] == state["label"] == result["label"]
+        assert result["label"] != "Crash"
 
 
 def _polluted_spy_cache():
@@ -789,12 +833,12 @@ class TestHmmHistoryMigration:
             assert conn.execute("SELECT COUNT(*) FROM price_hmm_states").fetchone()[0] == 0
             assert conn.execute("SELECT COUNT(*) FROM data_migrations WHERE name = 'price_hmm_history_clean_input'").fetchone()[0] == 1
 
-            conn.execute("INSERT INTO price_hmm_states (date, state, label, probability) VALUES ('2031-01-03', 2, 'Crash', 0.9)")
-            conn.execute("UPDATE market_regimes SET price_hmm_state = 2, price_hmm_label = 'Crash', price_hmm_prob = 0.9 WHERE date = '2031-01-02'")
+            conn.execute("INSERT INTO price_hmm_states (date, state, label, probability) VALUES ('2031-01-03', 2, 'High Volatility', 0.9)")
+            conn.execute("UPDATE market_regimes SET price_hmm_state = 2, price_hmm_label = 'High Volatility', price_hmm_prob = 0.9 WHERE date = '2031-01-02'")
             conn.commit()
             db_schema.migrate_db(conn, conn.cursor())
             assert conn.execute("SELECT COUNT(*) FROM price_hmm_states").fetchone()[0] == 1
-            assert conn.execute("SELECT price_hmm_label FROM market_regimes WHERE date = '2031-01-02'").fetchone()[0] == "Crash"
+            assert conn.execute("SELECT price_hmm_label FROM market_regimes WHERE date = '2031-01-02'").fetchone()[0] == "High Volatility"
         finally:
             conn.close()
 
@@ -955,9 +999,9 @@ class TestCurrentHmmRegime:
 
     def test_last_change_names_the_first_day_of_the_current_label(self, isolated_regime_tables):
         from regime_engine import current_hmm_regime
-        for date, state, label in (("2026-05-01", 0, "Bull"), ("2026-05-02", 0, "Bull"), ("2026-05-03", 2, "Crash"), ("2026-05-04", 2, "Crash")):
+        for date, state, label in (("2026-05-01", 0, "Bull"), ("2026-05-02", 0, "Bull"), ("2026-05-03", 2, "High Volatility"), ("2026-05-04", 2, "High Volatility")):
             _insert_regime_row(date, price_hmm_state=state, price_hmm_label=label, price_hmm_prob=0.9)
-        assert current_hmm_regime()["last_change"] == {"date": "2026-05-03", "from_label": "Bull", "to_label": "Crash"}
+        assert current_hmm_regime()["last_change"] == {"date": "2026-05-03", "from_label": "Bull", "to_label": "High Volatility"}
 
 
 class TestMarketStressSnapshot:
@@ -1026,6 +1070,15 @@ class TestRegimeRoutesWrapTheSnapshots:
         assert set(body) == {"status", "current", "history"}
         assert body["current"] == {"score": 0.4, "features": {"vix_level": 15.0}, "date": "2026-05-01"}
         assert body["history"] == [{"date": "2026-05-01", "score": 0.4}]
+
+
+class TestCrashVetoMeanReturnFloor:
+    def test_default_and_configured(self):
+        from regime_engine import crash_veto_mean_return_floor
+        with patch("config.load_config", return_value={}):
+            assert crash_veto_mean_return_floor() == 0.0
+        with patch("config.load_config", return_value={"META_SCORING": {"CRASH_VETO": {"HMM_MEAN_RETURN_FLOOR": -0.1}}}):
+            assert crash_veto_mean_return_floor() == -0.1
 
 
 class TestCrashVetoStressThreshold:

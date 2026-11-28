@@ -646,10 +646,12 @@ DEFAULT_CONFIG = {
     "META_SCORING": {
         "REGIME_WEIGHTS": {
             "Bull": {"composite_score": 0.40, "ml_confidence": 0.30, "pattern": 0.20, "trap": 0.10},
-            "Chop": {"composite_score": 0.25, "ml_confidence": 0.25, "pattern": 0.35, "trap": 0.15}
+            "Chop": {"composite_score": 0.25, "ml_confidence": 0.25, "pattern": 0.35, "trap": 0.15},
+            "High Volatility": {"composite_score": 0.20, "ml_confidence": 0.20, "pattern": 0.30, "trap": 0.30}
         },
         "CRASH_VETO": {
-            "MARKET_STRESS_THRESHOLD": 0.75
+            "MARKET_STRESS_THRESHOLD": 0.75,
+            "HMM_MEAN_RETURN_FLOOR": 0.0
         }
     }
 }
@@ -705,8 +707,11 @@ def validate_xray_targets(value) -> dict:
     return value
 
 
+_META_SCORING_LEAF_BOUNDS = {"HMM_MEAN_RETURN_FLOOR": (-10, 10)}
+
+
 def validate_meta_scoring(value) -> dict:
-    """Shape check for the Settings META_SCORING block: only DEFAULT_CONFIG's keys, every leaf a 0-1 number."""
+    """Shape check for the Settings META_SCORING block: only DEFAULT_CONFIG's keys, every leaf a 0-1 number (the HMM mean-return floor, in % per day, may be negative)."""
     def walk(node, defaults, path):
         if not isinstance(node, dict):
             raise ValueError(f"{path} must be an object")
@@ -716,7 +721,8 @@ def validate_meta_scoring(value) -> dict:
             if isinstance(defaults[key], dict):
                 walk(item, defaults[key], f"{path}.{key}")
             else:
-                _check_number(f"{path}.{key}", item, 0, 1)
+                low, high = _META_SCORING_LEAF_BOUNDS.get(key, (0, 1))
+                _check_number(f"{path}.{key}", item, low, high)
     walk(value, DEFAULT_CONFIG["META_SCORING"], "META_SCORING")
     return value
 

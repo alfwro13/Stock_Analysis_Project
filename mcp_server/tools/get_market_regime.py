@@ -8,7 +8,7 @@ from ..envelope import NIGHTLY_STALE_AFTER_SECONDS, date_epoch, dated_part, enve
 from ..server import READ_ONLY, server
 
 _REGIME_UNITS = {
-    "market_regime.label": "Market Regime (HMM): Bull, Chop or Crash, fitted on the S&P 500 (SPY)",
+    "market_regime.label": "Market Regime (HMM): Bull, Chop or High Volatility, fitted on the S&P 500 (SPY)",
     "market_regime.probability": "fraction 0-1: model confidence in the label",
     "market_regime.last_change": "the most recent label change within the last 60 stored days; null when the label has not changed in that window",
     "market_regime.turbulence_class": "Normal, Volatile or Crash from the EWMA realized-volatility Turbulence Index of the S&P 500 (us) and FTSE 100 (uk); a different classifier from the HMM label",

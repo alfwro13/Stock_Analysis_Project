@@ -180,11 +180,11 @@ class TestGeneratePrompt:
 
     def test_prompt_contains_data_block_header(self):
         conn = _db_module.get_connection()
-        _seed_regime(conn, _SEED_DATE, state=2, label="Crash", prob=0.91)
+        _seed_regime(conn, _SEED_DATE, state=2, label="High Volatility", prob=0.91)
         conn.close()
         result = self.engine.generate_prompt("Plain English Briefing")
         assert "MARKET REGIME SNAPSHOT" in result
-        assert "Crash" in result
+        assert "High Volatility" in result
 
     def test_result_is_cached(self):
         conn = _db_module.get_connection()

@@ -738,10 +738,20 @@ async function saveSettings(silent = false) {
                     "ml_confidence": (parseFloat(document.getElementById('MS_CHOP_W_ML').value) || 25) / 100,
                     "pattern": (parseFloat(document.getElementById('MS_CHOP_W_PATTERN').value) || 35) / 100,
                     "trap": (parseFloat(document.getElementById('MS_CHOP_W_TRAP').value) || 15) / 100
+                },
+                "High Volatility": {
+                    "composite_score": (parseFloat(document.getElementById('MS_HV_W_COMPOSITE').value) || 20) / 100,
+                    "ml_confidence": (parseFloat(document.getElementById('MS_HV_W_ML').value) || 20) / 100,
+                    "pattern": (parseFloat(document.getElementById('MS_HV_W_PATTERN').value) || 30) / 100,
+                    "trap": (parseFloat(document.getElementById('MS_HV_W_TRAP').value) || 30) / 100
                 }
             },
             "CRASH_VETO": {
-                "MARKET_STRESS_THRESHOLD": parseFloat(document.getElementById('MS_CRASH_STRESS_THRESHOLD').value) || 0.75
+                "MARKET_STRESS_THRESHOLD": parseFloat(document.getElementById('MS_CRASH_STRESS_THRESHOLD').value) || 0.75,
+                "HMM_MEAN_RETURN_FLOOR": (function () {
+                    var floor = parseFloat(document.getElementById('MS_CRASH_HMM_MEAN_RETURN_FLOOR').value);
+                    return isNaN(floor) ? 0.0 : floor;
+                })()
             }
         }
     };

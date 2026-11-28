@@ -1,10 +1,10 @@
 (function () {
-    var HMM_COLORS = { Bull: '#00ff00', Chop: '#ffaa00', Crash: '#ff4d4d' };
-    var HMM_BG    = { Bull: 'rgba(0,255,0,.08)', Chop: 'rgba(255,170,0,.10)', Crash: 'rgba(255,77,77,.13)' };
+    var HMM_COLORS = { Bull: '#00ff00', Chop: '#ffaa00', 'High Volatility': '#ff4d4d' };
+    var HMM_BG    = { Bull: 'rgba(0,255,0,.08)', Chop: 'rgba(255,170,0,.10)', 'High Volatility': 'rgba(255,77,77,.13)' };
     var HMM_PILL  = {
         Bull:  { bg: 'rgba(0,255,0,.15)',      color: '#00ff00', border: '#00cc00' },
         Chop:  { bg: 'rgba(255,170,0,.15)',     color: '#ffaa00', border: '#cc8800' },
-        Crash: { bg: 'rgba(255,77,77,.18)',     color: '#ff4d4d', border: '#cc2222' },
+        'High Volatility': { bg: 'rgba(255,77,77,.18)',     color: '#ff4d4d', border: '#cc2222' },
     };
 
     function renderCurrentBanner(data) {
@@ -64,7 +64,7 @@
             y: states,
             mode: 'lines',
             line: { color: '#00ffcc', width: 1.5, shape: 'hv' },
-            name: 'State (0=Bull 1=Chop 2=Crash)',
+            name: 'State (0=Bull 1=Chop 2=High Volatility)',
             hovertemplate: '%{x}<br>State: %{y} (' + '%{text}' + ')<extra></extra>',
             text: labels,
         };
@@ -90,7 +90,7 @@
             },
             yaxis: {
                 color: '#555', gridcolor: '#222',
-                tickvals: [0, 1, 2], ticktext: ['Bull', 'Chop', 'Crash'],
+                tickvals: [0, 1, 2], ticktext: ['Bull', 'Chop', 'High Volatility'],
                 range: [-0.3, 2.5],
             },
             yaxis2: {
@@ -112,7 +112,7 @@
         var ph     = document.getElementById('transition-placeholder');
         if (!matrix || matrix.length === 0) { return; }
         tbody.innerHTML = '';
-        var labels = ['Bull', 'Chop', 'Crash'];
+        var labels = ['Bull', 'Chop', 'High Volatility'];
         for (var r = 0; r < labels.length; r++) {
             var tr = document.createElement('tr');
             var fromLabel = labels[r];
@@ -147,7 +147,7 @@
         var ph     = document.getElementById('stats-placeholder');
         if (!stats) { return; }
         tbody.innerHTML = '';
-        var labels = ['Bull', 'Chop', 'Crash'];
+        var labels = ['Bull', 'Chop', 'High Volatility'];
         for (var i = 0; i < labels.length; i++) {
             var lbl = labels[i];
             var s = stats[lbl];

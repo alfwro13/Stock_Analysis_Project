@@ -1350,6 +1350,16 @@ class TestSettingsBlockShapeValidators:
         import config
         assert config.validate_meta_scoring(config.DEFAULT_CONFIG["META_SCORING"])
 
+    def test_meta_scoring_accepts_high_volatility_weights_and_a_negative_floor(self):
+        import config
+        block = {
+            "REGIME_WEIGHTS": {"High Volatility": {"composite_score": 0.2, "ml_confidence": 0.2, "pattern": 0.3, "trap": 0.3}},
+            "CRASH_VETO": {"HMM_MEAN_RETURN_FLOOR": -0.25},
+        }
+        assert config.validate_meta_scoring(block) == block
+        with pytest.raises(ValueError):
+            config.validate_meta_scoring({"CRASH_VETO": {"HMM_MEAN_RETURN_FLOOR": 50}})
+
     def test_meta_scoring_rejects_nan(self):
         import config
         with pytest.raises(ValueError):
