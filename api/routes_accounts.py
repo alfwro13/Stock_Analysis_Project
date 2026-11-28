@@ -27,6 +27,7 @@ from accounts.portfolio_metrics_engine import (
 )
 import notification_engine
 from db.account_reminders import get_reminders
+from db.account_store import get_holding_price_limits_for_ticker
 from api.deps import FiniteModel, job_busy_response, limiter, refuse_writes_during_restore, _error_500
 from config import load_config
 from constants import ACCOUNT_NAME_MAX_CHARS, CSV_IMPORT_MAX_BYTES, PRICE_CSV_MAX_CHARS
@@ -915,6 +916,16 @@ def _require_limit_target(account_id: int, raw_ticker: str):
     return ticker, None
 
 
+def _holding_price_limit_error(account_id: int, ticker: str, fields: dict) -> Optional[str]:
+    if any(v is not None and v <= 0 for v in fields.values()):
+        return "A price limit must be greater than zero; send null to clear it."
+    merged = {**get_holding_price_limits_for_ticker(ticker).get(account_id, {}), **fields}
+    low, high = merged.get("low_limit"), merged.get("high_limit")
+    if low is not None and high is not None and low >= high:
+        return "The low limit must be below the high limit."
+    return None
+
+
 @accounts_router.post("/accounts/holding-price-limit")
 @limiter.limit("60/minute")
 def api_set_holding_price_limit(request: Request, body: HoldingPriceLimitBody):
@@ -923,6 +934,9 @@ def api_set_holding_price_limit(request: Request, body: HoldingPriceLimitBody):
         if error:
             return error
         fields = body.model_dump(include={"low_limit", "high_limit"}, exclude_unset=True)
+        error = _holding_price_limit_error(body.account_id, ticker, fields)
+        if error:
+            return JSONResponse(status_code=400, content={"status": "error", "message": error})
         set_holding_price_limit(body.account_id, ticker, **fields)
         return JSONResponse(content={"status": "success"})
     except Exception as e:

@@ -4,7 +4,7 @@ from unittest.mock import patch, MagicMock
 
 import pytest
 
-pytestmark = [pytest.mark.restore_tables("account_autotopup_pending", "account_benchmark_tickers", "account_performance_cache", "account_price_history", "account_transactions", "account_value_history", "account_value_history_currency", "asset_profiles", "atr_stop_history", "market_pulse_cache", "scheduler_run_history", "scheduler_run_log", "score_history", "stock_signals", "system_notifications", "treasury_bills", "yahoo_api_call_log", "yahoo_api_stats"), pytest.mark.usefixtures("offline_yahoo")]
+pytestmark = [pytest.mark.restore_tables("account_autotopup_pending", "account_benchmark_tickers", "account_performance_cache", "account_price_history", "account_transactions", "account_value_history", "account_value_history_currency", "asset_profiles", "atr_stop_history", "holding_price_limits", "market_pulse_cache", "scheduler_run_history", "scheduler_run_log", "score_history", "stock_signals", "system_notifications", "treasury_bills", "yahoo_api_call_log", "yahoo_api_stats"), pytest.mark.usefixtures("offline_yahoo")]
 
 
 def _json(resp) -> dict:
@@ -3136,6 +3136,83 @@ def test_holding_price_limit_normalises_ticker_before_storing(client):
     assert _stored_limits(account_id) == {"ZZCASE": {"low_limit": 7.0, "high_limit": None}}
     _drop_limit_rows(account_id)
     _db.soft_delete_account(account_id)
+
+
+def _limit_account(client, name, ticker):
+    with patch("api.routes_accounts.resnapshot_account"):
+        account_id = _create_account(client, name=name)
+    _post_txn(client, account_id, "Buy", ticker, 5)
+    return account_id
+
+
+def _post_limit(client, account_id, ticker, **limits):
+    return client.post("/api/accounts/holding-price-limit", json={"account_id": account_id, "ticker": ticker, **limits})
+
+
+def _finish_limit_account(account_id):
+    from db import database as _db
+    _drop_limit_rows(account_id)
+    _db.soft_delete_account(account_id)
+
+
+@pytest.mark.api
+@pytest.mark.parametrize("limits", [{"low_limit": -1.0}, {"high_limit": 0}, {"low_limit": 0.0, "high_limit": 5.0}])
+def test_holding_price_limit_rejects_non_positive_and_stores_nothing(client, limits):
+    account_id = _limit_account(client, "LimitNonPosAcc", "ZZNONPOS")
+    try:
+        resp = _post_limit(client, account_id, "ZZNONPOS", **limits)
+        assert resp.status_code == 400
+        assert _json(resp)["status"] == "error"
+        assert _stored_limits(account_id) == {}
+    finally:
+        _finish_limit_account(account_id)
+
+
+@pytest.mark.api
+@pytest.mark.parametrize("low,high", [(10.0, 10.0), (12.0, 10.0)])
+def test_holding_price_limit_rejects_low_not_below_high_in_one_body(client, low, high):
+    account_id = _limit_account(client, "LimitOrderAcc", "ZZORDER")
+    try:
+        resp = _post_limit(client, account_id, "ZZORDER", low_limit=low, high_limit=high)
+        assert resp.status_code == 400
+        assert _json(resp)["status"] == "error"
+        assert _stored_limits(account_id) == {}
+    finally:
+        _finish_limit_account(account_id)
+
+
+@pytest.mark.api
+def test_holding_price_limit_partial_update_crossing_stored_high_is_400_and_unchanged(client):
+    account_id = _limit_account(client, "LimitCrossAcc", "ZZCROSS")
+    try:
+        assert _post_limit(client, account_id, "ZZCROSS", high_limit=20.0).status_code == 200
+        resp = _post_limit(client, account_id, "ZZCROSS", low_limit=25.0)
+        assert resp.status_code == 400
+        assert _stored_limits(account_id) == {"ZZCROSS": {"low_limit": None, "high_limit": 20.0}}
+    finally:
+        _finish_limit_account(account_id)
+
+
+@pytest.mark.api
+def test_holding_price_limit_partial_update_staying_ordered_is_200(client):
+    account_id = _limit_account(client, "LimitOkAcc", "ZZORDOK")
+    try:
+        assert _post_limit(client, account_id, "ZZORDOK", high_limit=20.0).status_code == 200
+        assert _post_limit(client, account_id, "ZZORDOK", low_limit=10.0).status_code == 200
+        assert _stored_limits(account_id) == {"ZZORDOK": {"low_limit": 10.0, "high_limit": 20.0}}
+    finally:
+        _finish_limit_account(account_id)
+
+
+@pytest.mark.api
+def test_holding_price_limit_null_clears_high_while_low_is_set(client):
+    account_id = _limit_account(client, "LimitClearAcc", "ZZCLEAR")
+    try:
+        assert _post_limit(client, account_id, "ZZCLEAR", low_limit=10.0, high_limit=20.0).status_code == 200
+        assert _post_limit(client, account_id, "ZZCLEAR", high_limit=None).status_code == 200
+        assert _stored_limits(account_id) == {"ZZCLEAR": {"low_limit": 10.0, "high_limit": None}}
+    finally:
+        _finish_limit_account(account_id)
 
 
 @pytest.mark.api
