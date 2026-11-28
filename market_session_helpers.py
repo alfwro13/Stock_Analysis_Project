@@ -339,6 +339,8 @@ def is_ticker_quote_settled(
     registry_exchange_map: Optional[Dict[str, str]] = None,
     registry_future_tickers: Optional[set] = None,
     exchange_state_memo: Optional[Dict[Any, bool]] = None,
+    cached_epoch: Optional[float] = None,
+    session_memo: Optional[Dict[Any, tuple]] = None,
 ) -> bool:
     """is_quote_settled() resolved against `ticker`'s own exchange rather than a caller-supplied
     one — the single canonical per-ticker settlement check, shared by every needs_refresh path
@@ -358,7 +360,24 @@ def is_ticker_quote_settled(
     call and must keep its existing regular/premarket-only semantics for. A caller looping over
     many tickers passes one `exchange_state_memo` dict for the whole loop: the answer depends only
     on (exchange, honor_premarket), so each distinct pair reads market_state once instead of
-    opening two SQLite connections per ticker."""
+    opening two SQLite connections per ticker. A caller passing the cached row's `cached_epoch` also
+    gets True once when that row predates the ticker's last close (quote_session_floor()), so a
+    quote last fetched mid-session is refreshed to the close on exchanges Yahoo reports no POST
+    state for; `session_memo` is forwarded to quote_session_floor() for a loop."""
+    if _settled_now(ticker, currency, registry_exchange_map, registry_future_tickers, exchange_state_memo):
+        return True
+    if cached_epoch is None:
+        return False
+    return cached_epoch < quote_session_floor(ticker, currency, registry_exchange_map, session_memo)[1]
+
+
+def _settled_now(
+    ticker: str,
+    currency: str,
+    registry_exchange_map: Optional[Dict[str, str]],
+    registry_future_tickers: Optional[set],
+    exchange_state_memo: Optional[Dict[Any, bool]],
+) -> bool:
     # FX, futures and rates trade outside any exchange's hours; the window Yahoo reports is the one daily history already uses.
     session = reported_session(ticker)
     if session is not None:
