@@ -4743,17 +4743,19 @@ Sets one holding's low and/or high price alert limit ("Position Targets" — a s
 
 `low_limit`/`high_limit` are each optional and independently settable — a request that includes only `low_limit` leaves any previously-stored `high_limit` untouched (partial-update semantics via `db.account_store.upsert_holding_price_limit()`'s dynamic-column upsert; a field omitted from the request body is never written, so it can't silently clear a sibling value already set by an earlier request).
 
-A non-finite `low_limit`/`high_limit` (`Infinity`, `NaN`) is rejected with `422`; `null` clears the limit. The Home Assistant integration never sends a non-finite value: its Low/High Limit number entities are bounded 0–1,000,000 and send `null` for 0. Rate limit: 60/minute.
+A non-finite `low_limit`/`high_limit` (`Infinity`, `NaN`) is rejected with `422`; `null` is the only way to clear a limit; `0` is refused (see the table below). The Home Assistant integration never sends a non-finite value: its Low/High Limit number entities are bounded 0–1,000,000 and send `null` for 0. Rate limit: 60/minute.
 
-**Target validation:** the `(account_id, ticker)` pair must already exist, so no orphan row can be created. `ticker` is trimmed and upper-cased (`utils.normalize_ticker()`) before the lookup and before it is stored.
+**Target validation:** the `(account_id, ticker)` pair must already exist, so no orphan row can be created. The two value checks run after the account and ticker checks. `ticker` is trimmed and upper-cased (`utils.normalize_ticker()`) before the lookup and before it is stored.
 
 | Status | Condition |
 |---|---|
 | `404` `Account not found.` | `account_id` is unknown or soft-deleted. |
 | `400` | The account is not a `Trading` or `Watchlist` account (Pension/House have no tickers). |
 | `404` `Ticker is not held in or watched by this account.` | A Trading account has no open position in the ticker (never bought, or fully sold), or the Watchlist account does not contain it. |
+| `400` `A price limit must be greater than zero; send null to clear it.` | A `low_limit` or `high_limit` in the body is `0` or negative. Nothing is stored. |
+| `400` `The low limit must be below the high limit.` | After the body is merged over the stored row (a partial update counts), both limits are set and `low_limit >= high_limit`. Nothing is stored. |
 
-The Stock Detail page's Position Targets panel and the Home Assistant Low/High Limit entities only ever send pairs taken from the account's open holdings or the Watchlist, so neither is affected; a request for a position that has been fully sold returns `404`.
+The Stock Detail page's Position Targets panel and the Home Assistant Low/High Limit entities only ever send pairs taken from the account's open holdings or the Watchlist and convert a blank or `0` entry to `null` before posting, so neither is affected; a request for a position that has been fully sold returns `404`.
 
 **Response:** `{ "status": "success" }`.
 
