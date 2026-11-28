@@ -66,7 +66,6 @@ def _run_backfill_mocked(tickers):
         return None
 
     with (
-        patch("ml_backfill_engine.sync_ticker_metadata"),
         patch("ml_backfill_engine.download_spy_benchmark", return_value=None),
         patch("ml_backfill_engine.load_or_fetch_daily_history") as mock_fetch,
         patch("ml_backfill_engine.time"),
@@ -181,7 +180,6 @@ class TestShortHistorySummary:
         import logging
         from ml_backfill_engine import run_historical_backfill
         with (
-            patch("ml_backfill_engine.sync_ticker_metadata"),
             patch("ml_backfill_engine.download_spy_benchmark", return_value=None),
             patch("ml_backfill_engine.load_or_fetch_daily_history", return_value=_fake_ohlcv(n=100)),
             patch("ml_backfill_engine.time"),
@@ -200,7 +198,6 @@ class TestShortHistorySummary:
         import logging
         from ml_backfill_engine import run_historical_backfill
         with (
-            patch("ml_backfill_engine.sync_ticker_metadata"),
             patch("ml_backfill_engine.download_spy_benchmark", return_value=_fake_ohlcv(n=260)),
             patch("ml_backfill_engine.load_or_fetch_daily_history", return_value=_fake_ohlcv(n=260)),
             patch("ml_backfill_engine.time"),
@@ -229,7 +226,6 @@ class TestRelStrengthSurvivesSpyLag:
 
         from ml_backfill_engine import run_historical_backfill
         with (
-            patch("ml_backfill_engine.sync_ticker_metadata"),
             patch("ml_backfill_engine.load_or_fetch_daily_history", side_effect=_fake_fetch),
             patch("ml_backfill_engine.time"),
         ):

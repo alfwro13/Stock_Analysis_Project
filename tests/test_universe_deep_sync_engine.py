@@ -93,14 +93,13 @@ class TestGetUniverseTargetTickers:
 
 def _run_with_mocked_stages(tickers, stage_exceptions=None):
     """
-    Seeds DB with tickers, patches all 5 stage callables, and runs the pipeline.
+    Seeds DB with tickers, patches all 4 stage callables, and runs the pipeline.
     stage_exceptions is a dict {stage_name: Exception} to simulate partial failures.
     """
     stage_exceptions = stage_exceptions or {}
     _insert_tickers(tickers, is_index=1)
 
     fund_exc = stage_exceptions.get("fundamentals")
-    meta_exc = stage_exceptions.get("metadata")
     tech_exc = stage_exceptions.get("technicals")
     mom_exc  = stage_exceptions.get("momentum_backfill")
     ml_exc   = stage_exceptions.get("ml_inference")
@@ -112,8 +111,6 @@ def _run_with_mocked_stages(tickers, stage_exceptions=None):
     with (
         patch("universe_fundamentals_engine.run_universe_fundamentals_sync",
               side_effect=lambda *a, **kw: _maybe_raise(fund_exc)),
-        patch("ml_backfill_engine.sync_ticker_metadata",
-              side_effect=lambda *a, **kw: _maybe_raise(meta_exc)),
         patch("quant_engine.run_daily_quant_scan",
               side_effect=lambda *a, **kw: _maybe_raise(tech_exc)),
         patch("ml_backfill_engine.run_historical_backfill",
@@ -155,13 +152,13 @@ class TestRunUniverseDeepSyncAllOk:
             "SELECT message_text FROM system_notifications WHERE message_type = 'Success'"
         ).fetchone()
         conn.close()
-        for key in ("fundamentals", "metadata", "technicals", "momentum_backfill", "ml_inference"):
+        for key in ("fundamentals", "technicals", "momentum_backfill", "ml_inference"):
             assert key in row["message_text"]
 
 
 class TestRunUniverseDeepSyncPartialFailure:
     def test_stage1_failure_does_not_abort_remaining_stages(self):
-        """A fundamentals failure must not prevent metadata/technicals/ML from running."""
+        """A fundamentals failure must not prevent technicals/momentum/ML from running."""
         _run_with_mocked_stages(["AAPL"], stage_exceptions={"fundamentals": RuntimeError("yf timeout")})
         conn = _db_module.get_connection()
         # Should post a Warning (not Success) for partial failure
@@ -172,14 +169,14 @@ class TestRunUniverseDeepSyncPartialFailure:
         assert any("FAILURES" in r["message_text"] for r in rows)
 
     def test_partial_failure_includes_failed_stage_in_summary(self):
-        _run_with_mocked_stages(["AAPL"], stage_exceptions={"metadata": ValueError("bad data")})
+        _run_with_mocked_stages(["AAPL"], stage_exceptions={"momentum_backfill": ValueError("bad data")})
         conn = _db_module.get_connection()
         row = conn.execute(
             "SELECT message_text FROM system_notifications WHERE message_type = 'Warning'"
         ).fetchone()
         conn.close()
         assert row is not None
-        assert "metadata=FAILED" in row["message_text"]
+        assert "momentum_backfill=FAILED" in row["message_text"]
 
     def test_multiple_failures_captured_independently(self):
         _run_with_mocked_stages(
@@ -198,7 +195,7 @@ class TestRunUniverseDeepSyncPartialFailure:
         assert "ml_inference=FAILED" in row["message_text"]
         # Passing stages should still show OK
         assert "fundamentals=OK" in row["message_text"]
-        assert "metadata=OK" in row["message_text"]
+        assert "momentum_backfill=OK" in row["message_text"]
 
     def test_scheduler_start_notification_posted(self):
         _run_with_mocked_stages(["AAPL"])
@@ -240,28 +237,12 @@ class TestDeepSyncStageCheckpointing:
 
         with (
             patch("universe_fundamentals_engine.run_universe_fundamentals_sync") as mock_s1,
-            patch("ml_backfill_engine.sync_ticker_metadata"),
             patch("quant_engine.run_daily_quant_scan"),
             patch("ml_backfill_engine.run_historical_backfill"),
             patch("ml_inference_engine.update_daily_ml_predictions"),
         ):
             run_universe_deep_sync()
             mock_s1.assert_not_called()
-
-    def test_completed_stage2_is_skipped(self):
-        """If deep_sync_s2 is COMPLETED, sync_ticker_metadata must not be called."""
-        _insert_tickers(["AAPL"])
-        _seed_stage_completed('deep_sync_s2')
-
-        with (
-            patch("universe_fundamentals_engine.run_universe_fundamentals_sync"),
-            patch("ml_backfill_engine.sync_ticker_metadata") as mock_s2,
-            patch("quant_engine.run_daily_quant_scan"),
-            patch("ml_backfill_engine.run_historical_backfill"),
-            patch("ml_inference_engine.update_daily_ml_predictions"),
-        ):
-            run_universe_deep_sync()
-            mock_s2.assert_not_called()
 
     def test_completed_stage3_is_skipped(self):
         """If universe_deep_sync is COMPLETED in quant_scan_states, run_daily_quant_scan must not be called."""
@@ -270,7 +251,6 @@ class TestDeepSyncStageCheckpointing:
 
         with (
             patch("universe_fundamentals_engine.run_universe_fundamentals_sync"),
-            patch("ml_backfill_engine.sync_ticker_metadata"),
             patch("quant_engine.run_daily_quant_scan") as mock_s3,
             patch("ml_backfill_engine.run_historical_backfill"),
             patch("ml_inference_engine.update_daily_ml_predictions"),
@@ -285,7 +265,6 @@ class TestDeepSyncStageCheckpointing:
 
         with (
             patch("universe_fundamentals_engine.run_universe_fundamentals_sync"),
-            patch("ml_backfill_engine.sync_ticker_metadata"),
             patch("quant_engine.run_daily_quant_scan"),
             patch("ml_backfill_engine.run_historical_backfill") as mock_s4,
             patch("ml_inference_engine.update_daily_ml_predictions"),
@@ -300,7 +279,6 @@ class TestDeepSyncStageCheckpointing:
 
         with (
             patch("universe_fundamentals_engine.run_universe_fundamentals_sync"),
-            patch("ml_backfill_engine.sync_ticker_metadata"),
             patch("quant_engine.run_daily_quant_scan"),
             patch("ml_backfill_engine.run_historical_backfill"),
             patch("ml_inference_engine.update_daily_ml_predictions") as mock_s5,
@@ -314,7 +292,6 @@ class TestDeepSyncStageCheckpointing:
 
         with (
             patch("universe_fundamentals_engine.run_universe_fundamentals_sync"),
-            patch("ml_backfill_engine.sync_ticker_metadata"),
             patch("quant_engine.run_daily_quant_scan"),
             patch("ml_backfill_engine.run_historical_backfill"),
             patch("ml_inference_engine.update_daily_ml_predictions"),
@@ -342,21 +319,19 @@ class TestDeepSyncStageCheckpointing:
         assert row is None
 
     def test_uncompleted_stages_are_still_called_after_partial_checkpoint(self):
-        """With stages 1+2 COMPLETED, stages 3, 4, 5 must still be called."""
+        """With stages 1+2 COMPLETED, stages 3 and 4 must still be called."""
         _insert_tickers(["AAPL"])
         _seed_stage_completed('deep_sync_s1')
-        _seed_stage_completed('deep_sync_s2')
+        _seed_stage_completed('universe_deep_sync')
 
         with (
             patch("universe_fundamentals_engine.run_universe_fundamentals_sync") as mock_s1,
-            patch("ml_backfill_engine.sync_ticker_metadata") as mock_s2,
-            patch("quant_engine.run_daily_quant_scan") as mock_s3,
-            patch("ml_backfill_engine.run_historical_backfill") as mock_s4,
-            patch("ml_inference_engine.update_daily_ml_predictions") as mock_s5,
+            patch("quant_engine.run_daily_quant_scan") as mock_s2,
+            patch("ml_backfill_engine.run_historical_backfill") as mock_s3,
+            patch("ml_inference_engine.update_daily_ml_predictions") as mock_s4,
         ):
             run_universe_deep_sync()
             mock_s1.assert_not_called()
             mock_s2.assert_not_called()
             mock_s3.assert_called_once()
             mock_s4.assert_called_once()
-            mock_s5.assert_called_once()

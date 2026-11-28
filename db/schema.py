@@ -650,14 +650,6 @@ def init_db() -> None:
         ''')
 
         cursor.execute('''
-            CREATE TABLE IF NOT EXISTS ticker_metadata (
-                ticker TEXT PRIMARY KEY,
-                sector TEXT,
-                beta REAL
-            )
-        ''')
-
-        cursor.execute('''
             CREATE TABLE IF NOT EXISTS company_name_overrides (
                 ticker       TEXT PRIMARY KEY,
                 display_name TEXT NOT NULL,
@@ -2497,26 +2489,13 @@ def migrate_db(conn, cursor) -> None:
             except Exception as e:
                 logger.error("[MIGRATION ERROR] Failed adding %s to intraday_monitor_results: %s", col_name, e)
 
-    # ticker_metadata (guard for pre-feature DBs)
-    try:
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS ticker_metadata (
-                ticker TEXT PRIMARY KEY,
-                sector TEXT,
-                beta REAL
-            )
-        ''')
-    except Exception as e:
-        logger.error("[MIGRATION ERROR] Failed to create ticker_metadata: %s", e)
-
-    # stock_signals.market_cap is the one market cap column; the old copy here was never refreshed
-    cursor.execute("PRAGMA table_info(ticker_metadata)")
-    if 'market_cap' in [info['name'] for info in cursor.fetchall()]:
+    cursor.execute("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'ticker_metadata'")
+    if cursor.fetchone():
         try:
-            logger.info("[MIGRATION] Dropping column market_cap from ticker_metadata...")
-            cursor.execute("ALTER TABLE ticker_metadata DROP COLUMN market_cap")
+            logger.info("[MIGRATION] Dropping table ticker_metadata...")
+            cursor.execute("DROP TABLE IF EXISTS ticker_metadata")
         except Exception as e:
-            logger.error("[MIGRATION ERROR] Failed dropping market_cap from ticker_metadata: %s", e)
+            logger.error("[MIGRATION ERROR] Failed dropping ticker_metadata: %s", e)
 
     # model_training_log (guard for DBs that pre-date init_db ownership of this table)
     try:
@@ -3084,7 +3063,7 @@ def migrate_db(conn, cursor) -> None:
     )
     try:
         removed = 0
-        for table in ("market_universe", "stock_signals", "ticker_metadata", "asset_profiles"):
+        for table in ("market_universe", "stock_signals", "asset_profiles"):
             cursor.execute(f"DELETE FROM {table} WHERE ticker IN ({','.join('?' * len(test_symbols))})", test_symbols)
             removed += cursor.rowcount
         if removed:

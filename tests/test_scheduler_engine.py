@@ -488,7 +488,6 @@ class TestResumeInterruptedScans:
 
     def test_deep_sync_stage_present_dispatches_deep_sync(self):
         _seed_scan_state('deep_sync_s1', 'COMPLETED')
-        _seed_scan_state('deep_sync_s2', 'COMPLETED')
         _seed_scan_state('deep_sync_s4', 'IN_PROGRESS')
         with patch("scheduler_jobs.run_universe_deep_sync_job") as mock_fn:
             resume_interrupted_scans()

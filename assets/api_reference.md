@@ -989,8 +989,8 @@ Removes tickers from the blacklist file (the Settings → Core System & Currenci
 
 Full universe synchronisation pipeline sequencing:
 1. Fundamentals profiling
-2. Metadata sync
-3. Technicals (quant scan)
+2. Technicals (quant scan)
+3. Momentum/volatility/relative-strength backfill
 4. ML inference
 
 For the full index universe (FTSE 100 + S&P 500). Estimated runtime: **30–45 minutes**. Respects `FREETRADE_ONLY_MODE` setting.
@@ -2201,7 +2201,6 @@ Returns a comprehensive diagnostic snapshot of the system: universe coverage, ML
     "coverage": {
       "stock_signals": 495,
       "quant_signals": 482,
-      "ticker_metadata": 600,
       "asset_profiles": 598
     },
     "json_trackers": {

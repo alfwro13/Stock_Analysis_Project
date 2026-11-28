@@ -71,7 +71,7 @@ def resume_interrupted_scans() -> None:
         if conn:
             conn.close()
 
-    _deep_sync_keys = {'deep_sync_s1', 'deep_sync_s2', 'deep_sync_s4', 'deep_sync_s5', 'universe_deep_sync'}
+    _deep_sync_keys = {'deep_sync_s1', 'deep_sync_s4', 'deep_sync_s5', 'universe_deep_sync'}
     deep_sync_active = any(k in today_states for k in _deep_sync_keys)
     deep_sync_complete = today_states.get('deep_sync_s5') == 'COMPLETED'
 

@@ -6,7 +6,6 @@ from typing import List, Optional, Tuple
 import pandas as pd
 
 from data_engine import DataEngine, load_or_fetch_daily_history
-from yahoo_engine import yahoo_engine
 from indicators import QUANT_HISTORY_COLUMNS, compute_quant_indicator_frame
 from db.database import get_connection, log_notification
 
@@ -80,49 +79,6 @@ def get_target_tickers() -> List[str]:
     return final_tickers
 
 
-def sync_ticker_metadata(tickers: List[str]) -> None:
-    """
-    Ensures sector metadata is available in ticker_metadata.
-    Idempotent — only fetches missing tickers.
-    """
-    logger.info('Syncing metadata for %s tickers...', len(tickers))
-    conn = None
-    try:
-        conn   = get_connection()
-        cursor = conn.cursor()
-
-        cursor.execute("SELECT ticker FROM ticker_metadata")
-        existing_tickers = {row[0] for row in cursor.fetchall()}
-        missing_tickers  = [t for t in tickers if t not in existing_tickers]
-
-        if not missing_tickers:
-            logger.info("All ticker metadata is already up to date.")
-            return
-
-        records: List[Tuple[str, str, float]] = []
-        for ticker in missing_tickers:
-            try:
-                info   = yahoo_engine.get_ticker_info(ticker) or {}
-                sector = info.get('sector', 'Unknown')
-                beta   = info.get('beta', 1.0)
-                records.append((ticker, sector, float(beta) if beta else 1.0))
-            except Exception as e:
-                logger.warning('Failed to fetch metadata for %s: %s', ticker, e)
-                records.append((ticker, 'Unknown', 1.0))
-            time.sleep(0.1)
-
-        if records:
-            cursor.executemany("""
-                INSERT OR REPLACE INTO ticker_metadata (ticker, sector, beta)
-                VALUES (?, ?, ?)
-            """, records)
-            conn.commit()
-            logger.info('Injected metadata for %s new tickers.', len(records))
-    finally:
-        if conn:
-            conn.close()
-
-
 _QUANT_HISTORY_UPSERT = """
     INSERT INTO quant_signals
     (ticker, date, close_price, volume, rsi_14, macd, macd_signal,
@@ -192,8 +148,6 @@ def run_historical_backfill(tickers: Optional[List[str]] = None) -> None:
     if not tickers:
         logger.warning("No tickers found to backfill. Aborting.")
         return
-
-    sync_ticker_metadata(tickers)
 
     today_str = datetime.now(timezone.utc).strftime('%Y-%m-%d')
     start_idx = 0
